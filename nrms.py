@@ -11,6 +11,9 @@ import numpy as np
 import os
 from sklearn.metrics import roc_auc_score
 import pickle
+from datetime import datetime 
+import math
+    
 
 # %%
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
@@ -31,8 +34,10 @@ torch.cuda.set_device(device)
 # %%
 dataset = 'demo/'
 
-data_path = Path("../blob/data/" + str(dataset) + "utils/")
-model_path = Path("../blob/model/" + str(dataset))
+data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
+model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
+
+date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 # %%
 npratio = 4
@@ -46,6 +51,7 @@ epoch = 10
 lr=0.0001
 name = 'nrms_' + dataset[:-1]
 retrain = False
+
 # %% [markdown]
 # # collect impressions
 
@@ -53,7 +59,7 @@ retrain = False
 with open(data_path/'train_sam_uid.pkl', 'rb') as f:
     train_sam = pickle.load(f)
     
-with open(data_path/'valid_sam_uid.pkl', 'rb') as f:
+with open(data_path/'sorted_valid_sam_uid.pkl', 'rb') as f:
     valid_sam = pickle.load(f)
     
 with open(data_path/'test_sam_uid.pkl', 'rb') as f:
@@ -63,7 +69,7 @@ with open(data_path/'user_indices.pkl', 'rb') as f:
     user_indices = pickle.load(f)
 
 # %% [markdown]
-# # News Preprocesss
+# # News Preprocess
 
 # %%
 with open(data_path/'nid2index.pkl', 'rb') as f:
@@ -108,7 +114,7 @@ class TrainDataset(Dataset):
     
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
-        pos, neg, his, _ = self.samples[idx]
+        pos, neg, his, uid, tsp = self.samples[idx]
         neg = newsample(neg, npratio)
         candidate_news = [pos] + neg
         candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
@@ -146,10 +152,10 @@ class UserDataset(Dataset):
         return len(self.samples)
     
     def __getitem__(self, idx):
-        poss, negs, his, _ = self.samples[idx]
+        poss, negs, his, uid, tsp = self.samples[idx]
         his = [self.nid2index[n] for n in his] + [0] * (max_his_len - len(his))
         his = self.news_vecs[his]
-        return his
+        return his, tsp
 
 # %% [markdown]
 # # Model
@@ -361,7 +367,7 @@ def compute_amn(y_true, y_score):
 def evaluation_split(news_vecs, user_vecs, samples, nid2index):
     all_rslt = []
     for i in tqdm(range(len(samples))):
-        poss, negs, _, _ = samples[i]
+        poss, negs, _, _, _ = samples[i]
         user_vec = user_vecs[i]
         y_true = [1] * len(poss) + [0] * len(negs)
         news_ids = [nid2index[i] for i in poss + negs]
@@ -421,7 +427,7 @@ if retrain:
             user_dataset = UserDataset(valid_sam, news_vecs, nid2index)
             user_vecs = []
             user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
-            for his in tqdm(user_dl):
+            for his, tsp in tqdm(user_dl):
                 his = his.to(device)
                 user_vec = model.user_encoder(his).detach().cpu().numpy()
                 user_vecs.append(user_vec)
@@ -441,7 +447,12 @@ if retrain:
                     f.write(f"[{ep}] epoch save model\n")
             
 
+# %% [markdown]
+# # Offline
+
 # %%
+# offline 
+
 model = Model().to(device)
 model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
 model.eval()
@@ -453,7 +464,7 @@ for m in model.modules():
 y_scores = defaultdict(list)
 y_trues = {}
 
-for i in range(100):
+for i in range(1):
     print('eva repeat #', str(i))
     test_news_dataset = NewsDataset(test_news_index)
     news_dl = DataLoader(test_news_dataset, batch_size=1024, shuffle=False, num_workers=0)
@@ -467,14 +478,15 @@ for i in range(100):
     user_dataset = UserDataset(test_sam, news_vecs, test_nid2index)
     user_vecs = []
     user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
-    for his in tqdm(user_dl):
+    for his_tsp in tqdm(user_dl):
+        his, _ = his_tsp
         his = his.to(device)
         user_vec = model.user_encoder(his).detach().cpu().numpy()
         user_vecs.append(user_vec)
     user_vecs = np.concatenate(user_vecs)
 
     for i in tqdm(range(len(valid_sam))):
-        poss, negs, _, _ = valid_sam[i]
+        poss, negs, _, _, _ = valid_sam[i]
         user_vec = user_vecs[i]
         y_true = [1] * len(poss) + [0] * len(negs)
         news_ids = [nid2index[i] for i in poss + negs]
@@ -492,28 +504,149 @@ for i in range(100):
 #         f.write(f"[{time}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}\n")
 
 # %%
-all_rslt_mean = []
-all_rslt_ucb = []
+def print_eva_metric(y_scores, y_trues):
+    all_rslt_mean = []
+    all_rslt_ucb1 = []
+    all_rslt_ucb05 = []
+    all_rslt_ucb2 = []
 
-for key, value in y_scores.items():
-    mean = np.asarray(value).mean(axis = 0)
-    std = np.asarray(value).std(axis = 0)
-    ucb = mean + std 
-    try:
-        all_rslt_mean.append(compute_amn(y_trues[key], mean))
-        all_rslt_ucb.append(compute_amn(y_trues[key], ucb))
-    except Exception as e:
-        print(e)
+    for key, value in y_scores.items():
+        mean = np.asarray(value).mean(axis = 0)
+        std = np.asarray(value).std(axis = 0)
+        try:
+            all_rslt_mean.append(compute_amn(y_trues[key], mean))
+            all_rslt_ucb1.append(compute_amn(y_trues[key], mean + std ))
+            all_rslt_ucb05.append(compute_amn(y_trues[key], mean + 0.5 * std ))
+            all_rslt_ucb2.append(compute_amn(y_trues[key], mean + 2 * std ))
+        except Exception as e:
+            print(e)
+
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
+    print('mean:', val_auc)
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
+    print('UCB1:', val_auc)
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb05)))]
+    print('UCB05:', val_auc)
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb2)))]
+    print('UCB2:', val_auc)
 
 # %%
-val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
-print('mean auc: ', val_auc)
+print_eva_metric(y_scores, y_trues)
+
+# %% [markdown]
+# # Online
 
 # %%
-val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb)))]
-print('ucb auc: ', val_auc)
+def finetune(model, ft_sam, nid2index, news_index):
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    ft_ds = TrainDataset(ft_sam, nid2index, news_index)
+    ft_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    for ep in range(5):
+        loss = 0
+        accuary = 0.0
+        model.train()
+        train_loader = tqdm(ft_dl)
+        for cnt, batch_sample in enumerate(train_loader):
+            candidate_news_index, his_index, label = batch_sample
+            sample_num = candidate_news_index.shape[0]
+            candidate_news_index = candidate_news_index.to(device)
+            his_index = his_index.to(device)
+            label = label.to(device)
+            bz_loss, y_hat = model(candidate_news_index, his_index, label)
+
+            loss += bz_loss.detach().cpu().numpy()
+            optimizer.zero_grad()
+            bz_loss.backward()
+
+            optimizer.step()
+
+            if cnt % 10 == 0:
+                train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
+                train_loader.refresh() 
+
+    return model 
+
+def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues):
+    model.eval()
+    if droupout_flag:
+        for m in model.modules():
+            if m.__class__.__name__.startswith('dropout'):
+                print(m)
+                m.train()
+    
+
+    for i in range(1):
+        batch_news_dataset = NewsDataset(batch_news_index)
+        news_dl = DataLoader(batch_news_dataset, batch_size=1, shuffle=False, num_workers=0)
+        news_vecs = []
+        for news in tqdm(news_dl):
+            news = news.to(device)
+            news_vec = model.text_encoder(news).detach().cpu().numpy()
+            news_vecs.append(news_vec)
+        news_vecs = np.concatenate(news_vecs)
+
+        user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
+        user_vecs = []
+        user_dl = DataLoader(user_dataset, batch_size=1, shuffle=False, num_workers=0)
+        
+
+        for his_tsp in tqdm(user_dl):
+            his, tsp = his_tsp
+            batch_time = datetime.strptime(str(tsp[-1]), date_format_str)
+            his = his.to(device)
+            user_vec = model.user_encoder(his).detach().cpu().numpy()
+            user_vecs.append(user_vec)
+            # print(tsp)
+        user_vecs = np.concatenate(user_vecs)
+
+        for i in tqdm(range(len(valid_sam))):
+            poss, negs, _, _,_ = valid_sam[i]
+            user_vec = user_vecs[i]
+            y_true = [1] * len(poss) + [0] * len(negs)
+            news_ids = [nid2index[i] for i in poss + negs]
+            news_vec = news_vecs[news_ids]
+            y_score = np.multiply(news_vec, user_vec)
+            y_score = np.sum(y_score, axis=1)
+            
+            y_scores[i].append(y_score)
+            y_trues[i] = y_true
+
+    return y_scores, y_trues, batch_time
 
 # %%
+# online 
 
+model = Model().to(device)
+model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
+
+y_scores = defaultdict(list)
+y_trues = {}
+
+update_time = None
+update_batch = 0
+batch_size = 1024
+dropout_flag = True
+
+n_batch = math.ceil(float(len(test_news_dataset))/batch_size)
+
+for i in range(n_batch):
+    batch_sam = test_sam[1024 * i, 1024 * (i+1)]
+
+    y_scores, y_trues, batch_time = eva_batch(model, dropout_flag, test_news_index, batch_sam, nid2index, y_scores, y_trues)
+   
+    if update_time is None:
+        update_time = batch_time
+        print('init update time: ', update_time)
+    if (batch_time- update_time).total_seconds() > 3600:
+
+        ft_sam = test_sam[1024 * update_batch, 1024 * (i+1)]
+        model = finetune(model, ft_samn, id2index, news_index)
+
+        update_time = batch_time
+        update_batch = i + 1
+        print('update before: ', update_time)
+
+# %%
+print_eva_metric(y_scores, y_trues)
 
 
