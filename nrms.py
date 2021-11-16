@@ -39,6 +39,10 @@ model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
+sys.stdout = open(model_path / 'output.txt', "w")
+print(model_path)
+sys.stdout.flush()
+
 # %%
 npratio = 4
 max_his_len = 50
@@ -47,10 +51,11 @@ max_title_len = 30
 
 # %%
 batch_size = 32
-epoch = 10
+epoch = 5
 lr=0.0001
 name = 'nrms_' + dataset[:-1]
-retrain = False
+retrain = True
+eva_times = 100
 
 # %% [markdown]
 # # collect impressions
@@ -64,9 +69,6 @@ with open(data_path/'sorted_valid_sam_uid.pkl', 'rb') as f:
     
 with open(data_path/'test_sam_uid.pkl', 'rb') as f:
     test_sam = pickle.load(f)
-
-with open(data_path/'user_indices.pkl', 'rb') as f:
-    user_indices = pickle.load(f)
 
 # %% [markdown]
 # # News Preprocess
@@ -117,6 +119,10 @@ class TrainDataset(Dataset):
         pos, neg, his, uid, tsp = self.samples[idx]
         neg = newsample(neg, npratio)
         candidate_news = [pos] + neg
+        # print('pos: ', pos)
+        # for n in candidate_news:
+        #     print(n)
+        #     print(self.nid2index[n])
         candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
         his = [self.nid2index[n] for n in his] + [0] * (max_his_len - len(his))
         his = self.news_index[his]
@@ -391,7 +397,7 @@ if retrain:
         model = Model().to(device)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         best_auc = 0
-        for ep in range(5):
+        for ep in range(epoch):
             loss = 0
             accuary = 0.0
             model.train()
@@ -464,38 +470,40 @@ for m in model.modules():
 y_scores = defaultdict(list)
 y_trues = {}
 
-for i in range(1):
-    print('eva repeat #', str(i))
-    test_news_dataset = NewsDataset(test_news_index)
-    news_dl = DataLoader(test_news_dataset, batch_size=1024, shuffle=False, num_workers=0)
-    news_vecs = []
-    for news in tqdm(news_dl):
-        news = news.to(device)
-        news_vec = model.text_encoder(news).detach().cpu().numpy()
-        news_vecs.append(news_vec)
-    news_vecs = np.concatenate(news_vecs)
+with torch.no_grad():
 
-    user_dataset = UserDataset(test_sam, news_vecs, test_nid2index)
-    user_vecs = []
-    user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
-    for his_tsp in tqdm(user_dl):
-        his, _ = his_tsp
-        his = his.to(device)
-        user_vec = model.user_encoder(his).detach().cpu().numpy()
-        user_vecs.append(user_vec)
-    user_vecs = np.concatenate(user_vecs)
+    for i in range(eva_times):
+        print('eva repeat #', str(i))
+        test_news_dataset = NewsDataset(test_news_index)
+        news_dl = DataLoader(test_news_dataset, batch_size=1024, shuffle=False, num_workers=0)
+        news_vecs = []
+        for news in tqdm(news_dl):
+            news = news.to(device)
+            news_vec = model.text_encoder(news).detach().cpu().numpy()
+            news_vecs.append(news_vec)
+        news_vecs = np.concatenate(news_vecs)
 
-    for i in tqdm(range(len(valid_sam))):
-        poss, negs, _, _, _ = valid_sam[i]
-        user_vec = user_vecs[i]
-        y_true = [1] * len(poss) + [0] * len(negs)
-        news_ids = [nid2index[i] for i in poss + negs]
-        news_vec = news_vecs[news_ids]
-        y_score = np.multiply(news_vec, user_vec)
-        y_score = np.sum(y_score, axis=1)
-        
-        y_scores[i].append(y_score)
-        y_trues[i] = y_true
+        user_dataset = UserDataset(test_sam, news_vecs, test_nid2index)
+        user_vecs = []
+        user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
+        for his_tsp in tqdm(user_dl):
+            his, _ = his_tsp
+            his = his.to(device)
+            user_vec = model.user_encoder(his).detach().cpu().numpy()
+            user_vecs.append(user_vec)
+        user_vecs = np.concatenate(user_vecs)
+
+        for i in tqdm(range(len(valid_sam))):
+            poss, negs, _, _, _ = valid_sam[i]
+            user_vec = user_vecs[i]
+            y_true = [1] * len(poss) + [0] * len(negs)
+            news_ids = [nid2index[i] for i in poss + negs]
+            news_vec = news_vecs[news_ids]
+            y_score = np.multiply(news_vec, user_vec)
+            y_score = np.sum(y_score, axis=1)
+            
+            y_scores[i].append(y_score)
+            y_trues[i] = y_true
 
     # test_auc, test_mrr, test_ndcg, test_ndcg10 = [np.mean(i) for i in list(zip(*test_scores))]
     # print(f"[{i}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}")
@@ -531,22 +539,34 @@ def print_eva_metric(y_scores, y_trues):
     print('UCB2:', val_auc)
 
 # %%
+print('offline eva: ', str(eva_times))
 print_eva_metric(y_scores, y_trues)
 
 # %% [markdown]
 # # Online
 
 # %%
-def finetune(model, ft_sam, nid2index, news_index):
+def construct_trainable_samples(samples):
+    tr_samples = []
+    for l in samples:
+        pos_imp, neg_imp, his, uid, tsp = l    
+        for pos in list(pos_imp):
+            tr_samples.append([pos, neg_imp, his, uid, tsp])
+    return tr_samples
+
+
+
+def finetune(model, ft_sam, nid2index, news_index, batch_size):
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    ft_sam = construct_trainable_samples(ft_sam)
     ft_ds = TrainDataset(ft_sam, nid2index, news_index)
-    ft_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    for ep in range(5):
+    ft_dl = DataLoader(ft_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    for ep in range(epoch):
         loss = 0
         accuary = 0.0
         model.train()
-        train_loader = tqdm(ft_dl)
-        for cnt, batch_sample in enumerate(train_loader):
+        ft_loader = tqdm(ft_dl)
+        for cnt, batch_sample in enumerate(ft_loader):
             candidate_news_index, his_index, label = batch_sample
             sample_num = candidate_news_index.shape[0]
             candidate_news_index = candidate_news_index.to(device)
@@ -561,12 +581,12 @@ def finetune(model, ft_sam, nid2index, news_index):
             optimizer.step()
 
             if cnt % 10 == 0:
-                train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
-                train_loader.refresh() 
+                ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
+                ft_loader.refresh() 
 
     return model 
 
-def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues):
+def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues, batch_size, batch_id):
     model.eval()
     if droupout_flag:
         for m in model.modules():
@@ -574,47 +594,51 @@ def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index
                 print(m)
                 m.train()
     
+    with torch.no_grad():
+        for i in range(eva_times):
+            batch_news_dataset = NewsDataset(batch_news_index)
+            news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+            news_vecs = []
+            for news in tqdm(news_dl):
+                news = news.to(device)
+                news_vec = model.text_encoder(news).detach().cpu().numpy()
+                news_vecs.append(news_vec)
+            news_vecs = np.concatenate(news_vecs)
 
-    for i in range(1):
-        batch_news_dataset = NewsDataset(batch_news_index)
-        news_dl = DataLoader(batch_news_dataset, batch_size=1, shuffle=False, num_workers=0)
-        news_vecs = []
-        for news in tqdm(news_dl):
-            news = news.to(device)
-            news_vec = model.text_encoder(news).detach().cpu().numpy()
-            news_vecs.append(news_vec)
-        news_vecs = np.concatenate(news_vecs)
-
-        user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
-        user_vecs = []
-        user_dl = DataLoader(user_dataset, batch_size=1, shuffle=False, num_workers=0)
-        
-
-        for his_tsp in tqdm(user_dl):
-            his, tsp = his_tsp
-            batch_time = datetime.strptime(str(tsp[-1]), date_format_str)
-            his = his.to(device)
-            user_vec = model.user_encoder(his).detach().cpu().numpy()
-            user_vecs.append(user_vec)
-            # print(tsp)
-        user_vecs = np.concatenate(user_vecs)
-
-        for i in tqdm(range(len(valid_sam))):
-            poss, negs, _, _,_ = valid_sam[i]
-            user_vec = user_vecs[i]
-            y_true = [1] * len(poss) + [0] * len(negs)
-            news_ids = [nid2index[i] for i in poss + negs]
-            news_vec = news_vecs[news_ids]
-            y_score = np.multiply(news_vec, user_vec)
-            y_score = np.sum(y_score, axis=1)
+            user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
+            user_vecs = []
+            user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
             
-            y_scores[i].append(y_score)
-            y_trues[i] = y_true
+
+            for his_tsp in tqdm(user_dl):
+                his, tsp = his_tsp
+                batch_time = datetime.strptime(str(tsp[-1]), date_format_str)
+                his = his.to(device)
+                user_vec = model.user_encoder(his).detach().cpu().numpy()
+                user_vecs.append(user_vec)
+                # print(tsp)
+            user_vecs = np.concatenate(user_vecs)
+
+            start_id = batch_size * batch_id
+
+            for i in tqdm(range(len(batch_sam))):
+                poss, negs, _, _,_ = batch_sam[i]
+                user_vec = user_vecs[i]
+                y_true = [1] * len(poss) + [0] * len(negs)
+                news_ids = [nid2index[i] for i in poss + negs]
+                news_vec = news_vecs[news_ids]
+                y_score = np.multiply(news_vec, user_vec)
+                y_score = np.sum(y_score, axis=1)
+                
+                y_scores[start_id+i].append(y_score)
+                y_trues[start_id+i] = y_true
 
     return y_scores, y_trues, batch_time
 
 # %%
 # online 
+
+print('online eva')
 
 model = Model().to(device)
 model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
@@ -627,26 +651,36 @@ update_batch = 0
 batch_size = 1024
 dropout_flag = True
 
-n_batch = math.ceil(float(len(test_news_dataset))/batch_size)
+n_batch = math.ceil(float(len(test_sam))/batch_size)
 
 for i in range(n_batch):
-    batch_sam = test_sam[1024 * i, 1024 * (i+1)]
+    upper_range = min(1024 * (i+1), len(test_sam))
+    batch_sam = test_sam[1024 * i: upper_range]
 
-    y_scores, y_trues, batch_time = eva_batch(model, dropout_flag, test_news_index, batch_sam, nid2index, y_scores, y_trues)
+    y_scores, y_trues, batch_time = eva_batch(model, dropout_flag, test_news_index, batch_sam, test_nid2index, y_scores, y_trues, batch_size, i)
+    
+    print('batch: ', i)
+    print(len(y_scores))
+    print_eva_metric(y_scores, y_trues)
    
     if update_time is None:
         update_time = batch_time
         print('init update time: ', update_time)
     if (batch_time- update_time).total_seconds() > 3600:
 
-        ft_sam = test_sam[1024 * update_batch, 1024 * (i+1)]
-        model = finetune(model, ft_samn, id2index, news_index)
+        ft_sam = test_sam[1024 * update_batch: upper_range]
+        if upper_range - 1024 * update_batch > 512:
+            print('finetune with: '  + str(1024 * update_batch) + ' ~ ' + str(upper_range))
+            model = finetune(model=model, ft_sam=ft_sam, nid2index=test_nid2index, news_index=test_news_index, batch_size=32)
 
-        update_time = batch_time
-        update_batch = i + 1
-        print('update before: ', update_time)
+            update_time = batch_time
+            update_batch = i + 1
+            print('update before: ', update_time)
+        else: 
+            print('no finetune due to insufficient samples: ', str(upper_range - 1024 * update_batch))
 
 # %%
-print_eva_metric(y_scores, y_trues)
+torch.save(model.state_dict(), model_path/f'{name}_finetune.pkl')
+sys.stdout.close()
 
 

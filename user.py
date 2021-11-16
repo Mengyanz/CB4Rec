@@ -9,86 +9,80 @@ import re
 import numpy as np
 import os
 import pickle
+from datetime import datetime 
+date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 # config
 data_path = Path("/home/v-mezhang/blob/data/demo")
 out_path = Path("/home/v-mezhang/blob/data/demo/utils")
 
+train_imprs_path = os.path.join(data_path,"train","behaviors.tsv")
+valid_imprs_path = os.path.join(data_path,"valid","behaviors.tsv")
+test_imprs_path = os.path.join(data_path,"test","behaviors.tsv")
+print(train_imprs_path)
+
 npratio = 4
 max_his_len = 50
 min_word_cnt = 3
 max_title_len = 30
-
 user_imprs = defaultdict(list)
 
-train_samples = []
-valid_samples = []
-test_samples = []
+def read_imprs(file_path, user_imprs, max_his_len, mode):
+    index = 0
+    samples = []
+    user_indices = defaultdict(list)
 
-train_user_indices = defaultdict(list)
-valid_user_indices = defaultdict(list)
-test_user_indices = defaultdict(list)
-
-
-# read user impressions
-index = 0
-for l in tqdm(open(data_path / "train" / "behaviors.tsv", "r")):
-    imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
-    his = his.split()
-    tsp = t
-    # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
-    #tsp = int(t)
-    imprs = [i.split("-") for i in imprs.split(" ")]
-    neg_imp = [i[0] for i in imprs if i[1] == "0"]
-    pos_imp = [i[0] for i in imprs if i[1] == "1"]
-    user_imprs[uid].append([tsp, his, pos_imp, neg_imp, 0, uid])
-
-    his = his[-max_his_len:]
-    for pos in pos_imp:
-        train_samples.append([pos, neg_imp, his, uid, tsp])
-        train_user_indices[uid].append(index)
-        index += 1
-
-index = 0
-for l in tqdm(open(data_path / "valid" / "behaviors.tsv", "r")):
-    imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
-    his = his.split()
-    tsp = t
-    # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
-    #tsp = int(t)
-    imprs = [i.split("-") for i in imprs.split(" ")]
-    neg_imp = [i[0] for i in imprs if i[1] == "0"]
-    pos_imp = [i[0] for i in imprs if i[1] == "1"]
-    user_imprs[uid].append([tsp, his, pos_imp, neg_imp, 1, uid])
-    his = his[-max_his_len:]
-    for pos in pos_imp:
-        valid_samples.append([pos_imp, neg_imp, his, uid, tsp])
-        valid_user_indices[uid].append(index)
-        index += 1
-
-index = 0
-if os.path.exists(data_path / "test"):
-    for l in tqdm(open(data_path / "test" / "behaviors.tsv", "r")):
+    for l in tqdm(open(file_path, "r")):
         imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
         his = his.split()
-        #tsp = int(t)
         tsp = t
         # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
+        #tsp = int(t)
         imprs = [i.split("-") for i in imprs.split(" ")]
         neg_imp = [i[0] for i in imprs if i[1] == "0"]
         pos_imp = [i[0] for i in imprs if i[1] == "1"]
-        user_imprs[uid].append([tsp, his, pos_imp, neg_imp, 2, uid])
+        user_imprs[uid].append([tsp, his, pos_imp, neg_imp, mode, uid])
+
         his = his[-max_his_len:]
-        for pos in pos_imp:
-            test_samples.append([pos_imp, neg_imp, his, uid, tsp])
-            test_user_indices[uid].append(index)
-            index += 1
+        if mode == 0:
+            for pos in pos_imp:
+                samples.append([pos, neg_imp, his, uid, tsp])
+                user_indices[uid].append(index)
+                index += 1
+        else:
+            samples.append([pos_imp, neg_imp, his, uid, tsp])
 
-from datetime import datetime 
-date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
+    if mode == 0:
+        name = 'train'
+    elif mode == 1:
+        name = 'valid'
+    else:
+        name = 'test'
+
+    with open(os.path.join(out_path, (name + "_sam_uid.pkl")), "wb") as f:
+        pickle.dump(samples, f)
+    with open(os.path.join(out_path, (name + "_user_indices.pkl")), "wb") as f:
+        pickle.dump(user_indices, f)
+
+    return samples, user_indices 
+
+
+train_samples, train_user_indices = read_imprs(train_imprs_path, user_imprs, max_his_len, 0)
+
+valid_samples, valid_user_indices = read_imprs(valid_imprs_path, user_imprs, max_his_len, 1)
 sorted_valid_samples = [i for i in sorted(valid_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
-sorted_test_samples = [i for i in sorted(test_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+with open(out_path / "sorted_valid_sam_uid.pkl", "wb") as f:
+    pickle.dump(sorted_valid_samples, f)
+
+print(len(train_samples), len(valid_samples))
+
+if os.path.exists(test_imprs_path):
+    test_samples, test_user_indices = read_imprs(test_imprs_path, user_imprs, max_his_len, 2)
+    sorted_test_samples = [i for i in sorted(test_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+    with open(out_path / "sorted_test_sam_uid.pkl", "wb") as f:
+        pickle.dump(sorted_test_samples, f)
+    print(len(test_samples))
 
 # i = 0
 # for s in sorted_valid_samples:
@@ -116,35 +110,11 @@ sorted_test_samples = [i for i in sorted(test_samples, key=lambda date: datetime
 #         else:
 #             test_samples.append([poss, negs, his, uid])
 
-print(len(train_samples), len(valid_samples), len(test_samples))
-
-# save user files
-with open(out_path / "train_sam_uid.pkl", "wb") as f:
-    pickle.dump(train_samples, f)
-
-with open(out_path / "valid_sam_uid.pkl", "wb") as f:
-    pickle.dump(valid_samples, f)
-
-with open(out_path / "test_sam_uid.pkl", "wb") as f:
-    pickle.dump(test_samples, f)
-
-with open(out_path / "sorted_valid_sam_uid.pkl", "wb") as f:
-    pickle.dump(sorted_valid_samples, f)
-
-with open(out_path / "sorted_test_sam_uid.pkl", "wb") as f:
-    pickle.dump(sorted_test_samples, f)
-
-with open(out_path / "train_user_indices.pkl", "wb") as f:
-    pickle.dump(train_user_indices, f)
-with open(out_path / "valid_user_indices.pkl", "wb") as f:
-    pickle.dump(valid_user_indices, f)
-with open(out_path / "test_user_indices.pkl", "wb") as f:
-    pickle.dump(test_user_indices, f)
 
 # stat of train user samples
 train_user_samples = 0
 
-for uid in tqdm(user_indices):
+for uid in tqdm(train_user_indices):
     train_user_samples += len(train_user_indices[uid])
 
 print(train_user_samples / len(train_user_indices))
