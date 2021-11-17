@@ -13,6 +13,7 @@ from sklearn.metrics import roc_auc_score
 import pickle
 from datetime import datetime 
 import math
+import uncertainty_toolbox as utc
     
 
 # %%
@@ -39,9 +40,9 @@ model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
-sys.stdout = open(model_path / 'output.txt', "w")
-print(model_path)
-sys.stdout.flush()
+# sys.stdout = open(model_path / 'output.txt', "w")
+# print(model_path)
+# sys.stdout.flush()
 
 # %%
 npratio = 4
@@ -54,7 +55,7 @@ batch_size = 32
 epoch = 5
 lr=0.0001
 name = 'nrms_' + dataset[:-1]
-retrain = True
+retrain = False
 eva_times = 100
 
 # %% [markdown]
@@ -472,8 +473,7 @@ y_trues = {}
 
 with torch.no_grad():
 
-    for i in range(eva_times):
-        print('eva repeat #', str(i))
+    for i in tqdm(range(eva_times)):
         test_news_dataset = NewsDataset(test_news_index)
         news_dl = DataLoader(test_news_dataset, batch_size=1024, shuffle=False, num_workers=0)
         news_vecs = []
@@ -516,30 +516,41 @@ def print_eva_metric(y_scores, y_trues):
     all_rslt_mean = []
     all_rslt_ucb1 = []
     all_rslt_ucb05 = []
-    all_rslt_ucb2 = []
+    all_rslt_ucb15 = []
 
     for key, value in y_scores.items():
         mean = np.asarray(value).mean(axis = 0)
         std = np.asarray(value).std(axis = 0)
+        # print(utc.metrics.get_all_metrics(mean, std, np.array(y_trues[key])))
         try:
             all_rslt_mean.append(compute_amn(y_trues[key], mean))
             all_rslt_ucb1.append(compute_amn(y_trues[key], mean + std ))
             all_rslt_ucb05.append(compute_amn(y_trues[key], mean + 0.5 * std ))
-            all_rslt_ucb2.append(compute_amn(y_trues[key], mean + 2 * std ))
+            all_rslt_ucb15.append(compute_amn(y_trues[key], mean + 1.5 * std ))
         except Exception as e:
             print(e)
 
+
     val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
-    print('mean:', val_auc)
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
-    print('UCB1:', val_auc)
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 0 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+
     val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb05)))]
-    print('UCB05:', val_auc)
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb2)))]
-    print('UCB2:', val_auc)
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 0.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+        
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 1 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+   
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb15)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 1.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n \n")
+
 
 # %%
-print('offline eva: ', str(eva_times))
+with open(model_path/f'{name}.txt', 'a') as f:
+    f.write(f"offline eva with eva : {eva_times} times\n")
 print_eva_metric(y_scores, y_trues)
 
 # %% [markdown]
@@ -595,7 +606,7 @@ def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index
                 m.train()
     
     with torch.no_grad():
-        for i in range(eva_times):
+        for i in tqdm(range(eva_times)):
             batch_news_dataset = NewsDataset(batch_news_index)
             news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
             news_vecs = []
@@ -659,8 +670,9 @@ for i in range(n_batch):
 
     y_scores, y_trues, batch_time = eva_batch(model, dropout_flag, test_news_index, batch_sam, test_nid2index, y_scores, y_trues, batch_size, i)
     
-    print('batch: ', i)
-    print(len(y_scores))
+    num_sample = len(y_scores)
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"online eva on batch : {i} with {num_sample} samples in current batch, up to index {upper_range}\n")
     print_eva_metric(y_scores, y_trues)
    
     if update_time is None:
@@ -681,6 +693,6 @@ for i in range(n_batch):
 
 # %%
 torch.save(model.state_dict(), model_path/f'{name}_finetune.pkl')
-sys.stdout.close()
+# sys.stdout.close()
 
 

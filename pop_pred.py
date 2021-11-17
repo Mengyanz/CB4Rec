@@ -20,12 +20,17 @@ class pop_pred(nn.Module):
         self.scaler = nn.Linear(1 + npratio, 1, bias=False)
         nn.init.constant_(self.scaler.weight, 19)
 
+        self.w_c = torch.nn.Parameter(torch.rand(1,1))
+        self.w_p = torch.nn.Parameter(torch.rand(1,1))
+
+
         self.npratio = npratio
         
+        self.criterion = nn.Catego
 
-    def forward(self, x, candidates_ctr):
-        x1= x[:, :400]
-        x2 = x[:, 400:]
+    def forward(self, clicked_news_vecs, candidates_ctr, compute_loss=True):
+        x1= clicked_news_vecs[:, :400]
+        x2 = clicked_news_vecs[:, 400:]
 
         x1 = torch.tanh(self.linear1(x1))
         x1 = torch.tanh(self.linear2(x1))
@@ -44,6 +49,12 @@ class pop_pred(nn.Module):
 
         ctrs = candidates_ctr.reshape((-1, 1))
         bias_ctr_score = scaler(ctrs).reshape(-(1,))
+
+        s_p = self.w_c * bias_ctr_score + self.w_p * bias_content_score
+        # if compute_loss:
+        #     nn.NLLLoss()(torch.log(s_p), )
+
+        return s_p
 
         
 
