@@ -2,8 +2,29 @@
 # https://github.com/taoqi98/PP-Rec/blob/main/Code/Encoders.py
 # https://aclanthology.org/2021.acl-long.424.pdf
 
+
+from collections import defaultdict, Counter
+import copy
+import random
+import re
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torch import nn
+import torch.optim as optim
+import torch.nn.functional as F
+
+from torch.optim.lr_scheduler import MultiStepLR
+import os
+import gpytorch
+import math
+from tqdm import tqdm
+
+from nrms import TextEncoder
+
+
 class pop_pred(nn.Module):
-    def __init__(self, input_dim, npratio):
+    def __init__(self, input_dim, npratio, nrms):
         self.linear1 = nn.Linear(400, 256)
         self.linear2 = nn.Linear(256, 256)
         self.linear3 = nn.Linear(256, 128)
@@ -23,14 +44,18 @@ class pop_pred(nn.Module):
         self.w_c = torch.nn.Parameter(torch.rand(1,1))
         self.w_p = torch.nn.Parameter(torch.rand(1,1))
 
-
         self.npratio = npratio
-        
+        self.text_encoder =TextEncoder()
         self.criterion = nn.Catego
 
-    def forward(self, clicked_news_vecs, candidates_ctr, compute_loss=True):
-        x1= clicked_news_vecs[:, :400]
-        x2 = clicked_news_vecs[:, 400:]
+
+    def forward(self, candidate_news, candidates_ctr, compute_loss=True):
+        batch_size, npratio, word_num = candidate_news.shape
+        candidate_news = candidate_news.view(-1, word_num)
+        candidate_vector = self.text_encoder(candidate_news).view(batch_size, npratio, -1)
+
+        # x1= clicked_news[:, :400]
+        # x2 = clicked_news[:, 400:]
 
         x1 = torch.tanh(self.linear1(x1))
         x1 = torch.tanh(self.linear2(x1))

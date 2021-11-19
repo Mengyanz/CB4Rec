@@ -52,11 +52,11 @@ max_title_len = 30
 
 # %%
 batch_size = 32
-epoch = 5
+epoch = 1
 lr=0.0001
 name = 'nrms_' + dataset[:-1]
 retrain = False
-eva_times = 100
+eva_times = 2
 
 # %% [markdown]
 # # collect impressions
@@ -64,12 +64,16 @@ eva_times = 100
 # %%
 with open(data_path/'train_sam_uid.pkl', 'rb') as f:
     train_sam = pickle.load(f)
+
+with open(data_path/'sorted_train_sam_uid.pkl', 'rb') as f:
+    sorted_train_sam = pickle.load(f)
     
 with open(data_path/'sorted_valid_sam_uid.pkl', 'rb') as f:
     valid_sam = pickle.load(f)
-    
-with open(data_path/'test_sam_uid.pkl', 'rb') as f:
-    test_sam = pickle.load(f)
+
+if os.path.exists(data_path/'test_sam_uid.pkl'):    
+    with open(data_path/'test_sam_uid.pkl', 'rb') as f:
+        test_sam = pickle.load(f)
 
 # %% [markdown]
 # # News Preprocess
@@ -94,6 +98,91 @@ else: # TODO: for now use valid to do test (cb)
     test_nid2index = nid2index
     test_news_index = news_index
     test_sam = valid_sam
+
+# %%
+def cal_ctr(samples, news_click_count, news_impr_count, interval_time,):
+    for l in tqdm(samples):
+        pos, neg, his, uid, tsp = l
+        tsp = datetime.strptime(tsp,date_format_str)
+        tidx = int((tsp - start_time).total_seconds()/interval_time) 
+        if type(pos) is list:
+            for i in pos:
+                nidx = nid2index[i]
+                news_click_count[nidx, tidx] += 1
+                news_impr_count[nidx, tidx] += 1
+        else:
+            nidx = nid2index[pos]
+            news_click_count[nidx, tidx] += 1
+            news_impr_count[nidx, tidx] += 1
+
+        for i in neg:
+            nidx = nid2index[i]
+            news_impr_count[nidx, tidx] += 1
+    return news_click_count, news_impr_count
+
+# %% [markdown]
+# # News Pool
+
+# %%
+
+interval_time = 3600
+start_time =  datetime.strptime(sorted_train_sam[0][-1],date_format_str)
+# print(start_time)
+end_time = datetime.strptime(valid_sam[-1][-1],date_format_str)
+nt = int((end_time - start_time).total_seconds()/interval_time) + 1 
+print(len(nid2index))
+print(nt)
+news_click_count = np.zeros((len(nid2index), nt), dtype=float)
+news_impr_count = np.ones((len(nid2index), nt), dtype=float) * 100 # assume 100 times init
+
+news_click_count, news_impr_count = cal_ctr(train_sam, news_click_count, news_impr_count, interval_time)
+news_click_count, news_impr_count = cal_ctr(valid_sam, news_click_count, news_impr_count, interval_time)
+
+# %%
+# news_ctr = np.zeros_like(news_click_count)
+# for i in tqdm(range(news_click_count.shape[0])):
+#     for j in range(news_click_count.shape[1]):
+#         if news_impr_count[i,j] == 0:
+#             assert news_click_count[i,j] == 0
+#             news_ctr[i,j] = 0
+#         else:
+#             news_ctr[i,j] = news_click_count[i,j]/news_impr_count[i,j]
+news_ctr = news_click_count/news_impr_count
+
+# %%
+import matplotlib.pyplot as plt
+# news_ctr = news_click_count/news_impr_count
+# plt.imshow(news_ctr[:,166])
+# plt.colorbar()
+tidx = 111
+nonzero = news_ctr[:,tidx][news_ctr[:, tidx] > 0]
+len(nonzero)
+
+# %%
+nonzero_count = []
+for i in range(news_click_count.shape[1]):
+    nonzero = news_ctr[:,i][news_ctr[:, i] > 0]
+    nonzero_count.append(len(nonzero))
+plt.hist(nonzero_count)
+
+# %%
+
+def gene_news_pool(t, k = 5):
+    t = datetime.strptime(t,date_format_str)
+    tidx = int((t - start_time).total_seconds()/interval_time) 
+    nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
+    nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
+    # print(nonzero_idx)
+    nonzero = nonzero/nonzero.sum()
+    assert (nonzero.sum() - 1) < 1e-3
+    # print(np.sort(nonzero)[-5:])dd
+    sample_nidx = np.random.choice(nonzero_idx, size = k, replace = False, p = nonzero)
+    # print(news_ctr[sample_nidx, tidx-1])
+    # plt.hist(nonzero)
+    return sample_nidx
+    
+t =  sorted_train_sam[1500][-1]
+gene_news_pool(t, 20)
 
 # %% [markdown]
 # # Dataset & DataLoader
@@ -165,7 +254,7 @@ class UserDataset(Dataset):
         return his, tsp
 
 # %% [markdown]
-# # Model
+# # NRMS
 
 # %%
 class ScaledDotProductAttention(nn.Module):
@@ -312,9 +401,9 @@ class UserEncoder(nn.Module):
         return user_vector
 
 # %%
-class Model(nn.Module):
+class NRMS(nn.Module):
     def __init__(self):
-        super(Model, self).__init__()
+        super(NRMS, self).__init__()
         self.text_encoder = TextEncoder()
         self.user_encoder = UserEncoder()
         
@@ -395,7 +484,7 @@ train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers
 
 if retrain:
     for time in range(1):
-        model = Model().to(device)
+        model = NRMS().to(device)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         best_auc = 0
         for ep in range(epoch):
@@ -460,7 +549,7 @@ if retrain:
 # %%
 # offline 
 
-model = Model().to(device)
+model = NRMS().to(device)
 model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
 model.eval()
 for m in model.modules():
@@ -646,12 +735,16 @@ def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index
 
     return y_scores, y_trues, batch_time
 
+
+def gene_news_pool():
+    pass
+
 # %%
 # online 
 
 print('online eva')
 
-model = Model().to(device)
+model = NRMS().to(device)
 model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
 
 y_scores = defaultdict(list)

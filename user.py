@@ -13,8 +13,10 @@ from datetime import datetime
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 # config
-data_path = Path("/home/v-mezhang/blob/data/demo")
-out_path = Path("/home/v-mezhang/blob/data/demo/utils")
+name = 'demo'
+
+data_path = Path("/home/v-mezhang/blob/data/" + name)
+out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
 
 train_imprs_path = os.path.join(data_path,"train","behaviors.tsv")
 valid_imprs_path = os.path.join(data_path,"valid","behaviors.tsv")
@@ -52,6 +54,8 @@ def read_imprs(file_path, user_imprs, max_his_len, mode):
         else:
             samples.append([pos_imp, neg_imp, his, uid, tsp])
 
+    sorted_samples = [i for i in sorted(samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+    
 
     if mode == 0:
         name = 'train'
@@ -64,6 +68,8 @@ def read_imprs(file_path, user_imprs, max_his_len, mode):
         pickle.dump(samples, f)
     with open(os.path.join(out_path, (name + "_user_indices.pkl")), "wb") as f:
         pickle.dump(user_indices, f)
+    with open(out_path / ("sorted_"+ name + "_sam_uid.pkl"), "wb") as f:
+        pickle.dump(sorted_samples, f)
 
     return samples, user_indices 
 
@@ -71,17 +77,17 @@ def read_imprs(file_path, user_imprs, max_his_len, mode):
 train_samples, train_user_indices = read_imprs(train_imprs_path, user_imprs, max_his_len, 0)
 
 valid_samples, valid_user_indices = read_imprs(valid_imprs_path, user_imprs, max_his_len, 1)
-sorted_valid_samples = [i for i in sorted(valid_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
-with open(out_path / "sorted_valid_sam_uid.pkl", "wb") as f:
-    pickle.dump(sorted_valid_samples, f)
+# sorted_valid_samples = [i for i in sorted(valid_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+# with open(out_path / "sorted_valid_sam_uid.pkl", "wb") as f:
+#     pickle.dump(sorted_valid_samples, f)
 
 print(len(train_samples), len(valid_samples))
 
 if os.path.exists(test_imprs_path):
     test_samples, test_user_indices = read_imprs(test_imprs_path, user_imprs, max_his_len, 2)
-    sorted_test_samples = [i for i in sorted(test_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
-    with open(out_path / "sorted_test_sam_uid.pkl", "wb") as f:
-        pickle.dump(sorted_test_samples, f)
+    # sorted_test_samples = [i for i in sorted(test_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+    # with open(out_path / "sorted_test_sam_uid.pkl", "wb") as f:
+    #     pickle.dump(sorted_test_samples, f)
     print(len(test_samples))
 
 # i = 0
