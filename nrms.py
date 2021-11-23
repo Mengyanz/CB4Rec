@@ -825,7 +825,7 @@ class CB_sim():
 
         return user_vecs
         
-    def get_cand_news(self, t, poss, negs, m = 5):
+    def get_cand_news(self, t, poss, negs, m = 10):
         """
         Generate candidates news based on CTR.
 
@@ -836,7 +836,6 @@ class CB_sim():
 
         Return: array, candidate news id 
         """
-        # TODO: add poss, negs into cand news?
         t = datetime.strptime(t,date_format_str)
         tidx = int((t - start_time).total_seconds()/interval_time)
 
@@ -849,10 +848,15 @@ class CB_sim():
         # print(np.sort(nonzero)[-5:])
 
         # sampling according to normalised ctr in last one hour
-        sample_nidx = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+        sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+        # REVIEW: check whether the sampled nids are reasonable
+        
         # print(news_ctr[sample_nidx, tidx-1])
         # plt.hist(nonzero)
-        return sample_nidx
+        poss_nids = np.array([n for n in poss])
+        negs_nids = np.array([n for n in negs])
+
+        return np.concatenate([sample_nids, poss_nids, negs_nids])
         
 #     t =  sorted_train_sam[1500][-1]
 #     gene_news_pool(t, 20)
@@ -885,7 +889,7 @@ class CB_sim():
                     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                     ft_loader.refresh() 
 
-    def get_ucb_socre(self, y_score, t):
+    def get_ucb_score(self, y_score, t):
         ucb = []
         beta_t = 1
 
@@ -899,51 +903,64 @@ class CB_sim():
         """
         
         self.model.eval()
-        if self.droupout_flag:
+        if self.dropout_flag:
             self.enable_dropout()
 
+        y_scores = defaultdict(list) # key: sam_id, value: list of n_inference scores 
+        cand_nids_dict = {} # key: sam_id, value: array of candidate news ids
+        start_id = self.eva_batch_size * batch_id
+
         with torch.no_grad():
-            for i in tqdm(range(self.n_inference)):
+            sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+            sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+
+            # generate scores with uncertainty (dropout during inference)
+            for _ in tqdm(range(self.n_inference)):
                 # TODO: speed up - only pass batch news index
                 news_vecs = self.get_news_vec(self.model, self.news_index)
-                users_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
-
-                sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-                sim_users_vecs = self.get_user_vec(self.simulator, batch_sam, news_vecs, self.nid2index)
-
-                start_id = self.eva_batch_size * batch_id
-
+                user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
+                
                 for i in tqdm(range(len(batch_sam))):
                     t = start_id + i
-                    poss, negs, his, uid, _ = batch_sam[i]             
-
+                    poss, negs, his, uid, tsq = batch_sam[i]     
                     user_vec = user_vecs[i]
-                    sim_user_vec = sim_user_vecs[i]
-
-                    cand_nids = self.get_cand_news(t, poss, negs)
-                    news_vec = news_vecs[cand_nids]
-                    sim_news_vec = sim_news_vecs[cand_nids]
-
+                    
+                    if t not in cand_nids_dict.keys():
+                        # cand set (is a randomised set) keeps same for inference times
+                        cand_nids = self.get_cand_news(tsq, poss, negs)
+                        cand_nids_dict[t] = cand_nids
+                        print(cand_nids)
+                        news_vec = news_vecs[cand_nids]
+                        sim_user_vec = sim_user_vecs[i]
+                        sim_news_vec = sim_news_vecs[cand_nids]
+                        sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+                        opt_nids = np.argsort(sim_y_score)[-k:]
+                        self.opts[exper_id].append(opt_nids)   
+                    
+                    news_vec = news_vecs[cand_nids_dict[t]]
                     y_score = np.sum(np.multiply(news_vec, user_vec), axis=1)
-                    ucb_score = self.get_ucb_score(y_score, t)
-                    sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+                    y_scores[t].append(y_score)
 
-                    rec_nids = np.argsort(ucb_score)[-k:]
-                    opt_nids = np.argsort(sim_y_score)[-k:]
-                    assert len(set(rec_nids)) == k
-                    assert len(set(opt_nids)) == k
+        # generate recommendations and calculate rewards
+        for i in tqdm(range(len(batch_sam))):
+            t = start_id + i
+            ucb_score = self.get_ucb_score(y_scores[t], t)
+            rec_nids = np.argsort(ucb_score)[-k:]
+            self.recs[exper_id].append(rec_nids) 
 
-                    reward = len(set(rec_nids), set(opt_nids)) # reward as the overlap between rec and opt set
-                    self.cumu_reward += reward
-                    self.cumu_rewards[exper_id, t] = self.cumu_reward
+            opt_nids = self.opts[exper_id][i]
+ 
+            assert len(set(rec_nids)) == k
+            assert len(set(opt_nids)) == k
 
-                    rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
-                    rec_negs = rec_nids - rec_poss
-                    self.rec_sam[i][0] = rec_poss
-                    self.rec_sam[i][1] = rec_negs
+            reward = len(set(rec_nids) & set(opt_nids)) # reward as the overlap between rec and opt set
+            self.cumu_reward += reward
+            self.cumu_rewards[exper_id, t] = self.cumu_reward
 
-                    self.recs[exper_id].append(rec_nids)     
-                    self.opts[exper_id].append(opt_nids)   
+            rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
+            rec_negs = set(rec_nids) - set(rec_poss)
+            self.rec_sam[i][0] = rec_poss
+            self.rec_sam[i][1] = rec_negs
         
     def run_exper(self, test_sam, num_exper = 10):
         num_sam = len(test_sam)
@@ -952,6 +969,7 @@ class CB_sim():
         self.cumu_rewards = np.zeros((num_exper, num_sam))
         self.recs = defaultdict(list)
         self.opts = defaultdict(list)
+        update_time = None
         
 
         for j in range(num_exper):
@@ -962,7 +980,7 @@ class CB_sim():
                 batch_sam = test_sam[self.eva_batch_size * i: upper_range]
                 batch_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
 
-                self.rec(batch_sam, recs, i, j)
+                self.rec(batch_sam, i, j)
 
                 if update_time is None:
                     update_time = batch_time
@@ -990,6 +1008,13 @@ class CB_sim():
         with open(os.path.join(self.out_path, "rewards.pkl"), "wb") as f:
             pickle.dump(self.cumu_rewards, f)
         
+
+
+# %%
+cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, n_inference = 2)
+cb_sim.run_exper(test_sam=test_sam)
+
+# %%
 
 
 
