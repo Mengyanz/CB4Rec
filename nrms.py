@@ -165,25 +165,6 @@ for i in range(news_click_count.shape[1]):
     nonzero_count.append(len(nonzero))
 plt.hist(nonzero_count)
 
-# %%
-
-def gene_news_pool(t, k = 5):
-    t = datetime.strptime(t,date_format_str)
-    tidx = int((t - start_time).total_seconds()/interval_time) 
-    nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
-    nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
-    # print(nonzero_idx)
-    nonzero = nonzero/nonzero.sum()
-    assert (nonzero.sum() - 1) < 1e-3
-    # print(np.sort(nonzero)[-5:])dd
-    sample_nidx = np.random.choice(nonzero_idx, size = k, replace = False, p = nonzero)
-    # print(news_ctr[sample_nidx, tidx-1])
-    # plt.hist(nonzero)
-    return sample_nidx
-    
-t =  sorted_train_sam[1500][-1]
-gene_news_pool(t, 20)
-
 # %% [markdown]
 # # Dataset & DataLoader
 
@@ -481,7 +462,6 @@ train_ds = TrainDataset(train_sam, nid2index, news_index)
 train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
 # %%
-
 if retrain:
     for time in range(1):
         model = NRMS().to(device)
@@ -686,7 +666,7 @@ def finetune(model, ft_sam, nid2index, news_index, batch_size):
 
     return model 
 
-def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues, batch_size, batch_id):
+def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues, ucbs, batch_size, batch_id):
     model.eval()
     if droupout_flag:
         for m in model.modules():
@@ -732,12 +712,8 @@ def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index
                 
                 y_scores[start_id+i].append(y_score)
                 y_trues[start_id+i] = y_true
-
+                
     return y_scores, y_trues, batch_time
-
-
-def gene_news_pool():
-    pass
 
 # %%
 # online 
@@ -787,5 +763,233 @@ for i in range(n_batch):
 # %%
 torch.save(model.state_dict(), model_path/f'{name}_finetune.pkl')
 # sys.stdout.close()
+
+# %% [markdown]
+# # Bandit Simulation
+
+# %%
+class CB_sim():
+    def __init__(
+        self, model_path, simulator_path, out_path, device,
+        news_index, nid2index,
+        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, n_inference = 50,
+    ):
+        self.model = NRMS().to(device)
+        self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
+        
+        # TODO: change simulator to PLM
+        self.simulator = NRMS().to(device)
+        self.simulator.load_state_dict(torch.load(simulator_path/f'{name}.pkl'))
+
+        self.news_index = news_index
+        self.nid2index = nid2index
+
+        self.out_path = out_path
+        self.dropout_flag = dropout_flag
+        self.n_inference = n_inference
+        self.finetune_batch_size = finetune_batch_size
+        self.eva_batch_size = eva_batch_size
+        self.date_format_str = '%m/%d/%Y %I:%M:%S %p'
+
+    
+    def enable_dropout(self):
+        for m in self.model.modules():
+            if m.__class__.__name__.startswith('dropout'):
+                print(m)
+                m.train() 
+        
+    def get_news_vec(self, model, batch_news_index):
+        batch_news_dataset = NewsDataset(batch_news_index)
+        news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+        news_vecs = []
+        for news in tqdm(news_dl):
+            news = news.to(device)
+            news_vec = model.text_encoder(news).detach().cpu().numpy()
+            news_vecs.append(news_vec)
+        news_vecs = np.concatenate(news_vecs)
+
+        return news_vecs
+
+    def get_user_vec(self, model, batch_sam, news_vecs, batch_nid2index):
+        user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
+        user_vecs = []
+        user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+
+        for his_tsp in tqdm(user_dl):
+            his, tsp = his_tsp
+            his = his.to(device)
+            user_vec = model.user_encoder(his).detach().cpu().numpy()
+            user_vecs.append(user_vec)
+            # print(tsp)
+        user_vecs = np.concatenate(user_vecs)
+
+        return user_vecs
+        
+    def get_cand_news(self, t, poss, negs, m = 5):
+        """
+        Generate candidates news based on CTR.
+
+        t: string, impr time
+        poss: list, positive samples in impr
+        negs: list, neg samples in impr
+        m: int, number of candidate news to return
+
+        Return: array, candidate news id 
+        """
+        # TODO: add poss, negs into cand news?
+        t = datetime.strptime(t,date_format_str)
+        tidx = int((t - start_time).total_seconds()/interval_time)
+
+        nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
+        nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
+        # print(nonzero_idx)
+
+        nonzero = nonzero/nonzero.sum()
+        assert (nonzero.sum() - 1) < 1e-3
+        # print(np.sort(nonzero)[-5:])
+
+        # sampling according to normalised ctr in last one hour
+        sample_nidx = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+        # print(news_ctr[sample_nidx, tidx-1])
+        # plt.hist(nonzero)
+        return sample_nidx
+        
+#     t =  sorted_train_sam[1500][-1]
+#     gene_news_pool(t, 20)
+
+    def finetune(self, ft_sam):
+        optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        ft_sam = construct_trainable_samples(ft_sam)
+        ft_ds = TrainDataset(ft_sam, self.nid2index, self.news_index)
+        ft_dl = DataLoader(ft_ds, batch_size=self.finetune_batch_size, shuffle=True, num_workers=0)
+        for ep in range(epoch):
+            loss = 0
+            accuary = 0.0
+            self.model.train()
+            ft_loader = tqdm(ft_dl)
+            for cnt, batch_sample in enumerate(ft_loader):
+                candidate_news_index, his_index, label = batch_sample
+                sample_num = candidate_news_index.shape[0]
+                candidate_news_index = candidate_news_index.to(device)
+                his_index = his_index.to(device)
+                label = label.to(device)
+                bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
+
+                loss += bz_loss.detach().cpu().numpy()
+                optimizer.zero_grad()
+                bz_loss.backward()
+
+                optimizer.step()
+
+                if cnt % 10 == 0:
+                    ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
+                    ft_loader.refresh() 
+
+    def get_ucb_socre(self, y_score, t):
+        ucb = []
+        beta_t = 1
+
+        mean = np.asarray(y_score).mean(axis = 0)
+        std = np.asarray(y_score).std(axis = 0)
+        return mean + beta_t * std
+                
+    def rec(self, batch_sam, batch_id, exper_id, k = 5):
+        """
+        Simulate recommendations
+        """
+        
+        self.model.eval()
+        if self.droupout_flag:
+            self.enable_dropout()
+
+        with torch.no_grad():
+            for i in tqdm(range(self.n_inference)):
+                # TODO: speed up - only pass batch news index
+                news_vecs = self.get_news_vec(self.model, self.news_index)
+                users_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
+
+                sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+                sim_users_vecs = self.get_user_vec(self.simulator, batch_sam, news_vecs, self.nid2index)
+
+                start_id = self.eva_batch_size * batch_id
+
+                for i in tqdm(range(len(batch_sam))):
+                    t = start_id + i
+                    poss, negs, his, uid, _ = batch_sam[i]             
+
+                    user_vec = user_vecs[i]
+                    sim_user_vec = sim_user_vecs[i]
+
+                    cand_nids = self.get_cand_news(t, poss, negs)
+                    news_vec = news_vecs[cand_nids]
+                    sim_news_vec = sim_news_vecs[cand_nids]
+
+                    y_score = np.sum(np.multiply(news_vec, user_vec), axis=1)
+                    ucb_score = self.get_ucb_score(y_score, t)
+                    sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+
+                    rec_nids = np.argsort(ucb_score)[-k:]
+                    opt_nids = np.argsort(sim_y_score)[-k:]
+                    assert len(set(rec_nids)) == k
+                    assert len(set(opt_nids)) == k
+
+                    reward = len(set(rec_nids), set(opt_nids)) # reward as the overlap between rec and opt set
+                    self.cumu_reward += reward
+                    self.cumu_rewards[exper_id, t] = self.cumu_reward
+
+                    rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
+                    rec_negs = rec_nids - rec_poss
+                    self.rec_sam[i][0] = rec_poss
+                    self.rec_sam[i][1] = rec_negs
+
+                    self.recs[exper_id].append(rec_nids)     
+                    self.opts[exper_id].append(opt_nids)   
+        
+    def run_exper(self, test_sam, num_exper = 10):
+        num_sam = len(test_sam)
+        n_batch = math.ceil(float(num_sam)/self.eva_batch_size)
+        self.rec_sam = test_sam.copy()
+        self.cumu_rewards = np.zeros((num_exper, num_sam))
+        self.recs = defaultdict(list)
+        self.opts = defaultdict(list)
+        
+
+        for j in range(num_exper):
+            self.cumu_reward = 0
+            
+            for i in range(n_batch):
+                upper_range = min(self.eva_batch_size * (i+1), len(test_sam))
+                batch_sam = test_sam[self.eva_batch_size * i: upper_range]
+                batch_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
+
+                self.rec(batch_sam, recs, i, j)
+
+                if update_time is None:
+                    update_time = batch_time
+                    print('init update time: ', update_time)
+                if (batch_time- update_time).total_seconds() > 3600:
+                    ft_sam = self.rec_sam[self.eva_batch_size * update_batch: upper_range]
+                    if upper_range - self.eva_batch_size * update_batch > 512:
+                        print('finetune with: '  + str(self.eva_batch_size * update_batch) + ' ~ ' + str(upper_range))
+                        self.finetune(ft_sam=ft_sam)
+
+                        update_time = batch_time
+                        update_batch = i + 1
+                        print('update before: ', update_time)
+                    else: 
+                        print('no finetune due to insufficient samples: ', str(upper_range - self.eva_batch_size * update_batch))
+
+        self.save_results()
+
+    def save_results(self):
+        torch.save(self.model.state_dict(), model_path/f'{name}_finetune.pkl')
+        with open(os.path.join(self.out_path, "recs.pkl"), "wb") as f:
+            pickle.dump(self.recs, f)
+        with open(os.path.join(self.out_path, "opts.pkl"), "wb") as f:
+            pickle.dump(self.opts, f)
+        with open(os.path.join(self.out_path, "rewards.pkl"), "wb") as f:
+            pickle.dump(self.cumu_rewards, f)
+        
+
 
 
