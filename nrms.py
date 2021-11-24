@@ -531,6 +531,43 @@ if retrain:
                     f.write(f"[{ep}] epoch save model\n")
             
 
+# %%
+def print_eva_metric(y_scores, y_trues):
+    all_rslt_mean = []
+    all_rslt_ucb1 = []
+    all_rslt_ucb05 = []
+    all_rslt_ucb15 = []
+
+    for key, value in y_scores.items():
+        mean = np.asarray(value).mean(axis = 0)
+        std = np.asarray(value).std(axis = 0)
+        # print(utc.metrics.get_all_metrics(mean, std, np.array(y_trues[key])))
+        try:
+            all_rslt_mean.append(compute_amn(y_trues[key], mean))
+            all_rslt_ucb1.append(compute_amn(y_trues[key], mean + std ))
+            all_rslt_ucb05.append(compute_amn(y_trues[key], mean + 0.5 * std ))
+            all_rslt_ucb15.append(compute_amn(y_trues[key], mean + 1.5 * std ))
+        except Exception as e:
+            print(e)
+
+
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 0 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb05)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 0.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+        
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 1 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
+   
+    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb15)))]
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"ucb 1.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n \n")
+
+
 # %% [markdown]
 # # Offline
 
@@ -583,53 +620,15 @@ if offline_flag:
                 y_scores[i].append(y_score)
                 y_trues[i] = y_true
 
+    with open(model_path/f'{name}.txt', 'a') as f:
+        f.write(f"offline eva with eva : {eva_times} times\n")
+    print_eva_metric(y_scores, y_trues)
+
     # test_auc, test_mrr, test_ndcg, test_ndcg10 = [np.mean(i) for i in list(zip(*test_scores))]
     # print(f"[{i}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}")
 
 # with open(model_path/ f'{name}.txt', 'a') as f:
 #         f.write(f"[{time}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}\n")
-
-# %%
-def print_eva_metric(y_scores, y_trues):
-    all_rslt_mean = []
-    all_rslt_ucb1 = []
-    all_rslt_ucb05 = []
-    all_rslt_ucb15 = []
-
-    for key, value in y_scores.items():
-        mean = np.asarray(value).mean(axis = 0)
-        std = np.asarray(value).std(axis = 0)
-        # print(utc.metrics.get_all_metrics(mean, std, np.array(y_trues[key])))
-        try:
-            all_rslt_mean.append(compute_amn(y_trues[key], mean))
-            all_rslt_ucb1.append(compute_amn(y_trues[key], mean + std ))
-            all_rslt_ucb05.append(compute_amn(y_trues[key], mean + 0.5 * std ))
-            all_rslt_ucb15.append(compute_amn(y_trues[key], mean + 1.5 * std ))
-        except Exception as e:
-            print(e)
-
-
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 0 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb05)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 0.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-        
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 1 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-   
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb15)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 1.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n \n")
-
-
-# %%
-with open(model_path/f'{name}.txt', 'a') as f:
-    f.write(f"offline eva with eva : {eva_times} times\n")
-print_eva_metric(y_scores, y_trues)
 
 # %% [markdown]
 # # Online
@@ -782,7 +781,7 @@ class CB_sim():
     def __init__(
         self, model_path, simulator_path, out_path, device,
         news_index, nid2index,
-        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, n_inference = 50,
+        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, n_inference = 50, policy = 'ucb'
     ):
         self.model = NRMS().to(device)
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
@@ -800,6 +799,8 @@ class CB_sim():
         self.finetune_batch_size = finetune_batch_size
         self.eva_batch_size = eva_batch_size
         self.date_format_str = '%m/%d/%Y %I:%M:%S %p'
+
+        self.policy = policy
 
     
     def enable_dropout(self):
@@ -913,14 +914,27 @@ class CB_sim():
                     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                     ft_loader.refresh() 
 
-    def get_ucb_score(self, y_score, t):
+    def get_ucb_score(self, exper_id, y_score, t):
         ucb = []
         beta_t = 1
 
         mean = np.asarray(y_score).mean(axis = 0)
         std = np.asarray(y_score).std(axis = 0)
-        return mean + beta_t * std
+        ucb_score = mean + beta_t * std
 
+        rec_nids = np.argsort(ucb_score)[-k:]
+        return rec_nids
+
+    def epsilon_greedy(self, exper_id, y_score, k, epsilon = 0.1):
+        rec = []
+        y_score = y_score[0]
+        p = np.random.rand(k)
+        n_greedy = int(len(p[p > epsilon]))
+        greedy_nids = np.argsort(y_score)[-n_greedy:]
+        eps_nids = np.random.choice(np.array(list(set(range(len(y_score))) - set(greedy_nids))), size = k - n_greedy, replace=False)
+        rec_nids= np.concatenate([greedy_nids, eps_nids])
+        return rec_nids
+        
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
                 
@@ -928,6 +942,8 @@ class CB_sim():
         """
         Simulate recommendations
         """
+        if self.policy == 'epsilon_greedy':
+            self.n_inference = 1
         
         self.model.eval()
         if self.dropout_flag:
@@ -977,10 +993,16 @@ class CB_sim():
         for i in tqdm(range(len(batch_sam))):
             t = start_id + i
             _, _, his, uid, tsq = batch_sam[i]  
-            ucb_score = self.get_ucb_score(y_scores[t], t)
-            rec_nids = np.argsort(ucb_score)[-k:]
-            self.recs[exper_id].append(rec_nids) 
 
+            if self.policy == 'ucb':
+                rec_nids = self.get_ucb_score(exper_id, y_scores[t], t)
+            elif self.policy == 'epsilon_greedy':
+                rec_nids = self.epsilon_greedy(exper_id, y_scores[t], k)
+            else:
+                raise NotImplementedError
+
+            self.recs[exper_id].append(rec_nids) 
+            
             opt_nids = self.opts[exper_id][i]
  
             assert len(set(rec_nids)) == k
@@ -1052,7 +1074,7 @@ class CB_sim():
 
 
 # %%
-cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, n_inference = 2)
+cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, n_inference = 2, policy='epsilon_greedy')
 cb_sim.run_exper(test_sam=test_sam, num_exper=2)
 
 # %%

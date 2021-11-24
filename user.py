@@ -13,7 +13,7 @@ from datetime import datetime
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 # config
-name = 'demo'
+name = 'small'
 
 data_path = Path("/home/v-mezhang/blob/data/" + name)
 out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
