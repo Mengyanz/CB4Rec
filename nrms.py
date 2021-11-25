@@ -33,7 +33,7 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 # %%
-dataset = 'demo/'
+dataset = 'small/'
 
 data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
@@ -781,7 +781,7 @@ class CB_sim():
     def __init__(
         self, model_path, simulator_path, out_path, device,
         news_index, nid2index,
-        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, n_inference = 50, policy = 'ucb'
+        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True
     ):
         self.model = NRMS().to(device)
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
@@ -795,12 +795,10 @@ class CB_sim():
 
         self.out_path = out_path
         self.dropout_flag = dropout_flag
-        self.n_inference = n_inference
+        
         self.finetune_batch_size = finetune_batch_size
         self.eva_batch_size = eva_batch_size
         self.date_format_str = '%m/%d/%Y %I:%M:%S %p'
-
-        self.policy = policy
 
     
     def enable_dropout(self):
@@ -925,11 +923,11 @@ class CB_sim():
         rec_nids = np.argsort(ucb_score)[-k:]
         return rec_nids
 
-    def epsilon_greedy(self, exper_id, y_score, k, epsilon = 0.1):
+    def epsilon_greedy(self, exper_id, y_score, k):
         rec = []
         y_score = y_score[0]
         p = np.random.rand(k)
-        n_greedy = int(len(p[p > epsilon]))
+        n_greedy = int(len(p[p > self.policy_para]))
         greedy_nids = np.argsort(y_score)[-n_greedy:]
         eps_nids = np.random.choice(np.array(list(set(range(len(y_score))) - set(greedy_nids))), size = k - n_greedy, replace=False)
         rec_nids= np.concatenate([greedy_nids, eps_nids])
@@ -963,7 +961,7 @@ class CB_sim():
                 news_vecs = self.get_news_vec(self.model, self.news_index)
                 user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
                 
-                for i in tqdm(range(len(batch_sam))):
+                for i in range(len(batch_sam)):
                     t = start_id + i
                     poss, negs, his, uid, tsq = batch_sam[i]     
                     user_vec = user_vecs[i]
@@ -990,7 +988,7 @@ class CB_sim():
                     y_scores[t].append(y_score)
 
         # generate recommendations and calculate rewards
-        for i in tqdm(range(len(batch_sam))):
+        for i in range(len(batch_sam)):
             t = start_id + i
             _, _, his, uid, tsq = batch_sam[i]  
 
@@ -1019,7 +1017,8 @@ class CB_sim():
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
         
-    def run_exper(self, test_sam, num_exper = 10):
+    def run_exper(self, test_sam, num_exper = 10, n_inference = 2, policy = 'ucb', policy_para = 0.1):
+        
         num_sam = len(test_sam)
         n_batch = math.ceil(float(num_sam)/self.eva_batch_size)
         self.rec_sam = []
@@ -1027,6 +1026,11 @@ class CB_sim():
         self.opt_rewards = np.zeros((num_exper, num_sam))
         self.recs = defaultdict(list)
         self.opts = defaultdict(list)
+
+        self.n_inference = n_inference
+        self.policy = policy
+        self.policy_para = policy_para
+
         update_time = None
         update_batch = 0
         
@@ -1061,21 +1065,24 @@ class CB_sim():
         self.save_results()
 
     def save_results(self):
-        torch.save(self.model.state_dict(), model_path/f'{name}_finetune.pkl')
-        with open(os.path.join(self.out_path, "recs.pkl"), "wb") as f:
+        policy_name = self.policy + '_' + str(self.policy_para)
+        torch.save(self.model.state_dict(), os.path.join(model_path, (policy_name + f'_{name}_finetune.pkl')))
+        with open(os.path.join(self.out_path, (policy_name + "_recs.pkl")), "wb") as f:
             pickle.dump(self.recs, f)
-        with open(os.path.join(self.out_path, "opts.pkl"), "wb") as f:
+        with open(os.path.join(self.out_path, (policy_name + "_opts.pkl")), "wb") as f:
             pickle.dump(self.opts, f)
-        with open(os.path.join(self.out_path, "rewards.pkl"), "wb") as f:
+        with open(os.path.join(self.out_path, (policy_name + "_rewards.pkl")), "wb") as f:
             pickle.dump(self.rewards, f)
-        with open(os.path.join(self.out_path, "opt_rewards.pkl"), "wb") as f:
+        with open(os.path.join(self.out_path, (policy_name+ "_opt_rewards.pkl")), "wb") as f:
             pickle.dump(self.opt_rewards, f)
         
 
 
 # %%
-cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, n_inference = 2, policy='epsilon_greedy')
-cb_sim.run_exper(test_sam=test_sam, num_exper=2)
+for para in [0, 0.1, 0.2, 0.3, 0.4, 0.5]:
+    print(para)
+    cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index)
+    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 2, policy='epsilon_greedy', policy_para=para)
 
 # %%
 num_exper, num_sam = cb_sim.rewards.shape
