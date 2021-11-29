@@ -17,7 +17,7 @@ import uncertainty_toolbox as utc
     
 
 # %%
-os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 # %%
 import torch
@@ -33,7 +33,7 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 # %%
-dataset = 'demo/'
+dataset = 'small/'
 
 data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
@@ -563,7 +563,7 @@ class CB_sim():
 
         return np.concatenate([sample_nids, poss_nids, negs_nids])
 
-    def prepare_cand_news(self, batch_sam, exper_id, start_id, k):
+    def prepare_cand_news(self, batch_sam, exper_id, start_id):
         """
         prepare candidate news and get optimal set 
         """
@@ -580,7 +580,7 @@ class CB_sim():
             sim_news_vec = sim_news_vecs[cand_nids]
             sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
             # assume the user would at most click half of the recommended news
-            opt_nids = np.argsort(sim_y_score)[-int(k/2):] 
+            opt_nids = np.argsort(sim_y_score)[-int(self.k/2):] 
             opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
             # print(opt_nids)
 
@@ -628,31 +628,31 @@ class CB_sim():
                     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                     ft_loader.refresh() 
 
-    def get_ucb_score(self, exper_id, y_score, k):
+    def get_ucb_score(self, exper_id, y_score):
         mean = np.asarray(y_score).mean(axis = 0)
         std = np.asarray(y_score).std(axis = 0)
         ucb_score = mean + self.policy_para * std
 
-        rec_nids = np.argsort(ucb_score)[-k:]
+        rec_nids = np.argsort(ucb_score)[-self.k:]
         return rec_nids
 
-    def epsilon_greedy(self, exper_id, y_score, k):
+    def epsilon_greedy(self, exper_id, y_score):
         rec = []
         y_score = y_score[0]
-        p = np.random.rand(k)
+        p = np.random.rand(self.k)
         n_greedy = int(len(p[p > self.policy_para]))
         if n_greedy == 0:
             greedy_nids = []
         else:
             greedy_nids = np.argsort(y_score)[-n_greedy:]
 
-        if n_greedy < k:
+        if n_greedy < self.k:
             if len(list(set(list(range(len(y_score)))) - set(greedy_nids))) == 0:
                 print('y_score: ', y_score)
                 print('n_greedy: ', n_greedy)
                 print(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))))
 
-            eps_nids = np.random.choice(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))), size = k - n_greedy, replace=False)
+            eps_nids = np.random.choice(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))), size = self.k - n_greedy, replace=False)
             rec_nids= np.concatenate([greedy_nids, eps_nids])
             return rec_nids
         else:
@@ -661,7 +661,7 @@ class CB_sim():
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
                 
-    def rec(self, batch_sam, batch_id, exper_id, k = 8):
+    def rec(self, batch_sam, batch_id, exper_id):
         """
         Simulate recommendations
         """
@@ -677,7 +677,7 @@ class CB_sim():
         start_id = self.eva_batch_size * batch_id
 
         with torch.no_grad():
-            self.prepare_cand_news(batch_sam, exper_id, start_id, k)
+            self.prepare_cand_news(batch_sam, exper_id, start_id)
             
             """
             inf_idx, behav_idx, user_idx, news_idx
@@ -691,16 +691,14 @@ class CB_sim():
 
             n_inf, n1 = 
             """
-            # no dropout in user encoder for now, so do not need to inference multiple times
-            user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
-
             # generate scores with uncertainty (dropout during inference)
             for _ in tqdm(range(self.n_inference)):
                 # TODO: speed up - only pass batch news index
-                inf_time1 = time.time()
+                # inf_time1 = time.time()
                 news_vecs = self.get_news_vec(self.model, self.news_index) # batch_size * news_dim (400)
-                inf_time11 = time.time()
-                print('single time news encoder inference: ', inf_time11-inf_time1)
+                user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
+                # inf_time11 = time.time()
+                # print('single time news encoder inference: ', inf_time11-inf_time1)
                 
                 for i in range(len(batch_sam)):
                     t = start_id + i
@@ -717,9 +715,9 @@ class CB_sim():
             _, _, his, uid, tsq = batch_sam[i]  
 
             if self.policy == 'ucb':
-                rec_nids = self.get_ucb_score(exper_id, y_scores[t], k)
+                rec_nids = self.get_ucb_score(exper_id, y_scores[t])
             elif self.policy == 'epsilon_greedy':
-                rec_nids = self.epsilon_greedy(exper_id, y_scores[t], k)
+                rec_nids = self.epsilon_greedy(exper_id, y_scores[t])
             else:
                 raise NotImplementedError
 
@@ -727,8 +725,7 @@ class CB_sim():
             
             opt_nids = self.opts[exper_id][i]
  
-            assert len(set(rec_nids)) == k
-            # assert len(set(opt_nids)) == k
+            assert len(set(rec_nids)) == self.k
 
             reward = len(set(rec_nids) & set(opt_nids)) # reward as the overlap between rec and opt set
             # self.cumu_reward += reward
@@ -741,7 +738,7 @@ class CB_sim():
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
         
-    def run_exper(self, test_sam, num_exper = 10, n_inference = 2, policy = 'ucb', policy_para = 0.1):
+    def run_exper(self, test_sam, num_exper = 10, n_inference = 2, policy = 'ucb', policy_para = 0.1, k = 1):
         
         num_sam = len(test_sam)
         n_batch = math.ceil(float(num_sam)/self.eva_batch_size)
@@ -754,9 +751,13 @@ class CB_sim():
         self.n_inference = n_inference
         self.policy = policy
         self.policy_para = policy_para
+        self.k = k # num_rec
 
         update_time = None
         update_batch = 0
+
+        self.save_results()
+        print('test complete')
         
 
         for j in range(num_exper):
@@ -790,25 +791,35 @@ class CB_sim():
         self.save_results()
 
     def save_results(self):
+        folder_name = 'rec' + str(self.k)
+        save_path = os.path.join(self.out_path, folder_name)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
         policy_name = self.policy + '_' + str(self.policy_para)
-        torch.save(self.model.state_dict(), os.path.join(model_path, (policy_name + f'_{name}_finetune.pkl')))
-        with open(os.path.join(self.out_path, (policy_name + "_recs.pkl")), "wb") as f:
-            pickle.dump(self.recs, f)
-        with open(os.path.join(self.out_path, (policy_name + "_opts.pkl")), "wb") as f:
-            pickle.dump(self.opts, f)
-        with open(os.path.join(self.out_path, (policy_name + "_rewards.pkl")), "wb") as f:
+        torch.save(self.model.state_dict(), os.path.join(save_path, (policy_name + f'_{name}_finetune.pkl')))
+        # with open(os.path.join(self.out_path, (policy_name + "_recs.pkl")), "wb") as f:
+        #     pickle.dump(self.recs, f)
+        # with open(os.path.join(self.out_path, (policy_name + "_opts.pkl")), "wb") as f:
+        #     pickle.dump(self.opts, f)
+        with open(os.path.join(save_path, (policy_name + "_rewards.pkl")), "wb") as f:
             pickle.dump(self.rewards, f)
-        with open(os.path.join(self.out_path, (policy_name+ "_opt_rewards.pkl")), "wb") as f:
+        with open(os.path.join(save_path, (policy_name+ "_opt_rewards.pkl")), "wb") as f:
             pickle.dump(self.opt_rewards, f)
         
 
 
 # %%
-for para in [0.1]:
+# for para in [0, 0.1, 0.2]: # gpu 0
+#     print(para)
+#     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
+#     finetune_batch_size = 32, eva_batch_size = 1024)
+#     cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
+
+for para in [0.1]: #0.1 - gpu 1; 0.2 - gpu 2;
     print(para)
     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
     finetune_batch_size = 32, eva_batch_size = 1024)
-    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 20, policy='ucb', policy_para=para)
+    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
 
 # %%
 num_exper, num_sam = cb_sim.rewards.shape
