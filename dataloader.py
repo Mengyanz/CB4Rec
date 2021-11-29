@@ -27,10 +27,11 @@ def newsample(nnn, ratio):
         return random.sample(nnn, ratio)
 
 class TrainDataset(Dataset):
-    def __init__(self, samples, nid2index, news_index):
+    def __init__(self, samples, nid2index, news_index, npratio = 4):
         self.news_index = news_index
         self.nid2index = nid2index
         self.samples = samples
+        self.npratio = npratio 
         
     def __len__(self):
         return len(self.samples)
@@ -38,7 +39,7 @@ class TrainDataset(Dataset):
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
         pos, neg, his, uid, tsp = self.samples[idx]
-        neg = newsample(neg, npratio)
+        neg = newsample(neg, self.npratio)
         
         candidate_news = [pos] + neg
         # print('pos: ', pos)
@@ -70,16 +71,18 @@ class UserDataset(Dataset):
     def __init__(self, 
                  samples,
                  news_vecs,
-                 nid2index):
+                 nid2index,
+                 max_his_len = 50):
         self.samples = samples
         self.news_vecs = news_vecs
         self.nid2index = nid2index
+        self.max_his_len = max_his_len
     
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, idx):
         poss, negs, his, uid, tsp = self.samples[idx]
-        his = [self.nid2index[n] for n in his] + [0] * (max_his_len - len(his))
+        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
         his = self.news_vecs[his]
         return his, tsp

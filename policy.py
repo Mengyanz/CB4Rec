@@ -23,13 +23,19 @@ import torch.nn.functional as F
 from model import NRMS
 from dataloader import TrainDataset, NewsDataset, UserDataset
 
+
+date_format_str = '%m/%d/%Y %I:%M:%S %p'
+
+
 class CB_sim():
     def __init__(
         self, model_path, simulator_path, out_path, device,
         news_index, nid2index, embedding_matrix,
-        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, 
-        name = 'nrms'
+        news_ctr, start_time, interval_time = 3600,
+        finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True, lr = 0.0001, epoch = 1,
+        name = 'nrms', 
     ):
+        self.device = device
         self.model = NRMS(embedding_matrix).to(self.device)
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
         
@@ -46,9 +52,13 @@ class CB_sim():
         self.finetune_batch_size = finetune_batch_size
         self.eva_batch_size = eva_batch_size
         self.date_format_str = '%m/%d/%Y %I:%M:%S %p'
-        
-        self.device = device
 
+        self.news_ctr = news_ctr
+        self.start_time = start_time
+        self.interval_time = interval_time 
+        self.lr = lr
+        self.epoch = epoch
+    
     
     def enable_dropout(self):
         for m in self.model.modules():
@@ -68,7 +78,7 @@ class CB_sim():
 
         return news_vecs
 
-    def get_user_vec(self, model, batch_sam, news_vecs, batch_nid2index):
+    def get_user_vec(self, model, batch_sam, news_vecs, batch_nid2index, batch_size):
         user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
         user_vecs = []
         user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -83,7 +93,7 @@ class CB_sim():
 
         return user_vecs
         
-    def get_cand_news(self, t, poss, negs, m = 10):
+    def get_cand_news(self, news_ctr, t, poss, negs, start_time, interval_time = 3600, m = 10):
         """
         Generate candidates news based on CTR.
 
@@ -134,11 +144,11 @@ class CB_sim():
         return tr_samples
 
     def finetune(self, ft_sam):
-        optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         ft_sam = self.construct_trainable_samples(ft_sam)
         ft_ds = TrainDataset(ft_sam, self.nid2index, self.news_index)
         ft_dl = DataLoader(ft_ds, batch_size=self.finetune_batch_size, shuffle=True, num_workers=0)
-        for ep in range(epoch):
+        for ep in range(self.epoch):
             loss = 0
             accuary = 0.0
             self.model.train()
@@ -202,13 +212,13 @@ class CB_sim():
 
         with torch.no_grad():
             sim_news_vecs = self.get_news_vec(self.simulator, self.news_index, batch_size=self.eva_batch_size)
-            sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+            sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index, batch_size=self.eva_batch_size) 
 
             # generate scores with uncertainty (dropout during inference)
             for _ in tqdm(range(self.n_inference)):
                 # TODO: speed up - only pass batch news index
                 news_vecs = self.get_news_vec(self.model, self.news_index, batch_size=self.eva_batch_size)
-                user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
+                user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index, batch_size=self.eva_batch_size)
                 
                 for i in range(len(batch_sam)):
                     t = start_id + i
@@ -217,7 +227,7 @@ class CB_sim():
                     
                     if t not in cand_nids_dict.keys():
                         # cand set (is a randomised set) keeps same for inference times
-                        cand_nids = self.get_cand_news(tsq, poss, negs)
+                        cand_nids = self.get_cand_news(self.news_ctr, tsq, poss, negs, self.start_time, self.interval_time)
                         cand_nids_dict[t] = cand_nids
                         # print(cand_nids)
                         news_vec = news_vecs[cand_nids]

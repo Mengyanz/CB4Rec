@@ -17,7 +17,7 @@ import uncertainty_toolbox as utc
     
 
 # %%
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3"
 
 # %%
 import torch
@@ -33,7 +33,7 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 # %%
-dataset = 'small/'
+dataset = 'demo/'
 
 data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
@@ -465,313 +465,6 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
             print(e)
     return np.array(all_rslt)
 
-# %%
-train_ds = TrainDataset(train_sam, nid2index, news_index)
-train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-
-# %%
-if retrain:
-    for time in range(1):
-        model = NRMS().to(device)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-        best_auc = 0
-        for ep in range(epoch):
-            loss = 0
-            accuary = 0.0
-            model.train()
-            train_loader = tqdm(train_dl)
-            for cnt, batch_sample in enumerate(train_loader):
-                candidate_news_index, his_index, label = batch_sample
-                sample_num = candidate_news_index.shape[0]
-                candidate_news_index = candidate_news_index.to(device)
-                his_index = his_index.to(device)
-                label = label.to(device)
-                bz_loss, y_hat = model(candidate_news_index, his_index, label)
-
-                loss += bz_loss.detach().cpu().numpy()
-                optimizer.zero_grad()
-                bz_loss.backward()
-
-                optimizer.step()
-
-                if cnt % 10 == 0:
-                    train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
-                    train_loader.refresh() 
-
-
-            model.eval()
-            news_dl = DataLoader(news_dataset, batch_size=1024, shuffle=False, num_workers=0)
-            news_vecs = []
-            for news in tqdm(news_dl):
-                news = news.to(device)
-                news_vec = model.text_encoder(news).detach().cpu().numpy()
-                news_vecs.append(news_vec)
-            news_vecs = np.concatenate(news_vecs)
-
-            user_dataset = UserDataset(valid_sam, news_vecs, nid2index)
-            user_vecs = []
-            user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
-            for his, tsp in tqdm(user_dl):
-                his = his.to(device)
-                user_vec = model.user_encoder(his).detach().cpu().numpy()
-                user_vecs.append(user_vec)
-            user_vecs = np.concatenate(user_vecs)
-
-            val_scores = evaluation_split(news_vecs, user_vecs, valid_sam, nid2index)
-            val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*val_scores))]
-            print(f"[{ep}] epoch auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}")
-
-            with open(model_path/f'{name}.txt', 'a') as f:
-                f.write(f"[{ep}] epoch auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-                    
-            if val_auc > best_auc:
-                best_auc = val_auc
-                torch.save(model.state_dict(), model_path/f'{name}.pkl')
-                with open(model_path/f'{name}.txt', 'a') as f:
-                    f.write(f"[{ep}] epoch save model\n")
-            
-
-# %%
-def print_eva_metric(y_scores, y_trues):
-    all_rslt_mean = []
-    all_rslt_ucb1 = []
-    all_rslt_ucb05 = []
-    all_rslt_ucb15 = []
-
-    for key, value in y_scores.items():
-        mean = np.asarray(value).mean(axis = 0)
-        std = np.asarray(value).std(axis = 0)
-        # print(utc.metrics.get_all_metrics(mean, std, np.array(y_trues[key])))
-        try:
-            all_rslt_mean.append(compute_amn(y_trues[key], mean))
-            all_rslt_ucb1.append(compute_amn(y_trues[key], mean + std ))
-            all_rslt_ucb05.append(compute_amn(y_trues[key], mean + 0.5 * std ))
-            all_rslt_ucb15.append(compute_amn(y_trues[key], mean + 1.5 * std ))
-        except Exception as e:
-            print(e)
-
-
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_mean)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 0 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb05)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 0.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-        
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb1)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 1 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n")
-   
-    val_auc, val_mrr, val_ndcg, val_ndcg10 = [np.mean(i) for i in list(zip(*np.array(all_rslt_ucb15)))]
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"ucb 1.5 auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}\n \n")
-
-
-# %% [markdown]
-# # Offline
-
-# %%
-# offline 
-
-if offline_flag:
-    model = NRMS().to(device)
-    model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
-    model.eval()
-    for m in model.modules():
-        if m.__class__.__name__.startswith('dropout'):
-            print(m)
-            m.train()
-
-    y_scores = defaultdict(list)
-    y_trues = {}
-
-    with torch.no_grad():
-
-        for i in tqdm(range(eva_times)):
-            test_news_dataset = NewsDataset(test_news_index)
-            news_dl = DataLoader(test_news_dataset, batch_size=1024, shuffle=False, num_workers=0)
-            news_vecs = []
-            for news in tqdm(news_dl):
-                news = news.to(device)
-                news_vec = model.text_encoder(news).detach().cpu().numpy()
-                news_vecs.append(news_vec)
-            news_vecs = np.concatenate(news_vecs)
-
-            user_dataset = UserDataset(test_sam, news_vecs, test_nid2index)
-            user_vecs = []
-            user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=0)
-            for his_tsp in tqdm(user_dl):
-                his, _ = his_tsp
-                his = his.to(device)
-                user_vec = model.user_encoder(his).detach().cpu().numpy()
-                user_vecs.append(user_vec)
-            user_vecs = np.concatenate(user_vecs)
-
-            for i in tqdm(range(len(valid_sam))):
-                poss, negs, _, _, _ = valid_sam[i]
-                user_vec = user_vecs[i]
-                y_true = [1] * len(poss) + [0] * len(negs)
-                news_ids = [nid2index[i] for i in poss + negs]
-                news_vec = news_vecs[news_ids]
-                y_score = np.multiply(news_vec, user_vec)
-                y_score = np.sum(y_score, axis=1)
-                
-                y_scores[i].append(y_score)
-                y_trues[i] = y_true
-
-    with open(model_path/f'{name}.txt', 'a') as f:
-        f.write(f"offline eva with eva : {eva_times} times\n")
-    print_eva_metric(y_scores, y_trues)
-
-    # test_auc, test_mrr, test_ndcg, test_ndcg10 = [np.mean(i) for i in list(zip(*test_scores))]
-    # print(f"[{i}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}")
-
-# with open(model_path/ f'{name}.txt', 'a') as f:
-#         f.write(f"[{time}] time test auc: {test_auc:.4f}, mrr: {test_mrr:.4f}, ndcg5: {test_ndcg:.4f}, ndcg10: {test_ndcg10:.4f}\n")
-
-# %% [markdown]
-# # Online
-
-# %%
-def construct_trainable_samples(samples):
-    tr_samples = []
-    for l in samples:
-        pos_imp, neg_imp, his, uid, tsp = l    
-        for pos in list(pos_imp):
-            tr_samples.append([pos, neg_imp, his, uid, tsp])
-    return tr_samples
-
-
-
-def finetune(model, ft_sam, nid2index, news_index, batch_size):
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    ft_sam = construct_trainable_samples(ft_sam)
-    ft_ds = TrainDataset(ft_sam, nid2index, news_index)
-    ft_dl = DataLoader(ft_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-    for ep in range(epoch):
-        loss = 0
-        accuary = 0.0
-        model.train()
-        ft_loader = tqdm(ft_dl)
-        for cnt, batch_sample in enumerate(ft_loader):
-            candidate_news_index, his_index, label = batch_sample
-            sample_num = candidate_news_index.shape[0]
-            candidate_news_index = candidate_news_index.to(device)
-            his_index = his_index.to(device)
-            label = label.to(device)
-            bz_loss, y_hat = model(candidate_news_index, his_index, label)
-
-            loss += bz_loss.detach().cpu().numpy()
-            optimizer.zero_grad()
-            bz_loss.backward()
-
-            optimizer.step()
-
-            if cnt % 10 == 0:
-                ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
-                ft_loader.refresh() 
-
-    return model 
-
-def eva_batch(model, droupout_flag, batch_news_index, batch_sam, batch_nid2index, y_scores, y_trues, ucbs, batch_size, batch_id):
-    model.eval()
-    if droupout_flag:
-        for m in model.modules():
-            if m.__class__.__name__.startswith('dropout'):
-                print(m)
-                m.train()
-    
-    with torch.no_grad():
-        for i in tqdm(range(eva_times)):
-            batch_news_dataset = NewsDataset(batch_news_index)
-            news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-            news_vecs = []
-            for news in tqdm(news_dl):
-                news = news.to(device)
-                news_vec = model.text_encoder(news).detach().cpu().numpy()
-                news_vecs.append(news_vec)
-            news_vecs = np.concatenate(news_vecs)
-
-            user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
-            user_vecs = []
-            user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-            
-
-            for his_tsp in tqdm(user_dl):
-                his, tsp = his_tsp
-                batch_time = datetime.strptime(str(tsp[-1]), date_format_str)
-                his = his.to(device)
-                user_vec = model.user_encoder(his).detach().cpu().numpy()
-                user_vecs.append(user_vec)
-                # print(tsp)
-            user_vecs = np.concatenate(user_vecs)
-
-            start_id = batch_size * batch_id
-
-            for i in tqdm(range(len(batch_sam))):
-                poss, negs, _, _,_ = batch_sam[i]
-                user_vec = user_vecs[i]
-                y_true = [1] * len(poss) + [0] * len(negs)
-                news_ids = [nid2index[i] for i in poss + negs]
-                news_vec = news_vecs[news_ids]
-                y_score = np.multiply(news_vec, user_vec)
-                y_score = np.sum(y_score, axis=1)
-                
-                y_scores[start_id+i].append(y_score)
-                y_trues[start_id+i] = y_true
-                
-    return y_scores, y_trues, batch_time
-
-# %%
-# online 
-
-if online_flag:
-
-    print('online eva')
-
-    model = NRMS().to(device)
-    model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
-
-    y_scores = defaultdict(list)
-    y_trues = {}
-
-    update_time = None
-    update_batch = 0
-    batch_size = 1024
-    dropout_flag = True
-
-    n_batch = math.ceil(float(len(test_sam))/batch_size)
-
-    for i in range(n_batch):
-        upper_range = min(1024 * (i+1), len(test_sam))
-        batch_sam = test_sam[1024 * i: upper_range]
-
-        y_scores, y_trues, batch_time = eva_batch(model, dropout_flag, test_news_index, batch_sam, test_nid2index, y_scores, y_trues, batch_size, i)
-        
-        num_sample = len(y_scores)
-        with open(model_path/f'{name}.txt', 'a') as f:
-            f.write(f"online eva on batch : {i} with {num_sample} samples in current batch, up to index {upper_range}\n")
-        print_eva_metric(y_scores, y_trues)
-    
-        if update_time is None:
-            update_time = batch_time
-            print('init update time: ', update_time)
-        if (batch_time- update_time).total_seconds() > 3600:
-
-            ft_sam = test_sam[1024 * update_batch: upper_range]
-            if upper_range - 1024 * update_batch > 512:
-                print('finetune with: '  + str(1024 * update_batch) + ' ~ ' + str(upper_range))
-                model = finetune(model=model, ft_sam=ft_sam, nid2index=test_nid2index, news_index=test_news_index, batch_size=32)
-
-                update_time = batch_time
-                update_batch = i + 1
-                print('update before: ', update_time)
-            else: 
-                print('no finetune due to insufficient samples: ', str(upper_range - 1024 * update_batch))
-
-    torch.save(model.state_dict(), model_path/f'{name}_finetune.pkl')
-# sys.stdout.close()
 
 # %% [markdown]
 # # Bandit Simulation
@@ -785,6 +478,11 @@ class CB_sim():
     ):
         self.model = NRMS().to(device)
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
+        if torch.cuda.device_count() > 1:
+            print("Let's use", torch.cuda.device_count(), "GPUs!")
+            model = nn.DataParallel(self.model, device_ids=[0,1,2]) 
+        else:
+            print('single GPU found.')
         
         # TODO: change simulator to PLM
         self.simulator = NRMS().to(device)
@@ -809,9 +507,9 @@ class CB_sim():
         
     def get_news_vec(self, model, batch_news_index):
         batch_news_dataset = NewsDataset(batch_news_index)
-        news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+        news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
         news_vecs = []
-        for news in tqdm(news_dl):
+        for news in news_dl:
             news = news.to(device)
             news_vec = model.text_encoder(news).detach().cpu().numpy()
             news_vecs.append(news_vec)
@@ -822,9 +520,9 @@ class CB_sim():
     def get_user_vec(self, model, batch_sam, news_vecs, batch_nid2index):
         user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
         user_vecs = []
-        user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+        user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
-        for his_tsp in tqdm(user_dl):
+        for his_tsp in user_dl:
             his, tsp = his_tsp
             his = his.to(device)
             user_vec = model.user_encoder(his).detach().cpu().numpy()
@@ -860,18 +558,36 @@ class CB_sim():
         sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
         # REVIEW: check whether the sampled nids are reasonable
         
-        # print(news_ctr[sample_nidx, tidx-1])
-        # plt.hist(nonzero)
-        # print(poss)
-        # print(negs)
         poss_nids = np.array([self.nid2index[n] for n in poss])
         negs_nids = np.array([self.nid2index[n] for n in negs])
-        # print('get cand news')
-        # print(sample_nids)
-        # print(poss_nids)
-        # print(negs_nids)
 
         return np.concatenate([sample_nids, poss_nids, negs_nids])
+
+    def prepare_cand_news(self, batch_sam, exper_id, start_id, k):
+        """
+        prepare candidate news and get optimal set 
+        """
+        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+
+        for i in range(len(batch_sam)):
+            t = start_id + i
+            poss, negs, _, uid, tsq = batch_sam[i] 
+            cand_nids = self.get_cand_news(tsq, poss, negs)
+            
+
+            sim_user_vec = sim_user_vecs[i]
+            sim_news_vec = sim_news_vecs[cand_nids]
+            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+            # assume the user would at most click half of the recommended news
+            opt_nids = np.argsort(sim_y_score)[-int(k/2):] 
+            opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+            # print(opt_nids)
+
+            self.cand_nids_dict[t] = cand_nids
+            self.opts[exper_id].append(opt_nids)  
+
+
         
 #     t =  sorted_train_sam[1500][-1]
 #     gene_news_pool(t, 20)
@@ -912,13 +628,10 @@ class CB_sim():
                     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                     ft_loader.refresh() 
 
-    def get_ucb_score(self, exper_id, y_score, t):
-        ucb = []
-        beta_t = 1
-
+    def get_ucb_score(self, exper_id, y_score, k):
         mean = np.asarray(y_score).mean(axis = 0)
         std = np.asarray(y_score).std(axis = 0)
-        ucb_score = mean + beta_t * std
+        ucb_score = mean + self.policy_para * std
 
         rec_nids = np.argsort(ucb_score)[-k:]
         return rec_nids
@@ -928,10 +641,22 @@ class CB_sim():
         y_score = y_score[0]
         p = np.random.rand(k)
         n_greedy = int(len(p[p > self.policy_para]))
-        greedy_nids = np.argsort(y_score)[-n_greedy:]
-        eps_nids = np.random.choice(np.array(list(set(range(len(y_score))) - set(greedy_nids))), size = k - n_greedy, replace=False)
-        rec_nids= np.concatenate([greedy_nids, eps_nids])
-        return rec_nids
+        if n_greedy == 0:
+            greedy_nids = []
+        else:
+            greedy_nids = np.argsort(y_score)[-n_greedy:]
+
+        if n_greedy < k:
+            if len(list(set(list(range(len(y_score)))) - set(greedy_nids))) == 0:
+                print('y_score: ', y_score)
+                print('n_greedy: ', n_greedy)
+                print(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))))
+
+            eps_nids = np.random.choice(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))), size = k - n_greedy, replace=False)
+            rec_nids= np.concatenate([greedy_nids, eps_nids])
+            return rec_nids
+        else:
+            return greedy_nids 
         
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
@@ -948,42 +673,41 @@ class CB_sim():
             self.enable_dropout()
 
         y_scores = defaultdict(list) # key: sam_id, value: list of n_inference scores 
-        cand_nids_dict = {} # key: sam_id, value: array of candidate news ids
+        self.cand_nids_dict = {} # key: sam_id, value: array of candidate news ids
         start_id = self.eva_batch_size * batch_id
 
         with torch.no_grad():
-            sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-            sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+            self.prepare_cand_news(batch_sam, exper_id, start_id, k)
+            
+            """
+            inf_idx, behav_idx, user_idx, news_idx
+            1, 1, 1, 1
+            1, 1, 1, 2
+            1, 1, 1, 3
+            1, 2, 1, 4
+
+            n_inf, n1, user_dim
+            n_inf, n1, news_dim
+
+            n_inf, n1 = 
+            """
+            # no dropout in user encoder for now, so do not need to inference multiple times
+            user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
 
             # generate scores with uncertainty (dropout during inference)
             for _ in tqdm(range(self.n_inference)):
                 # TODO: speed up - only pass batch news index
-                news_vecs = self.get_news_vec(self.model, self.news_index)
-                user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
+                inf_time1 = time.time()
+                news_vecs = self.get_news_vec(self.model, self.news_index) # batch_size * news_dim (400)
+                inf_time11 = time.time()
+                print('single time news encoder inference: ', inf_time11-inf_time1)
                 
                 for i in range(len(batch_sam)):
                     t = start_id + i
-                    poss, negs, his, uid, tsq = batch_sam[i]     
+                    poss, negs, _, uid, tsq = batch_sam[i]     
                     user_vec = user_vecs[i]
                     
-                    if t not in cand_nids_dict.keys():
-                        # cand set (is a randomised set) keeps same for inference times
-                        cand_nids = self.get_cand_news(tsq, poss, negs)
-                        cand_nids_dict[t] = cand_nids
-                        # print(cand_nids)
-                        news_vec = news_vecs[cand_nids]
-                        sim_user_vec = sim_user_vecs[i]
-                        sim_news_vec = sim_news_vecs[cand_nids]
-                        sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-                        # assume the user would at most click half of the recommended news
-                        opt_nids = np.argsort(sim_y_score)[-int(k/2):] 
-                        # print(opt_nids)
-                        # print(self.sigmoid(sim_y_score[opt_nids]))
-                        opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-                        # print(opt_nids)
-                        self.opts[exper_id].append(opt_nids)   
-                    
-                    news_vec = news_vecs[cand_nids_dict[t]]
+                    news_vec = news_vecs[self.cand_nids_dict[t]]
                     y_score = np.sum(np.multiply(news_vec, user_vec), axis=1)
                     y_scores[t].append(y_score)
 
@@ -993,7 +717,7 @@ class CB_sim():
             _, _, his, uid, tsq = batch_sam[i]  
 
             if self.policy == 'ucb':
-                rec_nids = self.get_ucb_score(exper_id, y_scores[t], t)
+                rec_nids = self.get_ucb_score(exper_id, y_scores[t], k)
             elif self.policy == 'epsilon_greedy':
                 rec_nids = self.epsilon_greedy(exper_id, y_scores[t], k)
             else:
@@ -1013,7 +737,7 @@ class CB_sim():
 
             rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
             # let all 
-            rec_negs = list(set(cand_nids_dict[t]) - set(rec_poss))
+            rec_negs = list(set(self.cand_nids_dict[t]) - set(rec_poss))
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
         
@@ -1037,6 +761,7 @@ class CB_sim():
 
         for j in range(num_exper):
             # self.cumu_reward = 0
+            print('exper: ', j)
             
             for i in range(n_batch):
                 upper_range = min(self.eva_batch_size * (i+1), len(test_sam))
@@ -1079,10 +804,11 @@ class CB_sim():
 
 
 # %%
-for para in [0, 0.1, 0.2, 0.3, 0.4, 0.5]:
+for para in [0.1]:
     print(para)
-    cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index)
-    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 2, policy='epsilon_greedy', policy_para=para)
+    cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
+    finetune_batch_size = 32, eva_batch_size = 1024)
+    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 20, policy='ucb', policy_para=para)
 
 # %%
 num_exper, num_sam = cb_sim.rewards.shape
