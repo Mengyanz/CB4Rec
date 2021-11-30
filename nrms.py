@@ -13,11 +13,11 @@ from sklearn.metrics import roc_auc_score
 import pickle
 from datetime import datetime 
 import math
-import uncertainty_toolbox as utc
+# import uncertainty_toolbox as utc
     
 
 # %%
-os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "2"
 
 # %%
 import torch
@@ -35,8 +35,8 @@ torch.cuda.set_device(device)
 # %%
 dataset = 'small/'
 
-data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
-model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
+data_path = Path("/home/v-mezhang/blob-plm/data/" + str(dataset) + "utils/")
+model_path = Path("/home/v-mezhang/blob-plm/model/" + str(dataset))
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
@@ -153,7 +153,7 @@ news_click_count, news_impr_count = cal_ctr(valid_sam, news_click_count, news_im
 news_ctr = news_click_count/news_impr_count
 
 # %%
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 # news_ctr = news_click_count/news_impr_count
 # plt.imshow(news_ctr[:,166])
 # plt.colorbar()
@@ -166,7 +166,7 @@ nonzero_count = []
 for i in range(news_click_count.shape[1]):
     nonzero = news_ctr[:,i][news_ctr[:, i] > 0]
     nonzero_count.append(len(nonzero))
-plt.hist(nonzero_count)
+# plt.hist(nonzero_count)
 
 # %% [markdown]
 # # Dataset & DataLoader
@@ -202,7 +202,9 @@ class TrainDataset(Dataset):
             assert candidate_news[0].startswith('N') # nid
             candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
         else: # nindex
-            candidate_news = self.news_index[[n for n in candidate_news]]
+            # print(candidate_news)
+            # TODO: check why float n appears in candidate news
+            candidate_news = self.news_index[[int(n) for n in candidate_news]]
         his = [self.nid2index[n] for n in his] + [0] * (max_his_len - len(his))
         his = self.news_index[his]
         
@@ -532,66 +534,6 @@ class CB_sim():
 
         return user_vecs
         
-    def get_cand_news(self, t, poss, negs, m = 10):
-        """
-        Generate candidates news based on CTR.
-
-        t: string, impr time
-        poss: list, positive samples in impr
-        negs: list, neg samples in impr
-        m: int, number of candidate news to return
-
-        Return: array, candidate news id 
-        """
-        t = datetime.strptime(t,date_format_str)
-        tidx = int((t - start_time).total_seconds()/interval_time)
-
-        nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
-        nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
-        # print(nonzero_idx)
-
-        nonzero = nonzero/nonzero.sum()
-        assert (nonzero.sum() - 1) < 1e-3
-        # print(np.sort(nonzero)[-5:])
-
-        # sampling according to normalised ctr in last one hour
-        sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
-        # REVIEW: check whether the sampled nids are reasonable
-        
-        poss_nids = np.array([self.nid2index[n] for n in poss])
-        negs_nids = np.array([self.nid2index[n] for n in negs])
-
-        return np.concatenate([sample_nids, poss_nids, negs_nids])
-
-    def prepare_cand_news(self, batch_sam, exper_id, start_id):
-        """
-        prepare candidate news and get optimal set 
-        """
-        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
-
-        for i in range(len(batch_sam)):
-            t = start_id + i
-            poss, negs, _, uid, tsq = batch_sam[i] 
-            cand_nids = self.get_cand_news(tsq, poss, negs)
-            
-
-            sim_user_vec = sim_user_vecs[i]
-            sim_news_vec = sim_news_vecs[cand_nids]
-            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-            # assume the user would at most click half of the recommended news
-            opt_nids = np.argsort(sim_y_score)[-int(self.k/2):] 
-            opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-            # print(opt_nids)
-
-            self.cand_nids_dict[t] = cand_nids
-            self.opts[exper_id].append(opt_nids)  
-
-
-        
-#     t =  sorted_train_sam[1500][-1]
-#     gene_news_pool(t, 20)
-
     def construct_trainable_samples(self, samples):
         tr_samples = []
         for l in samples:
@@ -628,19 +570,31 @@ class CB_sim():
                     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                     ft_loader.refresh() 
 
-    def get_ucb_score(self, exper_id, y_score):
+    def get_ucb_score(self, exper_id, batch_id, y_score):
         mean = np.asarray(y_score).mean(axis = 0)
         std = np.asarray(y_score).std(axis = 0)
-        ucb_score = mean + self.policy_para * std
+        if self.policy_para == 'logt':
+            # REVIEW: whether to use batch id?
+            para = np.log(batch_id + 2) * 0.1
+            print('policy para: ', para)
+        else:
+            para = self.policy_para
+        ucb_score = mean + para * std
 
         rec_nids = np.argsort(ucb_score)[-self.k:]
         return rec_nids
 
-    def epsilon_greedy(self, exper_id, y_score):
+    def epsilon_greedy(self, exper_id, batch_id, y_score):
         rec = []
         y_score = y_score[0]
         p = np.random.rand(self.k)
-        n_greedy = int(len(p[p > self.policy_para]))
+        if self.policy_para == '1overt':
+            # REVIEW: whether to use batch id?
+            para = 1.0/(2 *(batch_id + 1))
+            print('policy para: ', para)
+        else:
+            para = self.policy_para
+        n_greedy = int(len(p[p > para]))
         if n_greedy == 0:
             greedy_nids = []
         else:
@@ -660,8 +614,51 @@ class CB_sim():
         
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
-                
-    def rec(self, batch_sam, batch_id, exper_id):
+
+    def get_opt_set(self, sam, cand):
+        """
+        prepare candidate news and get optimal set 
+        """
+        opts = []
+        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+        sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
+
+        for i in range(len(sam)):
+            poss, negs, _, uid, tsq = sam[i] 
+            
+            sim_user_vec = sim_user_vecs[i]
+            sim_news_vec = sim_news_vecs[cand[i]]
+            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+            # REVIEW: how to choose opt set
+            # assume the user would at most click half of the recommended news
+            # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
+            opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
+            opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+            # print(opt_nids)
+
+            opts.append(opt_nids) 
+        return opts
+
+    def get_reward(self, batch_sam, batch_recs):
+        rewards = []
+        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+
+        for i in range(len(batch_sam)):
+            poss, negs, _, _, tsq = batch_sam[i] 
+            
+            sim_user_vec = self.sim_user_vecs[i]
+            sim_news_vec = self.sim_news_vecs[batch_recs[i]]
+            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+            # assume the user would at most click half of the recommended news
+            reward = 1 if self.sigmoid(sim_y_score) > 0.5 else 0
+            # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+            # print(opt_nids)
+
+            rewards.append(reward)
+        return rewards
+        
+    def rec(self, batch_sam, batch_cand, opts, batch_id, exper_id):
         """
         Simulate recommendations
         """
@@ -673,11 +670,9 @@ class CB_sim():
             self.enable_dropout()
 
         y_scores = defaultdict(list) # key: sam_id, value: list of n_inference scores 
-        self.cand_nids_dict = {} # key: sam_id, value: array of candidate news ids
         start_id = self.eva_batch_size * batch_id
 
         with torch.no_grad():
-            self.prepare_cand_news(batch_sam, exper_id, start_id)
             
             """
             inf_idx, behav_idx, user_idx, news_idx
@@ -705,7 +700,7 @@ class CB_sim():
                     poss, negs, _, uid, tsq = batch_sam[i]     
                     user_vec = user_vecs[i]
                     
-                    news_vec = news_vecs[self.cand_nids_dict[t]]
+                    news_vec = news_vecs[batch_cand[i]]
                     y_score = np.sum(np.multiply(news_vec, user_vec), axis=1)
                     y_scores[t].append(y_score)
 
@@ -715,30 +710,34 @@ class CB_sim():
             _, _, his, uid, tsq = batch_sam[i]  
 
             if self.policy == 'ucb':
-                rec_nids = self.get_ucb_score(exper_id, y_scores[t])
+                rec_nids = self.get_ucb_score(exper_id, batch_id, y_scores[t])
             elif self.policy == 'epsilon_greedy':
-                rec_nids = self.epsilon_greedy(exper_id, y_scores[t])
+                rec_nids = self.epsilon_greedy(exper_id, batch_id, y_scores[t])
             else:
                 raise NotImplementedError
 
             self.recs[exper_id].append(rec_nids) 
-            
-            opt_nids = self.opts[exper_id][i]
- 
+
+            opt_nids = opts[t]
+
             assert len(set(rec_nids)) == self.k
+            # assert len(set(opt_nids)) == self.k
 
             reward = len(set(rec_nids) & set(opt_nids)) # reward as the overlap between rec and opt set
             # self.cumu_reward += reward
             self.rewards[exper_id, t] = reward
-            self.opt_rewards[exper_id, t] = len(set(opt_nids))
+            # TODO: next line only for single arm rec
+            self.opt_rewards[exper_id, t] = 1 if len(set(opt_nids)) > 0 else 0
 
+            # REVIEW: put opt nids in rec poss as well?
             rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
-            # let all 
-            rec_negs = list(set(self.cand_nids_dict[t]) - set(rec_poss))
+            # rec_poss = [rec_nid for rec_nid in set(rec_nids).union(opt_nids)]
+            # print('rec poss: ', rec_poss) 
+            rec_negs = list(set(batch_cand[i]) - set(rec_poss))
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
         
-    def run_exper(self, test_sam, num_exper = 10, n_inference = 2, policy = 'ucb', policy_para = 0.1, k = 1):
+    def run_exper(self, test_sam, cand_nidss, num_exper = 10, n_inference = 2, policy = 'ucb', policy_para = 0.1, k = 1):
         
         num_sam = len(test_sam)
         n_batch = math.ceil(float(num_sam)/self.eva_batch_size)
@@ -746,7 +745,6 @@ class CB_sim():
         self.rewards = np.zeros((num_exper, num_sam))
         self.opt_rewards = np.zeros((num_exper, num_sam))
         self.recs = defaultdict(list)
-        self.opts = defaultdict(list)
 
         self.n_inference = n_inference
         self.policy = policy
@@ -756,8 +754,7 @@ class CB_sim():
         update_time = None
         update_batch = 0
 
-        self.save_results()
-        print('test complete')
+        opts = self.get_opt_set(test_sam, cand_nidss)
         
 
         for j in range(num_exper):
@@ -767,8 +764,9 @@ class CB_sim():
             for i in range(n_batch):
                 upper_range = min(self.eva_batch_size * (i+1), len(test_sam))
                 batch_sam = test_sam[self.eva_batch_size * i: upper_range]
+                batch_cand = cand_nidss[self.eva_batch_size * i: upper_range]
 
-                self.rec(batch_sam, i, j)
+                self.rec(batch_sam, batch_cand, opts, i, j)
 
                 if update_time is None:
                     update_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
@@ -787,6 +785,8 @@ class CB_sim():
                         print('update at: ', update_time)
                     else: 
                         print('no finetune due to insufficient samples: ', str(upper_range - lower_range))
+            update_time = None
+            update_batch = 0
 
         self.save_results()
 
@@ -805,44 +805,68 @@ class CB_sim():
             pickle.dump(self.rewards, f)
         with open(os.path.join(save_path, (policy_name+ "_opt_rewards.pkl")), "wb") as f:
             pickle.dump(self.opt_rewards, f)
-        
+
+
+def get_cand_news(t, poss, negs, nid2index, m = 10):
+    """
+    Generate candidates news based on CTR.
+
+    t: string, impr time
+    poss: list, positive samples in impr
+    negs: list, neg samples in impr
+    m: int, number of candidate news to return
+
+    Return: array, candidate news id 
+    """
+    t = datetime.strptime(t,date_format_str)
+    tidx = int((t - start_time).total_seconds()/interval_time)
+
+    nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
+    nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
+    # print(nonzero_idx)
+
+    nonzero = nonzero/nonzero.sum()
+    assert (nonzero.sum() - 1) < 1e-3
+    # print(np.sort(nonzero)[-5:])
+
+    # sampling according to normalised ctr in last one hour
+    sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+    # REVIEW: check whether the sampled nids are reasonable
+    
+    poss_nids = np.array([nid2index[n] for n in poss])
+    negs_nids = np.array([nid2index[n] for n in negs])
+
+    return np.concatenate([sample_nids, poss_nids, negs_nids])
+
+def prepare_cand_news(sam, nid2index):
+    """
+    prepare candidate news and get optimal set 
+    """
+    cand_nidss = []
+
+    for i in range(len(sam)):
+        poss, negs, _, _, tsq = sam[i] 
+        cand_nids = get_cand_news(tsq, poss, negs, nid2index)
+        cand_nidss.append(np.array(cand_nids))      
+
+    return cand_nidss
 
 
 # %%
-# for para in [0, 0.1, 0.2]: # gpu 0
+
+cand_nidss = prepare_cand_news(test_sam, test_nid2index)
+
+# for para in [0, 0.1, '1overt']: # gpu 0
 #     print(para)
 #     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
 #     finetune_batch_size = 32, eva_batch_size = 1024)
-#     cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
+#     cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
 
-for para in [0.1]: #0.1 - gpu 1; 0.2 - gpu 2;
+for para in [0.1, 'logt']: #0.1 - gpu 1; 0.2 - gpu 2;
     print(para)
     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
     finetune_batch_size = 32, eva_batch_size = 1024)
-    cb_sim.run_exper(test_sam=test_sam, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
+    cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
 
-# %%
-num_exper, num_sam = cb_sim.rewards.shape
-cumu_regrets = np.zeros((num_exper, num_sam))
-for i in range(num_exper):
-    cumu_reward = 0
-    cumu_opt_reward = 0
-
-    for j in range(num_sam):
-        cumu_reward += cb_sim.rewards[i,j]
-        cumu_opt_reward += cb_sim.opt_rewards[i,j]
-        cumu_regrets[i,j] = (cumu_opt_reward - cumu_reward)/(j+1)
-
-# %%
-plt.plot(range(num_sam), cumu_regrets.mean(axis=0))
-
-# %%
-plt.hist(cb_sim.rewards.mean(axis = 0))
-
-# %%
-plt.hist(cb_sim.opt_rewards.mean(axis = 0))
-
-# %% [markdown]
-# 
 
 
