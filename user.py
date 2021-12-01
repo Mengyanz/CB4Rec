@@ -13,10 +13,10 @@ from datetime import datetime
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 # config
-name = 'small'
+name = 'large'
 
-data_path = Path("/home/v-mezhang/blob/data/" + name)
-out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
+data_path = Path("/home/v-mezhang/blob-plm/data/" + name)
+out_path = Path("/home/v-mezhang/blob-plm/data/" + name + "/utils")
 
 train_imprs_path = os.path.join(data_path,"train","behaviors.tsv")
 valid_imprs_path = os.path.join(data_path,"valid","behaviors.tsv")

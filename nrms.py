@@ -17,7 +17,7 @@ import math
     
 
 # %%
-os.environ['CUDA_VISIBLE_DEVICES'] = "2"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 # %%
 import torch
@@ -33,10 +33,12 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 # %%
-dataset = 'small/'
+dataset = 'demo/'
+sim_dataset = 'demo/'
 
 data_path = Path("/home/v-mezhang/blob-plm/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob-plm/model/" + str(dataset))
+sim_path = Path("/home/v-mezhang/blob-plm/model/" + str(sim_dataset))
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
@@ -55,6 +57,7 @@ batch_size = 32
 epoch = 1
 lr=0.0001
 name = 'nrms_' + dataset[:-1]
+sim_name = 'nrms_' + sim_dataset[:-1]
 retrain = False
 online_flag = False
 offline_flag = False
@@ -475,9 +478,13 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
 class CB_sim():
     def __init__(
         self, model_path, simulator_path, out_path, device,
-        news_index, nid2index,
+        news_index, nid2index, sim_flag = True, finetune_flag = True,
         finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True
     ):
+        """
+        sim_flag: if True, use simulated label; False, use True labels (only support impression candidate news)
+        finetune_flag: if True, finetune model; False, no finetune
+        """
         self.model = NRMS().to(device)
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
         if torch.cuda.device_count() > 1:
@@ -488,11 +495,12 @@ class CB_sim():
         
         # TODO: change simulator to PLM
         self.simulator = NRMS().to(device)
-        self.simulator.load_state_dict(torch.load(simulator_path/f'{name}.pkl'))
+        self.simulator.load_state_dict(torch.load(simulator_path/f'{sim_name}.pkl'))
 
         self.news_index = news_index
         self.nid2index = nid2index
-
+        self.sim_flag = sim_flag
+        self.finetune_flag = finetune_flag
         self.out_path = out_path
         self.dropout_flag = dropout_flag
         
@@ -620,23 +628,29 @@ class CB_sim():
         prepare candidate news and get optimal set 
         """
         opts = []
-        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-        sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
+        if self.sim_flag:
+            sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
+            sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
 
-        for i in range(len(sam)):
-            poss, negs, _, uid, tsq = sam[i] 
-            
-            sim_user_vec = sim_user_vecs[i]
-            sim_news_vec = sim_news_vecs[cand[i]]
-            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-            # REVIEW: how to choose opt set
-            # assume the user would at most click half of the recommended news
-            # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
-            opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
-            opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-            # print(opt_nids)
+            for i in range(len(sam)):
+                poss, negs, _, uid, tsq = sam[i] 
+                
+                sim_user_vec = sim_user_vecs[i]
+                sim_news_vec = sim_news_vecs[cand[i]]
+                sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+                # REVIEW: how to choose opt set
+                # assume the user would at most click half of the recommended news
+                # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
+                # opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
+                opt_nids = np.argsort(sim_y_score)
+                opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+                # print(opt_nids)
 
-            opts.append(opt_nids) 
+                opts.append(opt_nids) 
+        else:
+            for i in range(len(sam)):
+                poss, negs, _, uid, tsq = sam[i] 
+                opts.append(poss) 
         return opts
 
     def get_reward(self, batch_sam, batch_recs):
@@ -724,6 +738,9 @@ class CB_sim():
             # assert len(set(opt_nids)) == self.k
 
             reward = len(set(rec_nids) & set(opt_nids)) # reward as the overlap between rec and opt set
+            # print(t)
+            # print(rec_nids)
+            # print(opt_nids)
             # self.cumu_reward += reward
             self.rewards[exper_id, t] = reward
             # TODO: next line only for single arm rec
@@ -753,7 +770,7 @@ class CB_sim():
 
         update_time = None
         update_batch = 0
-
+      
         opts = self.get_opt_set(test_sam, cand_nidss)
         
 
@@ -768,30 +785,31 @@ class CB_sim():
 
                 self.rec(batch_sam, batch_cand, opts, i, j)
 
-                if update_time is None:
-                    update_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
-                    print('init time: ', update_time)
+                if self.finetune_flag:
+                    if update_time is None:
+                        update_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
+                        print('init time: ', update_time)
 
-                batch_time = datetime.strptime(str(batch_sam[-1][-1]), self.date_format_str)
-                if (batch_time- update_time).total_seconds() > 3600:
-                    lower_range = self.eva_batch_size * update_batch
-                    ft_sam = self.rec_sam[lower_range: upper_range]
-                    if upper_range - lower_range > 512:
-                        print('finetune with: '  + str(lower_range) + ' ~ ' + str(upper_range))
-                        self.finetune(ft_sam=ft_sam)
+                    batch_time = datetime.strptime(str(batch_sam[-1][-1]), self.date_format_str)
+                    if (batch_time- update_time).total_seconds() > 3600:
+                        lower_range = self.eva_batch_size * update_batch
+                        ft_sam = self.rec_sam[lower_range: upper_range]
+                        if upper_range - lower_range > 512:
+                            print('finetune with: '  + str(lower_range) + ' ~ ' + str(upper_range))
+                            self.finetune(ft_sam=ft_sam)
 
-                        update_time = batch_time
-                        update_batch = i + 1
-                        print('update at: ', update_time)
-                    else: 
-                        print('no finetune due to insufficient samples: ', str(upper_range - lower_range))
+                            update_time = batch_time
+                            update_batch = i + 1
+                            print('update at: ', update_time)
+                        else: 
+                            print('no finetune due to insufficient samples: ', str(upper_range - lower_range))
             update_time = None
             update_batch = 0
 
         self.save_results()
 
     def save_results(self):
-        folder_name = 'rec' + str(self.k)
+        folder_name = 'rec' + str(self.k) + '_ft' + str(self.finetune_flag)[0] + '_sim' + str(self.sim_flag)[0]
         save_path = os.path.join(self.out_path, folder_name)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
@@ -838,7 +856,7 @@ def get_cand_news(t, poss, negs, nid2index, m = 10):
 
     return np.concatenate([sample_nids, poss_nids, negs_nids])
 
-def prepare_cand_news(sam, nid2index):
+def prepare_cand_news(sam, nid2index, sim_flag):
     """
     prepare candidate news and get optimal set 
     """
@@ -846,27 +864,31 @@ def prepare_cand_news(sam, nid2index):
 
     for i in range(len(sam)):
         poss, negs, _, _, tsq = sam[i] 
-        cand_nids = get_cand_news(tsq, poss, negs, nid2index)
-        cand_nidss.append(np.array(cand_nids))      
+        if sim_flag:
+            cand_nids = get_cand_news(tsq, poss, negs, nid2index)
+            cand_nidss.append(np.array(cand_nids))     
+        else: 
+            cand_nidss.append(np.concatenate(poss, negs))  
 
     return cand_nidss
 
 
 # %%
 
-cand_nidss = prepare_cand_news(test_sam, test_nid2index)
+sim_flag = False
+cand_nidss = prepare_cand_news(test_sam, test_nid2index, sim_flag)
 
-# for para in [0, 0.1, '1overt']: # gpu 0
+for para in [0.0, 0.1]: # 0.1, '1overt'
+    print(para)
+    cb_sim = CB_sim(model_path=model_path, simulator_path=sim_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, sim_flag = sim_flag,
+    finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
+    cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
+
+# for para in [0.1, 'logt']: #0.1 - gpu 1; 0.2 - gpu 2;
 #     print(para)
 #     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
 #     finetune_batch_size = 32, eva_batch_size = 1024)
-#     cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
-
-for para in [0.1, 'logt']: #0.1 - gpu 1; 0.2 - gpu 2;
-    print(para)
-    cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
-    finetune_batch_size = 32, eva_batch_size = 1024)
-    cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
+#     cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
 
 
 

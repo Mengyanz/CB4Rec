@@ -12,11 +12,11 @@ import pickle
 
 # config
 
-name = 'small'
+name = 'large'
 
-data_path = Path("/home/v-mezhang/blob/data/" + name)
-out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
-glove_path = Path("/home/v-mezhang/blob/data/glove/glove.6B.300d.txt")
+data_path = Path("/home/v-mezhang/blob-plm/data/" + name)
+out_path = Path("/home/v-mezhang/blob-plm/data/" + name + "/utils")
+glove_path = Path("/home/v-mezhang/blob-plm/data/glove/glove.6B.300d.txt")
 
 npratio = 4
 max_his_len = 50
