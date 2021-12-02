@@ -34,7 +34,7 @@ torch.cuda.set_device(device)
 
 # %%
 dataset = 'demo/'
-sim_dataset = 'demo/'
+sim_dataset = 'small/'
 
 data_path = Path("/home/v-mezhang/blob-plm/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob-plm/model/" + str(dataset))
@@ -56,8 +56,8 @@ max_title_len = 30
 batch_size = 32
 epoch = 1
 lr=0.0001
-name = 'nrms_' + dataset[:-1]
-sim_name = 'nrms_' + sim_dataset[:-1]
+name = 'nrms_' + dataset[:-1] + '_lm'
+sim_name = 'nrms_' + sim_dataset[:-1] + '_lm'
 retrain = False
 online_flag = False
 offline_flag = False
@@ -91,7 +91,9 @@ with open(data_path/'nid2index.pkl', 'rb') as f:
 with open(data_path/'vocab_dict.pkl', 'rb') as f:
     vocab_dict = pickle.load(f)
 
-embedding_matrix = np.load(data_path/'embedding.npy')
+# embedding_matrix = np.load(data_path/'embedding.npy')
+large_data_path = Path("/home/v-mezhang/blob-plm/data/large/utils/")
+embedding_matrix = np.load(large_data_path/'embedding.npy')
 news_index = np.load(data_path /'news_index.npy')
 
 # %%
@@ -486,6 +488,7 @@ class CB_sim():
         finetune_flag: if True, finetune model; False, no finetune
         """
         self.model = NRMS().to(device)
+        print(model_path/f'{name}.pkl')
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
         if torch.cuda.device_count() > 1:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -495,6 +498,7 @@ class CB_sim():
         
         # TODO: change simulator to PLM
         self.simulator = NRMS().to(device)
+        print(simulator_path/f'{sim_name}.pkl')
         self.simulator.load_state_dict(torch.load(simulator_path/f'{sim_name}.pkl'))
 
         self.news_index = news_index
@@ -589,8 +593,10 @@ class CB_sim():
             para = self.policy_para
         ucb_score = mean + para * std
 
-        rec_nids = np.argsort(ucb_score)[-self.k:]
-        return rec_nids
+        recs = np.argsort(ucb_score)[-self.k:] 
+        
+        # return local idxs
+        return recs 
 
     def epsilon_greedy(self, exper_id, batch_id, y_score):
         rec = []
@@ -623,12 +629,12 @@ class CB_sim():
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
 
-    def get_opt_set(self, sam, cand):
+    def get_labels(self, sam, cand):
         """
-        prepare candidate news and get optimal set 
+        prepare candidate news and get labels
         """
-        opts = []
-        if self.sim_flag:
+        labels = []
+        if self.sim_flag: # if use simulated labels, then return simulated y scores
             sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
             sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
 
@@ -642,19 +648,22 @@ class CB_sim():
                 # assume the user would at most click half of the recommended news
                 # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
                 # opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
-                opt_nids = np.argsort(sim_y_score)
-                opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+                # opt_nids = np.argsort(sim_y_score)
+                # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
                 # print(opt_nids)
 
-                opts.append(opt_nids) 
-        else:
+                labels.append(sim_y_score) 
+        else: # otherwise, use impression labels
             for i in range(len(sam)):
-                poss, negs, _, uid, tsq = sam[i] 
-                opts.append(poss) 
-        return opts
+                poss, negs, _, uid, tsq = sam[i]    
+                label = [1] * len(poss) + [0] * len(negs)
+                labels.append(label)
+        return labels
 
-    def get_reward(self, batch_sam, batch_recs):
-        rewards = []
+    def get_batch_labels(self, batch_sam, batch_recs):
+        """Predict from batch_sam and batch_recs by simulator
+        """
+        labels = []
         sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
         sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
 
@@ -665,19 +674,21 @@ class CB_sim():
             sim_news_vec = self.sim_news_vecs[batch_recs[i]]
             sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
             # assume the user would at most click half of the recommended news
-            reward = 1 if self.sigmoid(sim_y_score) > 0.5 else 0
+            # reward = 1 if self.sigmoid(sim_y_score) > 0.5 else 0
             # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
             # print(opt_nids)
 
-            rewards.append(reward)
-        return rewards
+            labels.append(sim_y_score)
+        return labels
         
     def rec(self, batch_sam, batch_cand, opts, batch_id, exper_id):
         """
         Simulate recommendations
         """
         if self.policy == 'epsilon_greedy':
+            # current epsilon greedy only relies on uniformly random sampling, so no need to inference multiple times
             self.n_inference = 1
+            self.dropout_flag = False
         
         self.model.eval()
         if self.dropout_flag:
@@ -689,6 +700,7 @@ class CB_sim():
         with torch.no_grad():
             
             """
+            notes for speed up
             inf_idx, behav_idx, user_idx, news_idx
             1, 1, 1, 1
             1, 1, 1, 2
@@ -700,17 +712,17 @@ class CB_sim():
 
             n_inf, n1 = 
             """
+            # generate labels from simulators
+            y_trues = self.get_reward(batch_sam, batch_cand)
+
             # generate scores with uncertainty (dropout during inference)
             for _ in tqdm(range(self.n_inference)):
                 # TODO: speed up - only pass batch news index
-                # inf_time1 = time.time()
                 news_vecs = self.get_news_vec(self.model, self.news_index) # batch_size * news_dim (400)
                 user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
-                # inf_time11 = time.time()
-                # print('single time news encoder inference: ', inf_time11-inf_time1)
                 
                 for i in range(len(batch_sam)):
-                    t = start_id + i
+                    t = start_id + i # global idx 
                     poss, negs, _, uid, tsq = batch_sam[i]     
                     user_vec = user_vecs[i]
                     
@@ -724,27 +736,25 @@ class CB_sim():
             _, _, his, uid, tsq = batch_sam[i]  
 
             if self.policy == 'ucb':
-                rec_nids = self.get_ucb_score(exper_id, batch_id, y_scores[t])
+                recs = self.get_ucb_score(exper_id, batch_id, y_scores[t])
+                rec_nids = batch_cand[i][recs]
             elif self.policy == 'epsilon_greedy':
-                rec_nids = self.epsilon_greedy(exper_id, batch_id, y_scores[t])
+                recs = self.epsilon_greedy(exper_id, batch_id, y_scores[t])
+                rec_nids = batch_cand[i][recs]
             else:
                 raise NotImplementedError
 
-            self.recs[exper_id].append(rec_nids) 
-
-            opt_nids = opts[t]
-
             assert len(set(rec_nids)) == self.k
-            # assert len(set(opt_nids)) == self.k
-
-            reward = len(set(rec_nids) & set(opt_nids)) # reward as the overlap between rec and opt set
-            # print(t)
-            # print(rec_nids)
-            # print(opt_nids)
+            self.recs[exper_id].append(rec_nids) 
+            
+            # reward as the overlap between rec and opt set
+            # reward = len(set(rec_nids) & set(opt_nids)) 
+            # reward as auc score
+            reward = roc_auc_score(y_trues[t][recs],y_scores[t][recs])
             # self.cumu_reward += reward
             self.rewards[exper_id, t] = reward
             # TODO: next line only for single arm rec
-            self.opt_rewards[exper_id, t] = 1 if len(set(opt_nids)) > 0 else 0
+            # self.opt_rewards[exper_id, t] = 1 if len(set(opt_nids)) > 0 else 0
 
             # REVIEW: put opt nids in rec poss as well?
             rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
@@ -762,6 +772,7 @@ class CB_sim():
         self.rewards = np.zeros((num_exper, num_sam))
         self.opt_rewards = np.zeros((num_exper, num_sam))
         self.recs = defaultdict(list)
+        self.labels = self.get_labels(test_sam, cand_nidss)
 
         self.n_inference = n_inference
         self.policy = policy
@@ -868,7 +879,7 @@ def prepare_cand_news(sam, nid2index, sim_flag):
             cand_nids = get_cand_news(tsq, poss, negs, nid2index)
             cand_nidss.append(np.array(cand_nids))     
         else: 
-            cand_nidss.append(np.concatenate(poss, negs))  
+            cand_nidss.append(np.concatenate([poss, negs]))  
 
     return cand_nidss
 
@@ -882,7 +893,7 @@ for para in [0.0, 0.1]: # 0.1, '1overt'
     print(para)
     cb_sim = CB_sim(model_path=model_path, simulator_path=sim_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, sim_flag = sim_flag,
     finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
-    cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 1)
+    cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 2)
 
 # for para in [0.1, 'logt']: #0.1 - gpu 1; 0.2 - gpu 2;
 #     print(para)
