@@ -34,7 +34,7 @@ torch.cuda.set_device(device)
 
 # %%
 dataset = 'demo/'
-sim_dataset = 'small/'
+sim_dataset = 'demo/'
 
 data_path = Path("/home/v-mezhang/blob-plm/data/" + str(dataset) + "utils/")
 model_path = Path("/home/v-mezhang/blob-plm/model/" + str(dataset))
@@ -56,8 +56,8 @@ max_title_len = 30
 batch_size = 32
 epoch = 1
 lr=0.0001
-name = 'nrms_' + dataset[:-1] + '_lm'
-sim_name = 'nrms_' + sim_dataset[:-1] + '_lm'
+name = 'nrms_' + dataset[:-1]
+sim_name = 'nrms_' + sim_dataset[:-1]
 retrain = False
 online_flag = False
 offline_flag = False
@@ -91,9 +91,9 @@ with open(data_path/'nid2index.pkl', 'rb') as f:
 with open(data_path/'vocab_dict.pkl', 'rb') as f:
     vocab_dict = pickle.load(f)
 
-# embedding_matrix = np.load(data_path/'embedding.npy')
-large_data_path = Path("/home/v-mezhang/blob-plm/data/large/utils/")
-embedding_matrix = np.load(large_data_path/'embedding.npy')
+embedding_matrix = np.load(data_path/'embedding.npy')
+# large_data_path = Path("/home/v-mezhang/blob-plm/data/large/utils/")
+# embedding_matrix = np.load(large_data_path/'embedding.npy')
 news_index = np.load(data_path /'news_index.npy')
 
 # %%
@@ -657,7 +657,7 @@ class CB_sim():
             for i in range(len(sam)):
                 poss, negs, _, uid, tsq = sam[i]    
                 label = [1] * len(poss) + [0] * len(negs)
-                labels.append(label)
+                labels.append(np.array(label))
         return labels
 
     def get_batch_labels(self, batch_sam, batch_recs):
@@ -681,7 +681,7 @@ class CB_sim():
             labels.append(sim_y_score)
         return labels
         
-    def rec(self, batch_sam, batch_cand, opts, batch_id, exper_id):
+    def rec(self, batch_sam, batch_cand, batch_id, exper_id):
         """
         Simulate recommendations
         """
@@ -713,7 +713,7 @@ class CB_sim():
             n_inf, n1 = 
             """
             # generate labels from simulators
-            y_trues = self.get_reward(batch_sam, batch_cand)
+            # y_trues = self.get_reward(batch_sam, batch_cand)
 
             # generate scores with uncertainty (dropout during inference)
             for _ in tqdm(range(self.n_inference)):
@@ -750,17 +750,25 @@ class CB_sim():
             # reward as the overlap between rec and opt set
             # reward = len(set(rec_nids) & set(opt_nids)) 
             # reward as auc score
-            reward = roc_auc_score(y_trues[t][recs],y_scores[t][recs])
+            
+            
+            y_score = np.asarray(y_scores[t]).mean(axis = 0)
+            print(self.labels[t][recs])
+            print(y_score[recs])
+            reward = roc_auc_score(self.labels[t][recs],y_score[recs])
+            print(reward)
             # self.cumu_reward += reward
             self.rewards[exper_id, t] = reward
             # TODO: next line only for single arm rec
             # self.opt_rewards[exper_id, t] = 1 if len(set(opt_nids)) > 0 else 0
 
             # REVIEW: put opt nids in rec poss as well?
-            rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
+            # rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
             # rec_poss = [rec_nid for rec_nid in set(rec_nids).union(opt_nids)]
             # print('rec poss: ', rec_poss) 
-            rec_negs = list(set(batch_cand[i]) - set(rec_poss))
+
+            rec_poss = [rec_nids[np.argmax(y_scores[t])]]
+            rec_negs = list(set(rec_nids) - set(rec_poss))
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
         
@@ -782,7 +790,7 @@ class CB_sim():
         update_time = None
         update_batch = 0
       
-        opts = self.get_opt_set(test_sam, cand_nidss)
+        # opts = self.get_opt_set(test_sam, cand_nidss)
         
 
         for j in range(num_exper):
@@ -794,7 +802,7 @@ class CB_sim():
                 batch_sam = test_sam[self.eva_batch_size * i: upper_range]
                 batch_cand = cand_nidss[self.eva_batch_size * i: upper_range]
 
-                self.rec(batch_sam, batch_cand, opts, i, j)
+                self.rec(batch_sam, batch_cand, i, j)
 
                 if self.finetune_flag:
                     if update_time is None:
@@ -847,27 +855,30 @@ def get_cand_news(t, poss, negs, nid2index, m = 10):
 
     Return: array, candidate news id 
     """
-    t = datetime.strptime(t,date_format_str)
-    tidx = int((t - start_time).total_seconds()/interval_time)
-
-    nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
-    nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
-    # print(nonzero_idx)
-
-    nonzero = nonzero/nonzero.sum()
-    assert (nonzero.sum() - 1) < 1e-3
-    # print(np.sort(nonzero)[-5:])
-
-    # sampling according to normalised ctr in last one hour
-    sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
-    # REVIEW: check whether the sampled nids are reasonable
-    
     poss_nids = np.array([nid2index[n] for n in poss])
     negs_nids = np.array([nid2index[n] for n in negs])
 
-    return np.concatenate([sample_nids, poss_nids, negs_nids])
+    if sim_flag:
 
-def prepare_cand_news(sam, nid2index, sim_flag):
+        t = datetime.strptime(t,date_format_str)
+        tidx = int((t - start_time).total_seconds()/interval_time)
+
+        nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
+        nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
+        # print(nonzero_idx)
+
+        nonzero = nonzero/nonzero.sum()
+        assert (nonzero.sum() - 1) < 1e-3
+        # print(np.sort(nonzero)[-5:])
+
+        # sampling according to normalised ctr in last one hour
+        sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+        # REVIEW: check whether the sampled nids are reasonable
+        return np.concatenate([sample_nids, poss_nids, negs_nids])
+    else:
+        return np.concatenate([poss_nids, negs_nids])
+
+def prepare_cand_news(sam, nid2index, sim_flag = True):
     """
     prepare candidate news and get optimal set 
     """
@@ -875,11 +886,8 @@ def prepare_cand_news(sam, nid2index, sim_flag):
 
     for i in range(len(sam)):
         poss, negs, _, _, tsq = sam[i] 
-        if sim_flag:
-            cand_nids = get_cand_news(tsq, poss, negs, nid2index)
-            cand_nidss.append(np.array(cand_nids))     
-        else: 
-            cand_nidss.append(np.concatenate([poss, negs]))  
+        cand_nids = get_cand_news(tsq, poss, negs, nid2index, sim_flag)
+        cand_nidss.append(np.array(cand_nids))     
 
     return cand_nidss
 
