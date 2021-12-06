@@ -14,8 +14,8 @@ import pickle
 
 name = 'large'
 
-data_path = Path("/home/v-mezhang/blob-plm/data/" + name)
-out_path = Path("/home/v-mezhang/blob-plm/data/" + name + "/utils")
+data_path = Path("/home/v-mezhang/blob/data/" + name)
+out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
 glove_path = Path("/home/v-mezhang/blob-plm/data/glove/glove.6B.300d.txt")
 
 npratio = 4

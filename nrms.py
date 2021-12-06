@@ -17,7 +17,7 @@ import math
     
 
 # %%
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "3"
 
 # %%
 import torch
@@ -34,11 +34,12 @@ torch.cuda.set_device(device)
 
 # %%
 dataset = 'demo/'
-sim_dataset = 'demo/'
+sim_dataset = 'small/'
 
-data_path = Path("/home/v-mezhang/blob-plm/data/" + str(dataset) + "utils/")
-model_path = Path("/home/v-mezhang/blob-plm/model/" + str(dataset))
-sim_path = Path("/home/v-mezhang/blob-plm/model/" + str(sim_dataset))
+data_path = Path("/home/v-mezhang/blob/data/" + str(dataset) + "utils/")
+sim_data_path = Path("/home/v-mezhang/blob/data/" + str(sim_dataset) + "utils/")
+model_path = Path("/home/v-mezhang/blob/model/" + str(dataset))
+sim_model_path = Path("/home/v-mezhang/blob/model/" + str(sim_dataset))
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
@@ -87,14 +88,13 @@ if os.path.exists(data_path/'test_sam_uid.pkl'):
 # %%
 with open(data_path/'nid2index.pkl', 'rb') as f:
     nid2index = pickle.load(f)
-    
-with open(data_path/'vocab_dict.pkl', 'rb') as f:
-    vocab_dict = pickle.load(f)
-
 embedding_matrix = np.load(data_path/'embedding.npy')
-# large_data_path = Path("/home/v-mezhang/blob-plm/data/large/utils/")
-# embedding_matrix = np.load(large_data_path/'embedding.npy')
 news_index = np.load(data_path /'news_index.npy')
+
+with open(sim_data_path/'nid2index.pkl', 'rb') as f:
+    sim_nid2index = pickle.load(f)
+sim_embedding_matrix = np.load(sim_data_path/'embedding.npy')
+sim_news_index = np.load(sim_data_path /'news_index.npy')
 
 # %%
 if os.path.exists(data_path/'test_nid2index.pkl'):
@@ -339,6 +339,7 @@ class AdditiveAttention(nn.Module):
 # %%
 class TextEncoder(nn.Module):
     def __init__(self, 
+                 embedding_matrix,
                  word_embedding_dim=300, 
                  num_attention_heads=20,
                  query_vector_dim = 200,
@@ -398,9 +399,9 @@ class UserEncoder(nn.Module):
 
 # %%
 class NRMS(nn.Module):
-    def __init__(self):
+    def __init__(self, embedding_matrix):
         super(NRMS, self).__init__()
-        self.text_encoder = TextEncoder()
+        self.text_encoder = TextEncoder(embedding_matrix)
         self.user_encoder = UserEncoder()
         
         self.criterion = nn.CrossEntropyLoss()
@@ -480,14 +481,16 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
 class CB_sim():
     def __init__(
         self, model_path, simulator_path, out_path, device,
-        news_index, nid2index, sim_flag = True, finetune_flag = True,
+        news_index, nid2index, sim_news_index, sim_nid2index,
+        embedding_matrix, sim_embedding_matrix,
+        sim_flag = True, sim_type = 'nrms', finetune_flag = True,
         finetune_batch_size = 32, eva_batch_size = 1024, dropout_flag = True
     ):
         """
         sim_flag: if True, use simulated label; False, use True labels (only support impression candidate news)
         finetune_flag: if True, finetune model; False, no finetune
         """
-        self.model = NRMS().to(device)
+        self.model = NRMS(embedding_matrix).to(device)
         print(model_path/f'{name}.pkl')
         self.model.load_state_dict(torch.load(model_path/f'{name}.pkl'))
         if torch.cuda.device_count() > 1:
@@ -497,12 +500,18 @@ class CB_sim():
             print('single GPU found.')
         
         # TODO: change simulator to PLM
-        self.simulator = NRMS().to(device)
-        print(simulator_path/f'{sim_name}.pkl')
-        self.simulator.load_state_dict(torch.load(simulator_path/f'{sim_name}.pkl'))
+        if sim_type == 'nrms':
+            self.simulator = NRMS(sim_embedding_matrix).to(device)
+            print(simulator_path/f'{sim_name}.pkl')
+            self.simulator.load_state_dict(torch.load(simulator_path/f'{sim_name}.pkl'))
+        elif sim_type == 'plm': 
+            self.simulator = self.load_simulator(simulator_path, device)
 
         self.news_index = news_index
         self.nid2index = nid2index
+        self.sim_news_index = sim_news_index
+        self.sim_nid2index = sim_nid2index
+
         self.sim_flag = sim_flag
         self.finetune_flag = finetune_flag
         self.out_path = out_path
@@ -512,7 +521,32 @@ class CB_sim():
         self.eva_batch_size = eva_batch_size
         self.date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
-    
+    def load_simulator(self,simulator_path, device):
+        from transformers import AutoTokenizer, AutoModel, AutoConfig
+        from model_bert import ModelBert
+        from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
+
+        ckpt_path = utils.get_checkpoint(simulator_path, sim_name)
+        checkpoint = torch.load(ckpt_path)
+
+        if 'subcategory_dict' in checkpoint:
+            subcategory_dict = checkpoint['subcategory_dict']
+        else:
+            subcategory_dict = {}
+        category_dict = checkpoint['category_dict']
+        word_dict = checkpoint['word_dict']
+        domain_dict = checkpoint['domain_dict']
+        tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+        config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
+        bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+        model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict)).to(device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        logging.info(f"Simulator loaded from {ckpt_path}")
+
+        # model.eval()
+        # torch.set_grad_enabled(False)
+        return model
+
     def enable_dropout(self):
         for m in self.model.modules():
             if m.__class__.__name__.startswith('dropout'):
@@ -585,6 +619,8 @@ class CB_sim():
     def get_ucb_score(self, exper_id, batch_id, y_score):
         mean = np.asarray(y_score).mean(axis = 0)
         std = np.asarray(y_score).std(axis = 0)
+        # print('mean: ', mean)
+        # print('std: ', std)
         if self.policy_para == 'logt':
             # REVIEW: whether to use batch id?
             para = np.log(batch_id + 2) * 0.1
@@ -593,15 +629,25 @@ class CB_sim():
             para = self.policy_para
         ucb_score = mean + para * std
 
-        recs = np.argsort(ucb_score)[-self.k:] 
+        if self.k == 'all':
+            k = len(mean)
+        else:
+            k = self.k
+
+        recs = np.argsort(ucb_score)[-k:][::-1]
         
         # return local idxs
-        return recs 
+        return recs
 
     def epsilon_greedy(self, exper_id, batch_id, y_score):
         rec = []
         y_score = y_score[0]
-        p = np.random.rand(self.k)
+        # DEBUG: 
+        if self.k == 'all':
+            k = len(y_score)
+        else:
+            k = self.k
+        p = np.random.rand(k)
         if self.policy_para == '1overt':
             # REVIEW: whether to use batch id?
             para = 1.0/(2 *(batch_id + 1))
@@ -612,16 +658,18 @@ class CB_sim():
         if n_greedy == 0:
             greedy_nids = []
         else:
-            greedy_nids = np.argsort(y_score)[-n_greedy:]
+            greedy_nids = np.argsort(y_score)[-n_greedy:][::-1]
 
-        if n_greedy < self.k:
+        print('greedy nids: ', greedy_nids)
+        if n_greedy < k:
             if len(list(set(list(range(len(y_score)))) - set(greedy_nids))) == 0:
                 print('y_score: ', y_score)
                 print('n_greedy: ', n_greedy)
                 print(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))))
 
-            eps_nids = np.random.choice(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))), size = self.k - n_greedy, replace=False)
-            rec_nids= np.concatenate([greedy_nids, eps_nids])
+            eps_nids = np.random.choice(np.array(list(set(list(range(len(y_score)))) - set(greedy_nids))), size = k - n_greedy, replace=False)
+            print('eps nids: ', eps_nids)
+            rec_nids= np.array([int(i) for i in np.concatenate([greedy_nids, eps_nids])])
             return rec_nids
         else:
             return greedy_nids 
@@ -633,39 +681,41 @@ class CB_sim():
         """
         prepare candidate news and get labels
         """
+        sim_labels = []
         labels = []
-        if self.sim_flag: # if use simulated labels, then return simulated y scores
-            sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-            sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
 
-            for i in range(len(sam)):
-                poss, negs, _, uid, tsq = sam[i] 
-                
-                sim_user_vec = sim_user_vecs[i]
-                sim_news_vec = sim_news_vecs[cand[i]]
-                sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-                # REVIEW: how to choose opt set
-                # assume the user would at most click half of the recommended news
-                # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
-                # opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
-                # opt_nids = np.argsort(sim_y_score)
-                # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-                # print(opt_nids)
+        # if self.sim_flag: # if use simulated labels, then return simulated y scores
+        sim_news_vecs = self.get_news_vec(self.simulator, self.sim_news_index)
+        sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
 
-                labels.append(sim_y_score) 
-        else: # otherwise, use impression labels
-            for i in range(len(sam)):
-                poss, negs, _, uid, tsq = sam[i]    
-                label = [1] * len(poss) + [0] * len(negs)
-                labels.append(np.array(label))
-        return labels
+        for i in range(len(sam)):
+            poss, negs, _, uid, tsq = sam[i] 
+            
+            sim_user_vec = sim_user_vecs[i]
+            sim_news_vec = sim_news_vecs[cand[i]]
+            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
+            # REVIEW: how to choose opt set
+            # assume the user would at most click half of the recommended news
+            # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
+            # opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
+            # opt_nids = np.argsort(sim_y_score)
+            # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
+            # print(opt_nids)
+
+            sim_labels.append(sim_y_score) 
+        # else: # otherwise, use impression labels
+        for i in range(len(sam)):
+            poss, negs, _, uid, tsq = sam[i]    
+            label = [1] * len(poss) + [0] * len(negs)
+            labels.append(np.array(label))
+        return sim_labels, labels
 
     def get_batch_labels(self, batch_sam, batch_recs):
         """Predict from batch_sam and batch_recs by simulator
         """
         labels = []
-        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
+        sim_news_vecs = self.get_news_vec(self.simulator, self.sim_news_index)
+        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.sim_nid2index) 
 
         for i in range(len(batch_sam)):
             poss, negs, _, _, tsq = batch_sam[i] 
@@ -737,14 +787,18 @@ class CB_sim():
 
             if self.policy == 'ucb':
                 recs = self.get_ucb_score(exper_id, batch_id, y_scores[t])
+                print(recs)
                 rec_nids = batch_cand[i][recs]
             elif self.policy == 'epsilon_greedy':
                 recs = self.epsilon_greedy(exper_id, batch_id, y_scores[t])
+                print(recs)
                 rec_nids = batch_cand[i][recs]
             else:
                 raise NotImplementedError
 
-            assert len(set(rec_nids)) == self.k
+            # print('len(set(rec_nids)):', len(set(rec_nids)))
+            # print('self.k: ', self.k)
+            # assert len(set(rec_nids)) == self.k
             self.recs[exper_id].append(rec_nids) 
             
             # reward as the overlap between rec and opt set
@@ -753,21 +807,29 @@ class CB_sim():
             
             
             y_score = np.asarray(y_scores[t]).mean(axis = 0)
-            print(self.labels[t][recs])
-            print(y_score[recs])
-            reward = roc_auc_score(self.labels[t][recs],y_score[recs])
-            print(reward)
+            sim_labels, labels = self.sim_labels[t][recs], self.labels[t][recs]
+            # print(self.labels[t][recs])
+            # print(y_score[recs])
+            if all(i == 1 for i in labels):
+                reward = 1
+            elif all(i == 0 for i in labels):
+                reward = 0
+            else:
+                reward = roc_auc_score(labels,y_score[recs])
+            # print(reward)
             # self.cumu_reward += reward
             self.rewards[exper_id, t] = reward
             # TODO: next line only for single arm rec
             # self.opt_rewards[exper_id, t] = 1 if len(set(opt_nids)) > 0 else 0
+            # DEBUG: 
+            self.opt_rewards[exper_id, t] = roc_auc_score(labels,sim_labels)
 
             # REVIEW: put opt nids in rec poss as well?
             # rec_poss = [rec_nid for rec_nid in rec_nids if rec_nid in opt_nids]
             # rec_poss = [rec_nid for rec_nid in set(rec_nids).union(opt_nids)]
             # print('rec poss: ', rec_poss) 
 
-            rec_poss = [rec_nids[np.argmax(y_scores[t])]]
+            rec_poss = [rec_nids[np.argmax(y_score)]]
             rec_negs = list(set(rec_nids) - set(rec_poss))
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
@@ -780,7 +842,7 @@ class CB_sim():
         self.rewards = np.zeros((num_exper, num_sam))
         self.opt_rewards = np.zeros((num_exper, num_sam))
         self.recs = defaultdict(list)
-        self.labels = self.get_labels(test_sam, cand_nidss)
+        self.sim_labels, self.labels = self.get_labels(test_sam, cand_nidss)
 
         self.n_inference = n_inference
         self.policy = policy
@@ -844,7 +906,7 @@ class CB_sim():
             pickle.dump(self.opt_rewards, f)
 
 
-def get_cand_news(t, poss, negs, nid2index, m = 10):
+def get_cand_news(t, poss, negs, nid2index, m = 10, news_pool = False):
     """
     Generate candidates news based on CTR.
 
@@ -858,7 +920,7 @@ def get_cand_news(t, poss, negs, nid2index, m = 10):
     poss_nids = np.array([nid2index[n] for n in poss])
     negs_nids = np.array([nid2index[n] for n in negs])
 
-    if sim_flag:
+    if news_pool:
 
         t = datetime.strptime(t,date_format_str)
         tidx = int((t - start_time).total_seconds()/interval_time)
@@ -878,7 +940,7 @@ def get_cand_news(t, poss, negs, nid2index, m = 10):
     else:
         return np.concatenate([poss_nids, negs_nids])
 
-def prepare_cand_news(sam, nid2index, sim_flag = True):
+def prepare_cand_news(sam, nid2index):
     """
     prepare candidate news and get optimal set 
     """
@@ -886,7 +948,7 @@ def prepare_cand_news(sam, nid2index, sim_flag = True):
 
     for i in range(len(sam)):
         poss, negs, _, _, tsq = sam[i] 
-        cand_nids = get_cand_news(tsq, poss, negs, nid2index, sim_flag)
+        cand_nids = get_cand_news(tsq, poss, negs, nid2index)
         cand_nidss.append(np.array(cand_nids))     
 
     return cand_nidss
@@ -894,20 +956,21 @@ def prepare_cand_news(sam, nid2index, sim_flag = True):
 
 # %%
 
-sim_flag = False
-cand_nidss = prepare_cand_news(test_sam, test_nid2index, sim_flag)
+sim_flag = True
+cand_nidss = prepare_cand_news(test_sam, test_nid2index)
 
-for para in [0.0, 0.1]: # 0.1, '1overt'
-    print(para)
-    cb_sim = CB_sim(model_path=model_path, simulator_path=sim_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, sim_flag = sim_flag,
-    finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
-    cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 2)
-
-# for para in [0.1, 'logt']: #0.1 - gpu 1; 0.2 - gpu 2;
+# for para in [0, 0.1, 0.2]: # 0.1, '1overt'
 #     print(para)
-#     cb_sim = CB_sim(model_path=model_path, simulator_path=model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index,
-#     finetune_batch_size = 32, eva_batch_size = 1024)
-#     cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=10, n_inference = 10, policy='ucb', policy_para=para, k = 1)
+#     cb_sim = CB_sim(model_path=model_path, simulator_path=sim_model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, sim_flag = sim_flag,
+#     finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
+#     cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 'all')
+
+for para in [0.0]: #0.1 - gpu 1; 0.2 - gpu 2; 0.2, 'logt'
+    print(para)
+    cb_sim = CB_sim(model_path=model_path, simulator_path=sim_model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, 
+    sim_flag = sim_flag, sim_type = 'nrms', sim_news_index=sim_news_index, sim_nid2index=sim_nid2index, embedding_matrix = embedding_matrix, sim_embedding_matrix = sim_embedding_matrix,
+    finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
+    cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=1, n_inference = 1, policy='ucb', policy_para=para, k = 'all')
 
 
 
