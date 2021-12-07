@@ -1,15 +1,19 @@
 
-from collections import Counter
+from collections import defaultdict,Counter
 from tqdm import tqdm
 import numpy as np
 import re
 import os
 import pickle
+from datetime import datetime 
+date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
 news_info = {"<unk>": ""}
 nid2index = {"<unk>": 0}
 word_cnt = Counter()
 vocab_dict = {"<unk>": 0}
+
+user_imprs = defaultdict(list)
 
 def word_tokenize(sent):
     pat = re.compile(r"[\w]+|[.,!?;|]")
@@ -78,13 +82,61 @@ def news_preprocess(args):
     with open(os.path.join(out_path,"vocab_dict.pkl"), "wb") as f:
         pickle.dump(vocab_dict, f)
 
+    np.save(os.path.join(out_path,"news_index"), news_index)
     np.save(os.path.join(out_path,"embedding"), embedding_matrix)
 
+def read_imprs(args, path, mode):
+    index = 0
+    samples = []
+    user_indices = defaultdict(list)
+    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+
+    for l in tqdm(open(path, "r")):
+        imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
+        his = his.split()
+        tsp = t
+        # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
+        #tsp = int(t)
+        imprs = [i.split("-") for i in imprs.split(" ")]
+        neg_imp = [i[0] for i in imprs if i[1] == "0"]
+        pos_imp = [i[0] for i in imprs if i[1] == "1"]
+        user_imprs[uid].append([tsp, his, pos_imp, neg_imp, mode, uid])
+
+        his = his[-args.max_his_len:]
+        if mode == 0:
+            for pos in pos_imp:
+                samples.append([pos, neg_imp, his, uid, tsp])
+                user_indices[uid].append(index)
+                index += 1
+        else:
+            samples.append([pos_imp, neg_imp, his, uid, tsp])
+
+    sorted_samples = [i for i in sorted(samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+    
+
+    if mode == 0:
+        name = 'train'
+    elif mode == 1:
+        name = 'valid'
+    else:
+        name = 'test'
+
+    with open(os.path.join(out_path, (name + "_sam_uid.pkl")), "wb") as f:
+        pickle.dump(samples, f)
+    with open(os.path.join(out_path, (name + "_user_indices.pkl")), "wb") as f:
+        pickle.dump(user_indices, f)
+    with open(out_path / ("sorted_"+ name + "_sam_uid.pkl"), "wb") as f:
+        pickle.dump(sorted_samples, f)
+
 def behavior_preprocess(args):
-    pass
+    read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0)
+    read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1)
+    if os.path.exists(os.path.join(args.root_data_dir, args.dataset, "test/behaviors.tsv")):
+        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "test/behaviors.tsv"), 2)
 
 
 if __name__ == "__main__":
     from parameters import parse_args
     args = parse_args()
     news_preprocess(args)
+    # behavior_preprocess(args)

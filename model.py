@@ -56,14 +56,15 @@ class MultiHeadAttention(nn.Module):
                 nn.init.xavier_uniform_(m.weight, gain=1)
                 
     def forward(self, Q, K, V, attn_mask=None):
-        residual, batch_size = Q, Q.size(0)
+        #       Q, K, V: [bz, seq_len, 300] -> W -> [bz, seq_len, 400]-> q_s: [bz, 20, seq_len, 20]
+        batch_size, seq_len, _ = Q.shape
         
         q_s = self.W_Q(Q).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
         k_s = self.W_K(K).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
         v_s = self.W_V(V).view(batch_size, -1, self.n_heads, self.d_v).transpose(1,2)
         
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, max_len, max_len) 
+            attn_mask = attn_mask.unsqueeze(1).expand(batch_size, seq_len, seq_len) 
             attn_mask = attn_mask.unsqueeze(1).repeat(1, self.n_heads, 1, 1) 
         
         context, attn = ScaledDotProductAttention(self.d_k)(q_s, k_s, v_s, attn_mask) 
