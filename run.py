@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 from dataloader import TrainDataset, NewsDataset, UserDataset
 from model import NRMS
+from policy import CB_sim
 from metrics import compute_amn, evaluation_split
 import pretty_errors
 
@@ -28,34 +29,43 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
-def read_data(args, mode = 'train'):
-    with open(os.path.join(args.root_data_dir, 'utils', 'nid2index.pkl'), 'rb') as f:
+def read_data(args):
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
-    embedding_matrix = np.load(os.path.join(args.root_data_dir, 'utils', 'embedding.npy'))
-    news_index = np.load(os.path.join(args.root_data_dir, 'utils', 'news_index.npy'))
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_info.pkl'), 'rb') as f:
+        news_info = pickle.load(f)
+    embedding_matrix = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
 
-    if mode == 'train':
+    if args.mode == 'train':
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/train_sam_uid.pkl'), 'rb') as f:
             train_sam = pickle.load(f)
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_sam_uid.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
 
-        return nid2index, news_index, embedding_matrix, train_sam, valid_sam
-    elif mode == 'test':
+        return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
+    elif args.mode == 'test':
         pass
+    elif args.mode == 'cb':
+        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_train_sam_uid.pkl'), 'rb') as f:
+            sorted_train_sam = pickle.load(f)
+        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_valid_sam_uid.pkl'), 'rb') as f:
+            sorted_valid_sam = pickle.load(f)
+
+        return nid2index, news_info, news_index, embedding_matrix, sorted_train_sam, sorted_valid_sam
 
 def train(args):
 
-    nid2index, news_index, embedding_matrix, train_sam, valid_sam = read_data(args, 'train')
+    nid2index, news_index, embedding_matrix, train_sam, valid_sam = read_data(args)
     train_ds = TrainDataset(args, train_sam, nid2index, news_index)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     model = NRMS(embedding_matrix).to(device)
-    print(model)
-    from torchinfo import summary
-    output = summary(model, [(args.batch_size, 4, 30), (args.batch_size, 50, 30), (args.batch_size, 4) ], verbose = 0)
-    print(str(output).encode('ascii', 'ignore').decode('ascii'))
-    raise Exception()
+    # print(model)
+    # from torchinfo import summary
+    # output = summary(model, [(args.batch_size, 4, 30), (args.batch_size, 50, 30), (args.batch_size, 4) ], verbose = 0)
+    # print(str(output).encode('ascii', 'ignore').decode('ascii'))
+    # raise Exception()
     # if torch.cuda.device_count() > 1:
     #     print("Let's use", torch.cuda.device_count(), "GPUs!")
     #     model = nn.DataParallel(model, device_ids=[0,1,2]) 
@@ -124,7 +134,78 @@ def eva(args, model, valid_sam, nid2index, news_index):
     
     return val_scores
 
+def get_cand_news(t, poss, negs, nid2index, m = 10, news_pool = False):
+    """
+    Generate candidates news based on CTR.
+
+    t: string, impr time
+    poss: list, positive samples in impr
+    negs: list, neg samples in impr
+    m: int, number of candidate news to return
+
+    Return: array, candidate news id 
+    """
+    poss_nids = np.array([nid2index[n] for n in poss])
+    negs_nids = np.array([nid2index[n] for n in negs])
+
+    if news_pool:
+
+        t = datetime.strptime(t,date_format_str)
+        tidx = int((t - start_time).total_seconds()/interval_time)
+
+        nonzero = news_ctr[:,tidx -1][news_ctr[:, tidx-1] > 0]
+        nonzero_idx = np.where(news_ctr[:, tidx-1] > 0)[0]
+        # print(nonzero_idx)
+
+        nonzero = nonzero/nonzero.sum()
+        assert (nonzero.sum() - 1) < 1e-3
+        # print(np.sort(nonzero)[-5:])
+
+        # sampling according to normalised ctr in last one hour
+        sample_nids = np.random.choice(nonzero_idx, size = m, replace = False, p = nonzero)
+        # REVIEW: check whether the sampled nids are reasonable
+        return np.concatenate([sample_nids, poss_nids, negs_nids])
+    else:
+        return np.concatenate([poss_nids, negs_nids])
+
+def prepare_cand_news(sam, nid2index):
+    """
+    prepare candidate news and get optimal set 
+    """
+    cand_nidss = []
+
+    for i in range(len(sam)):
+        poss, negs, _, _, tsq = sam[i] 
+        cand_nids = get_cand_news(tsq, poss, negs, nid2index)
+        cand_nidss.append(np.array(cand_nids))     
+
+    return cand_nidss
+
+
 if __name__ == "__main__":
     from parameters import parse_args
     args = parse_args()
-    train(args)
+    if args.mode == 'train':
+        train(args)
+    elif args.mode == 'cb':
+        cand_nidss = prepare_cand_news(test_sam, test_nid2index)
+
+        # for para in [0, 0.1, 0.2]: # 0.1, '1overt'
+        #     print(para)
+        #     cb_sim = CB_sim(model_path=model_path, simulator_path=sim_model_path, out_path=model_path, device=device, news_index=test_news_index, nid2index=test_nid2index, sim_flag = sim_flag,
+        #     finetune_flag = False, finetune_batch_size = 32, eva_batch_size = 1024)
+        #     cb_sim.run_exper(test_sam=test_sam, cand_nidss = cand_nidss, num_exper=10, n_inference = 1, policy='epsilon_greedy', policy_para=para, k = 'all')
+
+        for para in [0.0]: #0.1 - gpu 1; 0.2 - gpu 2; 0.2, 'logt'
+            print(para)
+            cb_sim = CB_sim(args, device=device)
+            cb_sim.run_exper(test_sam=test_sam, cand_nidss=cand_nidss, num_exper=1, n_inference = 1, policy='ucb', policy_para=para, k = 'all')
+
+    # debug
+    # nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam = read_data(args, 'train')
+    # print(news_index[nid2index['N10399']])
+    # print(news_info['N10399'])
+    # pretrained_news_word_embedding = torch.from_numpy(embedding_matrix).float()    
+    # word_embedding = nn.Embedding.from_pretrained(
+    #     pretrained_news_word_embedding, freeze=False)
+    # print(word_embedding(torch.from_numpy(news_index[nid2index['N10399']]).long()))

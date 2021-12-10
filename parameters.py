@@ -11,20 +11,46 @@ def parse_args():
         "/home/v-mezhang/blob/data/",
     )
     parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/")
+    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/")
+    parser.add_argument("--out_path", type=str, default="/home/v-mezhang/blob/model/")
+
     parser.add_argument("--dataset",
                         type=str,
                         default='demo')
+    parser.add_argument("--mode",
+                        type=str,
+                        default='cb')
+    parser.add_argument("--sim_flag",
+                        type=bool,
+                        default=False)
+    parser.add_argument("--dropout_flag",
+                        type=bool,
+                        default=True)
+    parser.add_argument("--finetune_flag",
+                        type=bool,
+                        default=True)
+                    
 
     parser.add_argument("--npratio", type=int, default=4)
     parser.add_argument("--max_his_len", type=int, default=50)
-    parser.add_argument("--min_word_cnt", type=int, default=5)
+    parser.add_argument("--min_word_cnt", type=int, default=1)
     parser.add_argument("--max_title_len", type=int, default=30)
+    parser.add_argument("--eva_batch_size", type=int, default=1024)
+    parser.add_argument("--n_inference", type=int, default=1)
+    parser.add_argument("--n_exper", type=int, default=1)
+    parser.add_argument("--policy", type=str, default='ucb')
+    parser.add_argument("--policy_para", type=list, default=[0.1])
+    parser.add_argument("--k", type=str, default='all')
     
     # model training
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--num_workers", type=int, default=4)
+
+    parser.add_argument("--data_format_str", type=str, default='%m/%d/%Y %I:%M:%S %p')
+    parser.add_argument("--interval_time", type=int, default=3600)
+
 
     parser.add_argument("--num_words_title", type=int, default=24)
     parser.add_argument(
