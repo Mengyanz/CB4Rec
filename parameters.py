@@ -20,9 +20,9 @@ def parse_args():
     parser.add_argument("--mode",
                         type=str,
                         default='cb')
-    parser.add_argument("--sim_flag",
-                        type=bool,
-                        default=False)
+    parser.add_argument("--sim_type",
+                        type=str,
+                        default='ips') # none, nrms, ips
     parser.add_argument("--dropout_flag",
                         type=bool,
                         default=True)

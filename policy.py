@@ -37,8 +37,8 @@ class CB_sim():
         self.device = device
         self.model = NRMS(embedding_matrix).to(self.device)
         self.model.load_state_dict(torch.load(os.path.join(args.model_path, args.dataset, f'{name}.pkl')))
-        self.simulator = NRMS(embedding_matrix).to(self.device)
-        self.simulator.load_state_dict(torch.load(os.path.join(args.model_path, args.dataset, f'{name}.pkl')))
+        self.sim_type = args.sim_type
+        self.load_simulator()
 
         self.date_format_str = args.data_format_str
         self.start_time = datetime.strptime(sorted_train_sam[0][-1],self.date_format_str)
@@ -57,6 +57,16 @@ class CB_sim():
         self.policy = args.policy
         self.policy_para = args.policy_para 
         self.k = args.k
+
+    def load_simulator(self):
+        if self.sim_type == 'nrms':
+            self.simulator = NRMS(embedding_matrix).to(self.device)
+            self.simulator.load_state_dict(torch.load(os.path.join(args.model_path, args.dataset, f'{name}.pkl')))
+        elif self.sim_type == 'ips':
+            pass
+        else:
+            assert self.sim_type == 'none'
+            
 
     def enable_dropout(self):
         # TODO: check whether it truly controls dropout
@@ -397,7 +407,7 @@ class CB_sim():
         self.save_results()
 
     def save_results(self):
-        folder_name = 'rec' + str(self.k) + '_ft' + str(self.finetune_flag)[0] + '_sim' + str(self.sim_flag)[0]
+        folder_name = 'rec' + str(self.k) + '_ft' + str(self.finetune_flag)[0] + '_sim' + str(self.sim_type)[0]
         save_path = os.path.join(self.out_path, folder_name)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
