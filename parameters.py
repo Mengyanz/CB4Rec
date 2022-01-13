@@ -11,7 +11,7 @@ def parse_args():
         "/home/v-mezhang/blob/data/",
     )
     parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/")
-    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/")
+    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/simulator.pkl")
     parser.add_argument("--out_path", type=str, default="/home/v-mezhang/blob/model/")
 
     parser.add_argument("--dataset",
@@ -27,6 +27,9 @@ def parse_args():
                         type=bool,
                         default=True)
     parser.add_argument("--finetune_flag",
+                        type=bool,
+                        default=True)
+    parser.add_argument("--fliter_user", # fliter CB simulation user from training data
                         type=bool,
                         default=True)
                     

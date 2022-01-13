@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from model import NRMS
 from dataloader import TrainDataset, NewsDataset, UserDataset
 from run import read_data
+import logging
 
 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
@@ -38,7 +39,7 @@ class CB_sim():
         self.model = NRMS(embedding_matrix).to(self.device)
         self.model.load_state_dict(torch.load(os.path.join(args.model_path, args.dataset, f'{name}.pkl')))
         self.sim_type = args.sim_type
-        self.load_simulator()
+        self.load_simulator(args)
 
         self.date_format_str = args.data_format_str
         self.start_time = datetime.strptime(sorted_train_sam[0][-1],self.date_format_str)
@@ -58,12 +59,112 @@ class CB_sim():
         self.policy_para = args.policy_para 
         self.k = args.k
 
-    def load_simulator(self):
+    def load_simulator(self, args):
         if self.sim_type == 'nrms':
             self.simulator = NRMS(embedding_matrix).to(self.device)
-            self.simulator.load_state_dict(torch.load(os.path.join(args.model_path, args.dataset, f'{name}.pkl')))
+            self.simulator.load_state_dict(torch.load(args.sim_path))
         elif self.sim_type == 'ips':
             pass
+        elif self.sim_type == 'unium':      
+            checkpoint = torch.load(args.sim_path)
+            if 'subcategory_dict' in checkpoint:
+                subcategory_dict = checkpoint['subcategory_dict']
+            else:
+                subcategory_dict = {}
+
+            category_dict = checkpoint['category_dict']
+            word_dict = checkpoint['word_dict']
+            domain_dict = checkpoint['domain_dict']
+
+            from transformers import AutoTokenizer, AutoModel, AutoConfig
+            from model_bert import ModelBert
+            from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
+            from dataloader import DataLoaderTrain, DataLoaderTest
+            from torch.utils.data import Dataset, DataLoader
+
+            tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+            config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
+            bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+            self.simulator = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict)).to(self.device)
+            self.simulator.load_state_dict(checkpoint['model_state_dict'])
+            logging.info(f"Model loaded from {sim_path}")
+            self.simulator.eval()
+
+            news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+                os.path.join(args.root_data_dir,
+                        f'{args.dataset}/test/news.tsv'), 
+                args,
+                tokenizer
+            )
+
+            news_title, news_title_type, news_title_attmask, \
+            news_abstract, news_abstract_type, news_abstract_attmask, \
+            news_body, news_body_type, news_body_attmask, \
+            news_category, news_domain, news_subcategory = get_doc_input_bert(
+                news, news_index, category_dict, domain_dict, subcategory_dict, args)
+
+            news_combined = np.concatenate([
+            x for x in
+            [news_title, news_title_type, news_title_attmask, \
+            news_abstract, news_abstract_type, news_abstract_attmask, \
+            news_body, news_body_type, news_body_attmask, \
+            news_category, news_domain, news_subcategory]
+            if x is not None], axis=1)
+
+
+            class NewsDataset(Dataset):
+                def __init__(self, data):
+                    self.data = data
+
+                def __getitem__(self, idx):
+                    return self.data[idx]
+
+                def __len__(self):
+                    return self.data.shape[0]
+
+            def news_collate_fn(arr):
+                arr = torch.LongTensor(arr)
+                return arr
+
+            news_dataset = NewsDataset(news_combined)
+            news_dataloader = DataLoader(news_dataset,
+                                        batch_size=args.eva_batch_size,
+                                        num_workers=args.num_workers,
+                                        collate_fn=news_collate_fn)
+
+            news_scoring = []
+            with torch.no_grad():
+                for input_ids in tqdm(news_dataloader):
+                    input_ids = input_ids.cuda()
+                    news_vec = self.simulator.news_encoder(input_ids)
+                    news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
+                    news_scoring.extend(news_vec)
+
+
+            news_scoring = np.array(news_scoring)
+
+            logging.info("news scoring num: {}".format(news_scoring.shape[0]))
+        
+
+            dataloader = DataLoaderTest(
+                news_index=news_index,
+                news_scoring=news_scoring,
+                word_dict=word_dict,
+                news_bias_scoring= None,
+                data_dir=os.path.join(args.root_data_dir,
+                                    f'{args.dataset}/{args.test_dir}'),
+                filename_pat=args.filename_pat,
+                args=args,
+                world_size=hvd_size,
+                worker_rank=hvd_rank,
+                cuda_device_idx=hvd_local_rank,
+                enable_prefetch=True,
+                enable_shuffle=False,
+                enable_gpu=args.enable_gpu,
+            )
+
+            
+
         else:
             assert self.sim_type == 'none'
             

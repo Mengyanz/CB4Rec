@@ -29,6 +29,17 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
+
+def filter_sam(train_sam, valid_sam):
+    selected_users = np.load("/home/v-mezhang/blob/data/large/train_valid/selected_users.npy")
+    new_train_sam = []
+    for sam in train_sam:
+        uid = sam[3]
+        if uid not in selected_users:
+            new_train_sam.append(sam)
+    return new_train_sam, valid_sam
+
+
 def read_data(args):
     with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
@@ -42,6 +53,9 @@ def read_data(args):
             train_sam = pickle.load(f)
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_sam_uid.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
+
+        if args.filter_user:
+            train_sam, valid_sam = filter_sam(train_sam, valid_sam)
 
         return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
     elif args.mode == 'test':
