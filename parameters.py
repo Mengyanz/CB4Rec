@@ -16,10 +16,10 @@ def parse_args():
 
     parser.add_argument("--dataset",
                         type=str,
-                        default='demo')
+                        default='large')
     parser.add_argument("--mode",
                         type=str,
-                        default='cb')
+                        default='train')
     parser.add_argument("--sim_type",
                         type=str,
                         default='ips') # none, nrms, ips
@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument("--finetune_flag",
                         type=bool,
                         default=True)
-    parser.add_argument("--fliter_user", # fliter CB simulation user from training data
+    parser.add_argument("--filter_user", # fliter CB simulation user from training data
                         type=bool,
                         default=True)
                     
@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument("--k", type=str, default='all')
     
     # model training
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--num_workers", type=int, default=4)

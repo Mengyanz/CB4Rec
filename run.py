@@ -33,28 +33,40 @@ torch.cuda.set_device(device)
 def filter_sam(train_sam, valid_sam):
     selected_users = np.load("/home/v-mezhang/blob/data/large/train_valid/selected_users.npy")
     new_train_sam = []
+    new_valid_sam = []
     for sam in train_sam:
         uid = sam[3]
         if uid not in selected_users:
             new_train_sam.append(sam)
-    return new_train_sam, valid_sam
+    for sam in valid_sam:
+        uid = sam[3]
+        if uid in selected_users:
+            new_valid_sam.append(sam)
+    return new_train_sam, new_valid_sam
 
 
 def read_data(args):
+    print('loading nid2index')
     with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
+    print('loading news_info')
     with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_info.pkl'), 'rb') as f:
         news_info = pickle.load(f)
+    print('loading embedding')
     embedding_matrix = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+    print('loading news_index')
     news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
 
     if args.mode == 'train':
+        print('loading train_sam')
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/train_sam_uid.pkl'), 'rb') as f:
             train_sam = pickle.load(f)
+        print('loading valid_sam')
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_sam_uid.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
 
         if args.filter_user:
+            print('filtering')
             train_sam, valid_sam = filter_sam(train_sam, valid_sam)
 
         return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
@@ -70,7 +82,7 @@ def read_data(args):
 
 def train(args):
 
-    nid2index, news_index, embedding_matrix, train_sam, valid_sam = read_data(args)
+    nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam = read_data(args)
     train_ds = TrainDataset(args, train_sam, nid2index, news_index)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
@@ -80,11 +92,11 @@ def train(args):
     # output = summary(model, [(args.batch_size, 4, 30), (args.batch_size, 50, 30), (args.batch_size, 4) ], verbose = 0)
     # print(str(output).encode('ascii', 'ignore').decode('ascii'))
     # raise Exception()
-    # if torch.cuda.device_count() > 1:
-    #     print("Let's use", torch.cuda.device_count(), "GPUs!")
-    #     model = nn.DataParallel(model, device_ids=[0,1,2]) 
-    # else:
-    #     print('single GPU found.')
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model, device_ids=[0,1,2,3]) 
+    else:
+        print('single GPU found.')
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     best_auc = 0
@@ -100,6 +112,7 @@ def train(args):
             his_index = his_index.to(device)
             label = label.to(device)
             bz_loss, y_hat = model(candidate_news_index, his_index, label)
+            bz_loss = bz_loss.sum()
 
             loss += bz_loss.detach().cpu().numpy()
             optimizer.zero_grad()
@@ -111,6 +124,8 @@ def train(args):
                 train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                 train_loader.refresh() 
         
+        if isinstance(model, torch.nn.DataParallel):
+            model = model.module
 
         val_scores = eva(args, model, valid_sam, nid2index, news_index)  
         val_auc, val_mrr, val_ndcg, val_ndcg10, ctr = [np.mean(i) for i in list(zip(*val_scores))]
@@ -200,6 +215,7 @@ if __name__ == "__main__":
     from parameters import parse_args
     args = parse_args()
     if args.mode == 'train':
+        print('mode: train')
         train(args)
     elif args.mode == 'cb':
         cand_nidss = prepare_cand_news(test_sam, test_nid2index)

@@ -12,7 +12,7 @@ from sklearn.metrics import roc_auc_score
 import pickle
 from datetime import datetime 
 import math
-import uncertainty_toolbox as utc
+# import uncertainty_toolbox as utc
 
 import torch
 from torch.utils.data import Dataset, DataLoader
