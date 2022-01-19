@@ -54,10 +54,15 @@ class CB_sim():
         self.finetune_flag = args.finetune_flag
 
         self.num_exper = args.num_exper
-        self.n_inference = args.n_inference 
+        self.num_round = args.num_round
+        self.num_inference = args.n_inference 
         self.policy = args.policy
         self.policy_para = args.policy_para 
-        self.k = args.k
+        self.m = args.m # number of recommendations
+
+        self.cb_uids = np.load(args.cb_users)
+        self.cb_news = np.load(args.cb_news)
+        self.cb_topics = np.load(args.cb_topics)
 
     def load_simulator(self, args):
         if self.sim_type == 'nrms':
@@ -67,6 +72,7 @@ class CB_sim():
             pass
         elif self.sim_type == 'unium':      
             pass
+            # TODO: Thanh to implement 
             
 
     def enable_dropout(self):
@@ -152,10 +158,10 @@ class CB_sim():
             para = self.policy_para
         ucb_score = mean + para * std
 
-        if self.k == 'all':
+        if self.m == 'all':
             k = len(mean)
         else:
-            k = self.k
+            k = self.m
 
         recs = np.argsort(ucb_score)[-k:][::-1]
         
@@ -166,10 +172,10 @@ class CB_sim():
         rec = []
         y_score = y_score[0]
         # DEBUG: 
-        if self.k == 'all':
+        if self.m == 'all':
             k = len(y_score)
         else:
-            k = self.k
+            k = self.m
         p = np.random.rand(k)
         if self.policy_para == '1overt':
             # REVIEW: whether to use batch id?
@@ -200,67 +206,14 @@ class CB_sim():
     def sigmoid(self, x):
         return np.array([1/(1 + math.exp(-i)) for i in x])
 
-    def get_labels(self, sam, cand):
-        """
-        prepare candidate news and get labels
-        """
-        sim_labels = []
-        labels = []
-
-        # if self.sim_flag: # if use simulated labels, then return simulated y scores
-        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-        sim_user_vecs = self.get_user_vec(self.simulator, sam, sim_news_vecs, self.nid2index) 
-
-        for i in range(len(sam)):
-            poss, negs, _, uid, tsq = sam[i] 
-            
-            sim_user_vec = sim_user_vecs[i]
-            sim_news_vec = sim_news_vecs[cand[i]]
-            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-            # REVIEW: how to choose opt set
-            # assume the user would at most click half of the recommended news
-            # opt_nids = np.argsort(sim_y_score)[-max(int(self.k/2), 1):]
-            # opt_nids = np.argsort(sim_y_score)[-max(int(len(sim_y_score)/2), 1):]  
-            # opt_nids = np.argsort(sim_y_score)
-            # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-            # print(opt_nids)
-
-            sim_labels.append(sim_y_score) 
-        # else: # otherwise, use impression labels
-        for i in range(len(sam)):
-            poss, negs, _, uid, tsq = sam[i]    
-            label = [1] * len(poss) + [0] * len(negs)
-            labels.append(np.array(label))
-        return sim_labels, labels
-
-    def get_batch_labels(self, batch_sam, batch_recs):
-        """Predict from batch_sam and batch_recs by simulator
-        """
-        labels = []
-        sim_news_vecs = self.get_news_vec(self.simulator, self.news_index)
-        sim_user_vecs = self.get_user_vec(self.simulator, batch_sam, sim_news_vecs, self.nid2index) 
-
-        for i in range(len(batch_sam)):
-            poss, negs, _, _, tsq = batch_sam[i] 
-            
-            sim_user_vec = self.sim_user_vecs[i]
-            sim_news_vec = self.sim_news_vecs[batch_recs[i]]
-            sim_y_score = np.sum(np.multiply(sim_news_vec, sim_user_vec), axis=1)
-            # assume the user would at most click half of the recommended news
-            # reward = 1 if self.sigmoid(sim_y_score) > 0.5 else 0
-            # opt_nids = opt_nids[self.sigmoid(sim_y_score[opt_nids]) > 0.5]
-            # print(opt_nids)
-
-            labels.append(sim_y_score)
-        return labels
         
-    def rec(self, batch_sam, batch_cand, batch_id, exper_id):
+    def item_rec(self, rec_topic):
         """
-        Simulate recommendations
+        input: rec_topic, outpout: rec_item
         """
         if self.policy == 'epsilon_greedy':
             # current epsilon greedy only relies on uniformly random sampling, so no need to inference multiple times
-            self.n_inference = 1
+            self.num_inference = 1
             self.dropout_flag = False
         
         self.model.eval()
@@ -289,7 +242,7 @@ class CB_sim():
             # y_trues = self.get_reward(batch_sam, batch_cand)
 
             # generate scores with uncertainty (dropout during inference)
-            for _ in tqdm(range(self.n_inference)):
+            for _ in tqdm(range(self.num_inference)):
                 # TODO: speed up - only pass batch news index
                 news_vecs = self.get_news_vec(self.model, self.news_index) # batch_size * news_dim (400)
                 user_vecs = self.get_user_vec(self.model, batch_sam, news_vecs, self.nid2index)
@@ -320,8 +273,8 @@ class CB_sim():
                 raise NotImplementedError
 
             # print('len(set(rec_nids)):', len(set(rec_nids)))
-            # print('self.k: ', self.k)
-            # assert len(set(rec_nids)) == self.k
+            # print('self.m: ', self.m)
+            # assert len(set(rec_nids)) == self.m
             self.recs[exper_id].append(rec_nids) 
             
             # reward as the overlap between rec and opt set
@@ -356,69 +309,30 @@ class CB_sim():
             rec_negs = list(set(rec_nids) - set(rec_poss))
             
             self.rec_sam.append([rec_poss, rec_negs, his, uid, tsq])
-        
-    def run_exper(self, cand_nidss):
-        
-        num_sam = len(self.sorted_val_sam)
-        n_batch = math.ceil(float(num_sam)/self.eva_batch_size)
-        self.rec_sam = []
-        self.rewards = np.zeros((self.num_exper, num_sam))
-        self.opt_rewards = np.zeros((self.num_exper, num_sam))
-        self.recs = defaultdict(list)
-        self.sim_labels, self.labels = self.get_labels(self.sorted_val_sam, cand_nidss)
 
-        update_time = None
-        update_batch = 0
-      
-        # opts = self.get_opt_set(self.sorted_val_sam, cand_nidss)
-        
+    def topic_rec(self, u):
+        """Input: uid; output: recommended one topic
+        """
+        pass
+        # TODO: Mengyan to implement 
 
+    def get_simulated_rewards(self, rec_set):
+        """Input: recommendation set, outpout: rewards 
+        """
+        # TODO: Thanh to implement 
+        
+    def run_exper(self):
+        """CB simulation to cb_uids (for num_exper simulations; num_round passes over users;)
+        """
         for j in range(self.num_exper):
-            # self.cumu_reward = 0
-            print('exper: ', j)
-            
-            for i in range(n_batch):
-                upper_range = min(self.eva_batch_size * (i+1), len(self.sorted_val_sam))
-                batch_sam = self.sorted_val_sam[self.eva_batch_size * i: upper_range]
-                batch_cand = cand_nidss[self.eva_batch_size * i: upper_range]
+            for i in range(self.num_round):
+                for u in self.cb_uids:
+                    rec_items = []
+                    while len(rec_items) < self.m:
+                        rec_topic = self.topic_rec(u)
+                        rec_item = self.item_rec(rec_topic)
+                        rec_items.append(rec_item)
 
-                self.rec(batch_sam, batch_cand, i, j)
+                    rewards = self.get_simulated_reward(rec_items)
 
-                if self.finetune_flag:
-                    if update_time is None:
-                        update_time = datetime.strptime(str(batch_sam[0][-1]), self.date_format_str)
-                        print('init time: ', update_time)
-
-                    batch_time = datetime.strptime(str(batch_sam[-1][-1]), self.date_format_str)
-                    if (batch_time- update_time).total_seconds() > 3600:
-                        lower_range = self.eva_batch_size * update_batch
-                        ft_sam = self.rec_sam[lower_range: upper_range]
-                        if upper_range - lower_range > 512:
-                            print('finetune with: '  + str(lower_range) + ' ~ ' + str(upper_range))
-                            self.finetune(ft_sam=ft_sam)
-
-                            update_time = batch_time
-                            update_batch = i + 1
-                            print('update at: ', update_time)
-                        else: 
-                            print('no finetune due to insufficient samples: ', str(upper_range - lower_range))
-            update_time = None
-            update_batch = 0
-
-        self.save_results()
-
-    def save_results(self):
-        folder_name = 'rec' + str(self.k) + '_ft' + str(self.finetune_flag)[0] + '_sim' + str(self.sim_type)[0]
-        save_path = os.path.join(self.out_path, folder_name)
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
-        policy_name = self.policy + '_' + str(self.policy_para)
-        torch.save(self.model.state_dict(), os.path.join(save_path, (policy_name + f'_{name}_finetune.pkl')))
-        # with open(os.path.join(self.out_path, (policy_name + "_recs.pkl")), "wb") as f:
-        #     pickle.dump(self.recs, f)
-        # with open(os.path.join(self.out_path, (policy_name + "_opts.pkl")), "wb") as f:
-        #     pickle.dump(self.opts, f)
-        with open(os.path.join(save_path, (policy_name + "_rewards.pkl")), "wb") as f:
-            pickle.dump(self.rewards, f)
-        with open(os.path.join(save_path, (policy_name+ "_opt_rewards.pkl")), "wb") as f:
-            pickle.dump(self.opt_rewards, f)
+                    # TODO: UPDATE parameters

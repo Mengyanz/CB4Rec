@@ -13,6 +13,8 @@ def parse_args():
     parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/")
     parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/simulator.pkl")
     parser.add_argument("--out_path", type=str, default="/home/v-mezhang/blob/model/")
+    parser.add_argument("--cb_users", type=str, default="/home/v-mezhang/blob/model/large/train_valid/selected_users.npy")
+    parser.add_argument("--cb_users", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_news.npy")
 
     parser.add_argument("--dataset",
                         type=str,
@@ -39,11 +41,12 @@ def parse_args():
     parser.add_argument("--min_word_cnt", type=int, default=1)
     parser.add_argument("--max_title_len", type=int, default=30)
     parser.add_argument("--eva_batch_size", type=int, default=1024)
-    parser.add_argument("--n_inference", type=int, default=1)
-    parser.add_argument("--n_exper", type=int, default=1)
+    parser.add_argument("--num_inference", type=int, default=1)
+    parser.add_argument("--num_exper", type=int, default=1)
+    parser.add_argument("--num_round", type=int, default=10)
     parser.add_argument("--policy", type=str, default='ucb')
     parser.add_argument("--policy_para", type=list, default=[0.1])
-    parser.add_argument("--k", type=str, default='all')
+    parser.add_argument("--m", type=str, default='all')
     
     # model training
     parser.add_argument("--batch_size", type=int, default=64)
