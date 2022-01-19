@@ -14,7 +14,8 @@ def parse_args():
     parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/simulator.pkl")
     parser.add_argument("--out_path", type=str, default="/home/v-mezhang/blob/model/")
     parser.add_argument("--cb_users", type=str, default="/home/v-mezhang/blob/model/large/train_valid/selected_users.npy")
-    parser.add_argument("--cb_users", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_news.npy")
+    parser.add_argument("--cb_news", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_news.npy")
+    arser.add_argument("--cb_topics", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_topics.npy")
 
     parser.add_argument("--dataset",
                         type=str,

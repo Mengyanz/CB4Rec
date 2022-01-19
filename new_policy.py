@@ -63,6 +63,15 @@ class CB_sim():
         self.cb_uids = np.load(args.cb_users)
         self.cb_news = np.load(args.cb_news)
         self.cb_topics = np.load(args.cb_topics)
+        self.init_paras()
+
+    def init_paras(self):
+        self.alphas = {}
+        self.betas = {}
+
+        for topic in self.cb_topics:
+            self.alphas[topic] = 1
+            self.betas[topic] = 1
 
     def load_simulator(self, args):
         if self.sim_type == 'nrms':
@@ -313,8 +322,12 @@ class CB_sim():
     def topic_rec(self, u):
         """Input: uid; output: recommended one topic
         """
-        pass
-        # TODO: Mengyan to implement 
+        ss =[] 
+        for topic in self.active_topics:
+            s = np.random.beta(a= self.alpha[topic], b= self.beta[topic])
+            ss.append(s)
+        rec_topic = self.active_topics[np.argmax(ss)]
+        return rec_topic
 
     def get_simulated_rewards(self, rec_set):
         """
@@ -333,12 +346,21 @@ class CB_sim():
         for j in range(self.num_exper):
             for i in range(self.num_round):
                 for u in self.cb_uids:
+                    rec_topics = []
                     rec_items = []
+                    self.active_topics = self.cb_topics
                     while len(rec_items) < self.m:
                         rec_topic = self.topic_rec(u)
+                        rec_topics.append(rec_topic)
+                        self.active_topics.remove(rec_topic)
+
                         rec_item = self.item_rec(rec_topic)
                         rec_items.append(rec_item)
 
                     rewards = self.get_simulated_reward(rec_items)
 
-                    # TODO: UPDATE parameters
+                    for i, topic in enumerate(rec_topics):
+                        assert rewards[i] in {0,1}
+                        self.alphas[topic] += rewards[i]
+                        self.betas[topic] += 1 - rewards[i]                        
+                # TODO: update models
