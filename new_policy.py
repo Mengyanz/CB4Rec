@@ -317,7 +317,13 @@ class CB_sim():
         # TODO: Mengyan to implement 
 
     def get_simulated_rewards(self, rec_set):
-        """Input: recommendation set, outpout: rewards 
+        """
+        Input: 
+            rec_set: list
+                list of recommended news ids
+        Outpout: 
+            rewards: list
+                list of rewards of each recommended news
         """
         # TODO: Thanh to implement 
         
