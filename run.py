@@ -212,7 +212,9 @@ def prepare_cand_news(sam, nid2index):
 
 
 if __name__ == "__main__":
-    from parameters import parse_args
+    # from parameters import parse_args
+    from thanhmachine_params import parse_args
+
     args = parse_args()
     if args.mode == 'train':
         print('mode: train')
