@@ -14,7 +14,7 @@ class Simulator(object):
         """Train the internal model.
         """
 
-    def simulate(self, user_samples, news_ids): 
+    def reward(self, user_samples, news_ids): 
         """Returns a simulated reward. 
 
         Args:
