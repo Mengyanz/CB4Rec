@@ -29,6 +29,20 @@ def read_data(args):
     """Preprocessed data. 
     Args: 
         args: = parse_args(), where `parse_args()` from `configs`
+
+    Return:
+        nid2index: dict, maps each news id to a unique integer. 
+        train_sam: list of (poss, negs, his, uid, tsp)
+                poss: a list of strs, postive news ids 
+                negs: a list of strs, negative news ids 
+                his: a list of strings, history of browed news ids 
+                uid: str, a user id 
+                tsp: str, timestamp 
+        val_sam: similar to train_sam
+
+
+    @TODO: MIND data split into: train1, train2, and val. A simulator is trained on train1+train2 and is selected via val. 
+    CB learner is pretrained only on train1. 
     """
     print('loading nid2index')
     with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
@@ -114,11 +128,17 @@ class NewsDataset(Dataset):
         return self.news_index[idx]
 
 class UserDataset(Dataset):
-    def __init__(self, 
-                 args,
-                 samples,
-                 news_vecs,
-                 nid2index):
+    def __init__(self, args,samples,news_vecs,nid2index):
+        """
+        Args:
+            samples: list of (poss, negs, his, uid, tsp)
+                poss: a list of strs, postive news ids 
+                negs: a list of strs, negative news ids 
+                his: a list of strings, history of browed news ids 
+                uid: str, a user id 
+                tsp: str, timestamp 
+        """
+                 
         self.samples = samples
         self.news_vecs = news_vecs
         self.nid2index = nid2index
