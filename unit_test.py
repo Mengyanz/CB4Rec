@@ -21,9 +21,7 @@ def test_NRMS_Sim():
     print(nrms.model)
     print(nrms.news_index.shape)
 
-    news_vec = nrms.get_news_vec(1)
-    print(news_vec)
-    print(news_vec.shape)
+    print(nrms.news_vecs.shape)
 
 
 if __name__ == '__main__': 

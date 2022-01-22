@@ -10,7 +10,7 @@ contextual bandits for user interest exploration
   - CB Predictor: [NRMS](https://aclanthology.org/D19-1671/)
 
 
-## API 
+## API Ideas
 
 We have offline data and we want to build a CB4Rec out of the offline data such that it works in a live rec as well. We also use the offline data to simulate a live rec system. Thus, the internal representation of the learner should be built on the training data while the simulator is built on the entire offline data independent of the internal representation of the learner. 
 
@@ -31,15 +31,42 @@ We have offline data and we want to build a CB4Rec out of the offline data such 
   How item and user representation in online CB should look like? 
 
 
-## API Re-Structure 
+## API 
 
 * `core`: Define abstract API (classes)  
-  * `contextual_bandit.py`: Abstract class for CB 
-  * `runner.py`: Abstract class for CB-simulator interactions 
+  * `contextual_bandit.py`: Abstract CB class and interaction model  
+    * `ContextualBanditLearner`: abstract class for CB 
+    * `run_contextual_bandit`: interaction loop 
   * `simulator.py`: Abstract class for simulator 
-* `algorithms`: Define actual implementations of neural network models, CB algorithms and simulators. 
+* `algorithms`: Define actual implementations of neural network models, CB algorithms and simulators.  
+  * `SingleStageNeuralUCB`
+  * `TwoStageNeuralUCB`
+  * ... 
+  * `nrms_model`: NRMS model 
+  * `nrms_sim`: NRMS simulator
 * `utils`: Define all utility functions (e.g. data loading, plotting, ...)  
 * `configs`: Contains experiment hyperparameter configurations. 
 * `unit_test.py`: All unit tests are written (and run) here. 
-* `run_experiment.py`: Run experiments here 
+* `run_experiment.py`: Run experiments here   
 
+## Progress 
+* Basic API for all modules that are interacting and working 
+* @TODO: 
+  * Implement `update` for CBlearner and simulator 
+  * Add complicated CBlearners and simulators to the API
+
+## Guideline for writing classes/functions 
+* Try to explain the function and define their args and returns. Eg. 
+```
+def f(arg1, arg2, arg3, flag):
+    """Compute element-wise sum. """
+
+    Args:
+      arg1: (None, d) tensor, input 1 
+      arg2: (None, d) tensor, input 2
+      arg2: (None, d) tensor, input 3
+      flag: bool, a flag to trigger something 
+
+    Return:
+      out: (None, d) 
+```

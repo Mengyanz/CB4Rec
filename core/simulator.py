@@ -14,14 +14,14 @@ class Simulator(object):
         """Train the internal model.
         """
 
-    def simulate(self, news_id, history_id): 
+    def simulate(self, user_samples, news_ids): 
         """Returns a simulated reward. 
 
         Args:
-            news_id: int, news index
-            history_id: int, history index representing a user
+            news_id: a list of n int, news ids. 
+            user_samples: a list of m user samples
 
         Return: 
-            0 or 1 
+            rewards: (n,m) of 0 or 1 
         """
         pass 
