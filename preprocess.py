@@ -52,7 +52,7 @@ def read_news(args, path):
         word_cnt.update(title)
 
 def news_preprocess(args):
-    out_path = os.path.join(args.root_data_dir, 'utils')
+    out_path = os.path.join(args.root_data_dir, 'large/utils')
     if not os.path.exists(out_path):
         os.makedirs(out_path)
     read_news(args, os.path.join(args.root_data_dir, "large/train/news.tsv"))
@@ -125,7 +125,7 @@ def read_imprs(args, path, mode):
         pickle.dump(samples, f)
     with open(os.path.join(out_path, (name + "_user_indices.pkl")), "wb") as f:
         pickle.dump(user_indices, f)
-    with open(out_path / ("sorted_"+ name + "_sam_uid.pkl"), "wb") as f:
+    with open(os.path.join(out_path, ("sorted_"+ name + "_sam_uid.pkl")), "wb") as f:
         pickle.dump(sorted_samples, f)
 
 def behavior_preprocess(args):
@@ -136,7 +136,9 @@ def behavior_preprocess(args):
 
 
 if __name__ == "__main__":
-    from parameters import parse_args
+    # from parameters import parse_args
+    from thanhmachine_params import parse_args
+
     args = parse_args()
     news_preprocess(args)
-    # behavior_preprocess(args)
+    behavior_preprocess(args)
