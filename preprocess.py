@@ -135,10 +135,41 @@ def behavior_preprocess(args):
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "test/behaviors.tsv"), 2)
 
 
+def generate_cb_users(args):
+    """
+    randomly sample users from valid data for contextual bandits simulation. 
+    generate cb_users: list of user samples ([pos, neg_imp, his, uid, tsp])
+    save to file cb_users.npy
+    """
+    data_path = "/home/v-mezhang/blob/data/large/utils/valid_sam_uid.pkl"
+    valid_user = {}
+
+    with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_sam_uid.pkl'), 'rb') as f:
+        valid_sam = pickle.load(f)
+        for sam in valid_sam:
+            uid = sam[3]
+            # record the first time a user appears 
+            # we will only use uid, his in cb simulation anyway
+            if uid not in valid_user:
+                valid_user[uid] = sam 
+                
+    uids = np.random.choice(list(valid_user.keys()), size = args.num_users, replace = False)
+    cb_users = []
+    for uid in uids:
+        cb_users.append(sam)
+    # print(cb_users)
+    np.save("/home/v-mezhang/blob/data/large/cb_users", cb_users)
+        
+
+def generate_candidate_news(args):
+    pass
+
+
 if __name__ == "__main__":
-    # from parameters import parse_args
-    from thanhmachine_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from thanh_params import parse_args
 
     args = parse_args()
-    news_preprocess(args)
-    behavior_preprocess(args)
+    # news_preprocess(args)
+    # behavior_preprocess(args)
+    generate_cb_users(args)

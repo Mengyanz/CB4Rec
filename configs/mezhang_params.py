@@ -10,12 +10,12 @@ def parse_args():
         default=
         "/home/v-mezhang/blob/data/",
     )
-    parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/")
-    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/simulator.pkl")
+    parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/large/large.pkl")
+    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/large/large.pkl")
     parser.add_argument("--out_path", type=str, default="/home/v-mezhang/blob/model/")
     parser.add_argument("--cb_users", type=str, default="/home/v-mezhang/blob/model/large/train_valid/selected_users.npy")
     parser.add_argument("--cb_news", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_news.npy")
-    arser.add_argument("--cb_topics", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_topics.npy")
+    parser.add_argument("--cb_topics", type=str, default="/home/v-mezhang/blob/model/large/train_valid/cand_topics.npy")
 
     parser.add_argument("--dataset",
                         type=str,
@@ -34,7 +34,7 @@ def parse_args():
                         default=True)
     parser.add_argument("--filter_user", # fliter CB simulation user from training data
                         type=bool,
-                        default=True)
+                        default=False)
                     
 
     parser.add_argument("--npratio", type=int, default=4)
@@ -42,9 +42,13 @@ def parse_args():
     parser.add_argument("--min_word_cnt", type=int, default=1)
     parser.add_argument("--max_title_len", type=int, default=30)
     parser.add_argument("--eva_batch_size", type=int, default=1024)
+
     parser.add_argument("--num_inference", type=int, default=1)
     parser.add_argument("--num_exper", type=int, default=1)
-    parser.add_argument("--num_round", type=int, default=10)
+    parser.add_argument("--num_round", type=int, default=1)
+    parser.add_argument("--num_users", type=int, default=1000) # cb selected users
+
+
     parser.add_argument("--policy", type=str, default='ucb')
     parser.add_argument("--policy_para", type=list, default=[0.1])
     parser.add_argument("--m", type=str, default='all')
