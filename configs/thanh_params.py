@@ -17,24 +17,19 @@ def parse_args():
     # PLM: epoch-2.pt 
     parser.add_argument("--out_path", type=str, default="/home/thanhnt/projects/CB4Rec/model")
 
-    parser.add_argument("--dataset",
-                        type=str,
-                        default='large')
-    parser.add_argument("--mode",
-                        type=str,
-                        default='train')
-    parser.add_argument("--sim_type",
-                        type=str,
-                        default='ips') # none, nrms, ips
-    parser.add_argument("--dropout_flag",
-                        type=bool,
-                        default=True)
-    parser.add_argument("--finetune_flag",
-                        type=bool,
-                        default=True)
+    parser.add_argument("--dataset",type=str, default='large')
+    parser.add_argument("--mode", type=str, default='train')
+    parser.add_argument("--sim_type", type=str, default='ips') # none, nrms, ips
+    parser.add_argument("--dropout_flag", type=bool, default=True)
+    parser.add_argument("--finetune_flag", type=bool, default=True)
     parser.add_argument("--filter_user", # fliter CB simulation user from training data
                         type=bool,
                         default=False)
+
+    # Preprocessing 
+    parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
+    parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
+
                     
 
     parser.add_argument("--npratio", type=int, default=4)
