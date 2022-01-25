@@ -149,25 +149,24 @@ def behavior_preprocess(args):
     # read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
 
     print('Preprocessing for Simulator ...') 
-    # if os.path.exists(tr_ctx_fname):
-    #     print('Loading from {}'.format(tr_ctx_fname))
-    #     with open(tr_ctx_fname, 'rb') as f:
-    #         tr_samples = pickle.load(f)
-    # else:
-    train_user_set, tr_samples, tr_sorted_samples, tr_user_indices = \
+    if os.path.exists(tr_ctx_fname):
+        print('{} is already created!'.format(tr_ctx_fname))
+    else:
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
 
-    # if os.path.exists(val_ctx_fname):
-    #     print('Loading from {}'.format(val_ctx_fname))
-    #     with open(val_ctx_fname, 'rb') as f:
-    #         val_samples = pickle.load(f)
-    # else:
-    val_user_set, val_samples, val_sorted_samples, val_user_indices = \
+    if os.path.exists(val_ctx_fname):
+        print('{} is already created!'.format(val_ctx_fname))
+    else:
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
+
+
+    print('Preprocessing for CB learner ...') 
+    train_user_set, _, tr_rep_sorted_samples, _ = \
+        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 1) 
 
     print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
 
-    print('Preprocessing for CB learner ...') 
+
     for trial in range(args.n_trials): 
         print('trial = {}'.format(trial))
         try:
@@ -186,17 +185,19 @@ def behavior_preprocess(args):
         print('Saving the behaviour data of the selected users for the first split of the train data. ')
         cb_train_samples = [] 
         cb_valid_samples = []
-        split_threshold = int(len(tr_sorted_samples) * args.cb_train_ratio) 
-        print('Split threshold: {}/{}'.format(split_threshold,len(tr_sorted_samples)))
+        split_threshold = int(len(tr_rep_sorted_samples) * args.cb_train_ratio) 
+        print('Split threshold: {}/{}'.format(split_threshold,len(tr_rep_sorted_samples)))
         
         selected_train_samples = [] 
-        for i, sample in tqdm(enumerate(tr_sorted_samples)):
+        for i, sample in tqdm(enumerate(tr_rep_sorted_samples)):
             uid = sample[3] 
             if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
                 cb_valid_samples.append(sample) 
 
             if uid not in random_user_subset and i <= split_threshold:
-                cb_train_samples.append(sample)
+                pos_imp, neg_imp, his, uid, tsp = sample
+                for pos in pos_imp:
+                    cb_train_samples.append([pos, neg_imp, his, uid, tsp])
 
         # Shuffle the list 
         random.shuffle(cb_train_samples)	
