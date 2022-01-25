@@ -19,11 +19,12 @@ class ContextualBanditLearner(object):
         """
         pass 
 
-    def update(self, contexts, h_actions, h_rewards, mode = 'learner'):
+    def update(self, contexts, h_topics, h_actions, h_rewards, mode = 'learner'):
         """Update its internal model. 
 
         Args:
             context: list of user samples 
+            h_topics: (num_context, rec_batch_size,) 
             h_actions: (num_context, rec_batch_size,) 
             h_rewards: (num_context, rec_batch_size,) 
             mode: one of {'learner', 'ts', 'user_emb'}
@@ -75,21 +76,36 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             # iterate over selected users
             print('iteration', i)
             context = contexts[i] # user_sample
-            action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, rec_batch_size)
-            print('Recommended actions: {}'.format(action_batches))
+            
+            action_batches = []
+            topic_batches = []
+            for a in algos:
+                actions, topics = a.sample_actions([context])
+
+                action_batches.append(actions.ravel()) 
+                topic_batches.append(topics) 
+
+            # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, rec_batch_size)
+            print('Recommended topics: ')
+            for topics in topic_batches:
+                print(topics.tolist())
+
+            print('Recommended actions: ')
+            for actions in action_batches:
+                print(actions.tolist())
 
             reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
             print('Rewards: {}'.format(reward_batches))
             # TODO: actions shoulds be recommended topics
             for j, a in enumerate(algos):
-                a.update(contexts, action_batches[j], reward_batches[j], mode = 'ts')
+                a.update(context, topic_batches[j], action_batches[j], reward_batches[j], mode = 'ts')
 
             h_actions = np.concatenate((h_actions, np.array(action_batches)[:,:,None]), axis=2)
             h_rewards = np.concatenate((h_rewards, np.array(reward_batches)[:,:,None]), axis=2)
                 
 
             for j, a in enumerate(algos):
-                a.update(contexts, h_actions[j], h_rewards[j], mode = 'learner')
+                a.update(context, topic_batches[j], h_actions[j], h_rewards[j], mode = 'learner')
 
         h_actions_all.append(h_actions)
         h_rewards_all.append(h_rewards)

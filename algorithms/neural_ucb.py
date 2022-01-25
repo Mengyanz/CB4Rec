@@ -99,11 +99,12 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
                     tr_samples.append([pos, negs, his, uid, tsp])
         return tr_samples
 
-    def update(self, contexts, h_actions, h_rewards):
+    def update(self, contexts, h_topics, h_actions, h_rewards):
         """Update its internal model. 
 
         Args:
             contexts: list of user samples
+            h_topics: dummy 
             h_actions: (num_context, rec_batch_size,) 
             h_rewards: (num_context, rec_batch_size,) 
         """
@@ -254,17 +255,18 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         sorted_ids = np.argsort(ucb, axis=0)[-1,:] 
         return cb_indexs[sorted_ids]
 
-    def update(self, contexts, h_actions, h_rewards, mode = 'learner'):
+    def update(self, contexts, h_topics, h_actions, h_rewards, mode = 'learner'):
         """Update its internal model. 
 
         Args:
             context: list of user samples 
             h_actions: (num_context, rec_batch_size,) 
+            h_topics: (num_context, rec_batch_size)
             h_rewards: (num_context, rec_batch_size,) 
             mode: one of {'learner', 'ts', 'user_emb'}
         """
         if mode == 'ts':
-            for i, topic in enumerate(h_actions):  # h_actions are topics
+            for i, topic in enumerate(h_topics):  # h_actions are topics
                 assert h_rewards[i] in {0,1}
                 self.alphas[topic] += h_rewards[i]
                 self.betas[topic] += 1 - h_rewards[i] 
@@ -284,7 +286,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             rec_items.append(rec_item)
         
         # return [rec_items, rec_topics]
-        return np.array(rec_items)
+        return np.array(rec_items), np.array(rec_topics)
 
         
     
