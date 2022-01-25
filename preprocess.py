@@ -161,8 +161,39 @@ def generate_cb_users(args):
     np.save("/home/v-mezhang/blob/data/large/cb_users", cb_users)
         
 
-def generate_candidate_news(args):
-    pass
+def generate_cb_news(args):
+    """
+    Generate candidate news who subcat having #news>= 200 for cb simulation.
+    generate cb_news: dict, key: subvert; value: list of news samples
+    save to file cb_newss.npy
+    """
+    data_path = "/home/v-mezhang/blob/data/large/train_valid/news.tsv"
+    cat_count = {}
+    subcat_count = {}
+    news_dict = {}
+
+    for l in tqdm(open(data_path, "r", encoding='utf-8')):
+        nid, vert, subvert, _, _, _, _, _ = l.strip("\n").split("\t")
+        if nid not in news_dict:
+            news_dict[nid] = l
+            if vert not in cat_count:
+                cat_count[vert] = 1
+            else:
+                cat_count[vert] += 1
+            if subvert not in subcat_count:
+                subcat_count[subvert] = 1
+            else:
+                subcat_count[subvert] += 1
+
+    cb_news = defaultdict(list)
+    for nid, l in news_dict.items():
+        subvert = l.strip("\n").split("\t")[2]
+        if subcat_count[subvert] >= 200:
+            cb_news[subvert].append(l)
+            
+    # np.save("/home/v-mezhang/blob/data/large/cb_news", cb_news)
+    with open("/home/v-mezhang/blob/data/large/cb_news.pkl", "wb") as f:
+        pickle.dump(cb_news, f)
 
 
 if __name__ == "__main__":
@@ -172,4 +203,5 @@ if __name__ == "__main__":
     args = parse_args()
     # news_preprocess(args)
     # behavior_preprocess(args)
-    generate_cb_users(args)
+    # generate_cb_users(args)
+    generate_cb_news(args)

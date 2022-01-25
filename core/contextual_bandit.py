@@ -18,13 +18,14 @@ class ContextualBanditLearner(object):
         """
         pass 
 
-    def update(self, contexts, h_actions, h_rewards):
+    def update(self, contexts, h_actions, h_rewards, mode = 'learner'):
         """Update its internal model. 
 
         Args:
             context: list of user samples 
             h_actions: (num_context, rec_batch_size,) 
             h_rewards: (num_context, rec_batch_size,) 
+            mode: one of {'learner', 'ts', 'user_emb'}
         """
         print('Abstract update for the internal model of the bandit!')
         pass
@@ -67,12 +68,17 @@ def run_contextual_bandit(args, contexts, simulator, rec_batch_size, algos):
 
                 reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
                 print(reward_batches)
+                # TODO: actions shoulds be recommended topics
+                for j, a in enumerate(algos):
+                    a.update(contexts, action_batches[j], reward_batches[j], mode = 'ts')
 
                 h_actions = np.concatenate((h_actions, np.array(action_batches)[:,:,None]), axis=2)
                 h_rewards = np.concatenate((h_rewards, np.array(reward_batches)[:,:,None]), axis=2)
+                
+
 
             for j, a in enumerate(algos):
-                a.update(contexts, h_actions[j], h_rewards[j])
+                a.update(contexts, h_actions[j], h_rewards[j], mode = 'learner')
 
     # TODO: records all results for different exper and round
     return h_actions, h_rewards

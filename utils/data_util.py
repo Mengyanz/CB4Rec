@@ -25,7 +25,7 @@ from torch import nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-def read_data(args):
+def read_data(args, mode = 'train'):
     """Preprocessed data. 
     Args: 
         args: = parse_args(), where `parse_args()` from `configs`
@@ -55,7 +55,7 @@ def read_data(args):
     print('loading news_index')
     news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
 
-    if args.mode == 'train':
+    if mode == 'train':
         print('loading train_sam')
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/train_sam_uid.pkl'), 'rb') as f:
             train_sam = pickle.load(f)
@@ -68,15 +68,20 @@ def read_data(args):
             train_sam, valid_sam = filter_sam(train_sam, valid_sam)
 
         return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
-    elif args.mode == 'test':
+    elif mode == 'test':
         pass
-    elif args.mode == 'cb':
-        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_train_sam_uid.pkl'), 'rb') as f:
-            sorted_train_sam = pickle.load(f)
-        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_valid_sam_uid.pkl'), 'rb') as f:
-            sorted_valid_sam = pickle.load(f)
+    elif mode == 'cb':
+        # with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_train_sam_uid.pkl'), 'rb') as f:
+        #     sorted_train_sam = pickle.load(f)
+        # with open(os.path.join(args.root_data_dir, args.dataset, 'utils/sorted_valid_sam_uid.pkl'), 'rb') as f:
+        #     sorted_valid_sam = pickle.load(f)
 
-        return nid2index, news_info, news_index, embedding_matrix, sorted_train_sam, sorted_valid_sam
+        cb_users = np.load(os.path.join(args.root_data_dir, args.dataset,  'cb_users.npy'),  allow_pickle=True)
+        # cb_news = np.load(os.path.join(args.root_data_dir, args.dataset,  'cb_news.npy'), allow_pickle=True)[0]
+        with open(os.path.join(args.root_data_dir, args.dataset,  'cb_news.pkl'), 'rb') as f:
+            cb_news = pickle.load(f)
+
+        return nid2index, news_info, news_index, embedding_matrix, cb_users, cb_news
 
 
 def newsample(nnn, ratio):
