@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news
 
 class SingleStageNeuralUCB(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -27,8 +27,9 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         self.device = device 
 
         # preprocessed data 
-        self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
-        # self.news_index: (None, 30) - a set of integers. 
+        # self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
+        self.nid2index, embedding_matrix, self.news_index = load_word2vec(args)
+        self.cb_news = load_cb_topic_news(args)
 
         # model 
         self.model = NRMS_Model(embedding_matrix).to(self.device)
@@ -225,7 +226,6 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             
         return news_vecs, cb_vecs, np.array(cb_indexs)
 
-
     def topic_rec(self):
         """    
         Return
@@ -284,7 +284,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             rec_items.append(rec_item)
         
         # return [rec_items, rec_topics]
-        return rec_items
+        return np.array(rec_items)
 
         
     

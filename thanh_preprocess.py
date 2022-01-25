@@ -227,10 +227,52 @@ def generate_random_ids_over_runs( num_trials = 10):
             np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(sim_id)), indices)
 
 
+def generate_cb_news(args):
+    """
+    Generate candidate news who subcat having #news>= 200 (@Thanh: I removed it here) for cb simulation.
+    generate cb_news: dict, key: subvert; value: list of news samples
+    save to file cb_news.pkl
+    """
+    # data_path = "/home/v-mezhang/blob/data/large/train_valid/news.tsv"
+    cat_count = {}
+    subcat_count = {}
+    news_dict = {}
+
+    train_news_path = os.path.join(args.root_data_dir, "large/train/news.tsv") 
+    valid_news_path = os.path.join(args.root_data_dir, "large/valid/news.tsv")
+    news_paths = [train_news_path, valid_news_path]
+
+    for data_path in news_paths:
+        for l in tqdm(open(data_path, "r", encoding='utf-8')):
+            nid, vert, subvert, _, _, _, _, _ = l.strip("\n").split("\t")
+            if nid not in news_dict:
+                news_dict[nid] = l
+                if vert not in cat_count:
+                    cat_count[vert] = 1
+                else:
+                    cat_count[vert] += 1
+                if subvert not in subcat_count:
+                    subcat_count[subvert] = 1
+                else:
+                    subcat_count[subvert] += 1
+
+    cb_news = defaultdict(list)
+    for nid, l in news_dict.items():
+        subvert = l.strip("\n").split("\t")[2]
+        # if subcat_count[subvert] >= 200:
+        cb_news[subvert].append(l)
+            
+    # np.save("/home/v-mezhang/blob/data/large/cb_news", cb_news)
+    save_path = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+    with open(save_path, "wb") as f:
+        pickle.dump(cb_news, f)
+
+
 if __name__ == "__main__":
     # from parameters import parse_args
     from configs.thanh_params import parse_args
 
     args = parse_args()
-    news_preprocess(args)
-    behavior_preprocess(args)
+    # news_preprocess(args)
+    generate_cb_news(args)
+    # behavior_preprocess(args)

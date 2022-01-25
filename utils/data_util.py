@@ -57,10 +57,10 @@ def read_data(args, mode = 'train'):
 
     if mode == 'train':
         print('loading train_sam')
-        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/train_sam_uid.pkl'), 'rb') as f:
+        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/train_contexts.pkl'), 'rb') as f:
             train_sam = pickle.load(f)
         print('loading valid_sam')
-        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_sam_uid.pkl'), 'rb') as f:
+        with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_contexts.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
 
         if args.filter_user:
@@ -83,6 +83,58 @@ def read_data(args, mode = 'train'):
 
         return nid2index, news_info, news_index, embedding_matrix, cb_users, cb_news
 
+def load_word2vec(args): 
+    """Load word2vec and nid2index
+    """
+    print('loading nid2index')
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+        nid2index = pickle.load(f)
+
+    # print('loading news_info')
+    # with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_info.pkl'), 'rb') as f:
+    #     news_info = pickle.load(f)
+
+    print('loading word2vec')
+    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+
+    print('loading news_index')
+    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
+
+    return nid2index, word2vec, news_index
+
+
+def load_sim_data(args):
+    """Load data for training and evaluating a simulator. """
+
+    print('loading train_contexts')
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'train_contexts.pkl'), 'rb') as f:
+        train_contexts = pickle.load(f)     
+
+    print('loading valid_contexts')
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'valid_contexts.pkl'), 'rb') as f:
+        valid_contexts = pickle.load(f)   
+    
+    return train_contexts, valid_contexts
+
+def load_cb_train_data(args, trial=0):
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', \
+        'cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl'.format(args.num_selected_users, args.cb_train_ratio, trial)), 'rb') as f:
+        cb_train_contexts = pickle.load(f)  
+
+    return cb_train_contexts
+
+def load_cb_valid_data(args, trial=0):
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', \
+        'cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl'.format(args.num_selected_users, args.cb_train_ratio, trial)), 'rb') as f:
+        cb_valid_contexts = pickle.load(f)  
+
+    return cb_valid_contexts
+
+def load_cb_topic_news(args):
+    fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+    with open(fname, 'rb') as f: 
+        cb_news = pickle.load(f)
+    return cb_news 
 
 def newsample(nnn, ratio):
     if ratio > len(nnn):
