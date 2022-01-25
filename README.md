@@ -29,11 +29,11 @@ contextual bandits for user interest exploration
 * `unit_test.py`: All unit tests are written (and run) here. 
 * `run_experiment.py`: Run experiments here   
 * `thanh_preprocess.py`: word2vec using glove6B and split data for training simulators and CB learners. Simulators are trained on the MIND train data and are selected on the MIND valid data. For CB simulation, we do as follows: 
-    * In each trial out of `args.n_trials` (i.e. the number of experiments), we randomly select `args.num_selected_users` from the MIND val set. The MIND train set with all the behaviour data of those `args.num_selected_users` removed is used to pre-train the internal model of a CB learner. 
-    * Then, at each iteration, we randomly sample a user from the set of `args.num_selected_users` users and obtain the user's context at the iteration. A CB learner observes the user's context and produces recommendations. 
-    * Note that in each trial, we randomly generate a different set of `args.num_selected_users` users. Thus, we need to retrain the intenral model of the CB learner in each trial. 
+    * In each trial out of `args.n_trials` (i.e. the number of experiments), we randomly select `args.num_selected_users` from the MIND train set. The first portion of the MIND train set with all the behaviour data of those `args.num_selected_users` removed is used to pre-train the internal model of a CB learner. The first portion of the MIND train set is controlled by `args.cb_train_ratio`
+    * Then, at each iteration, we randomly sample a user from the set of `args.num_selected_users` users and obtain the user's context from the other portion of the MIND train set at the iteration. A CB learner observes the user's context and produces recommendations. 
+    * Note that in each trial, we randomly generate a different set of `args.num_selected_users` users. Thus, we need to retrain the internal model of the CB learner in each trial. 
 
-    * With the MIND data statistics as below, we should set `args.num_selected_users` to be large enough (I'm thinking about 10k or even 100k) to represent the case that there are a large number of novel users during CB testing. Note that as we removed the behavior data of the selected valid users from the train data, we do not need to split the train data into smaller split. 
+    * With the MIND data statistics as below: 
 
 |             | train       | valid   | intersection | 
 | ----------- | ----------- |---------|--------------|

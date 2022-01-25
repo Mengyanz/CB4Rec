@@ -2,6 +2,7 @@
 from collections import defaultdict,Counter
 from tqdm import tqdm
 import numpy as np
+import random 
 import re
 import os
 import pickle
@@ -153,7 +154,7 @@ def behavior_preprocess(args):
     #     with open(tr_ctx_fname, 'rb') as f:
     #         tr_samples = pickle.load(f)
     # else:
-    tr_user_set, tr_samples, tr_sorted_samples, tr_user_indices = \
+    train_user_set, tr_samples, tr_sorted_samples, tr_user_indices = \
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
 
     # if os.path.exists(val_ctx_fname):
@@ -164,7 +165,7 @@ def behavior_preprocess(args):
     val_user_set, val_samples, val_sorted_samples, val_user_indices = \
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
 
-    print('Number of val users: {} (should be 255,990!)'.format(len(val_user_set)))
+    print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
 
     print('Preprocessing for CB learner ...') 
     for trial in range(args.n_trials): 
@@ -178,40 +179,38 @@ def behavior_preprocess(args):
             random_ids = np.load('./meta_data/indices_{}.npy'.format(trial))
             # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
 
-        print('Randomly select {} users from val set'.format(args.num_selected_users)) 
-        random_val_user_subset_ids = random_ids[:args.num_selected_users]
-        random_user_subset = [val_user_set[i] for i in random_val_user_subset_ids]
+        print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
+        random_train_user_subset_ids = random_ids[:args.num_selected_users]
+        random_user_subset = [train_user_set[i] for i in random_train_user_subset_ids]
 
-        print('Saving the behaviour data of the selected users.')
-        selected_val_samples = [] 
-        for sample in tqdm(val_samples):
-            uid = sample[3] 
-            if uid in random_user_subset: 
-                selected_val_samples.append(sample) 
-        sorted_selected_val_samples = [i for i in sorted(selected_val_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+        print('Saving the behaviour data of the selected users for the first split of the train data. ')
+        cb_train_samples = [] 
+        cb_valid_samples = []
+        split_threshold = int(len(tr_sorted_samples) * args.cb_train_ratio) 
+        print('Split threshold: {}/{}'.format(split_threshold,len(tr_sorted_samples)))
         
-        with open(os.path.join(out_path, "valid_contexts_nuser={}_trial={}.pkl".format(args.num_selected_users, trial)), "wb") as f:
-            pickle.dump(selected_val_samples, f)
-        with open(os.path.join(out_path, "sorted_valid_contexts_nuser={}_trial={}.pkl".format(args.num_selected_users, trial)), "wb") as f:
-            pickle.dump(sorted_selected_val_samples, f)
-
-        print('Removing the selected users from the train set.')
-        filtered_tr_samples = [] 
-        for sample in tqdm(tr_samples): 
+        selected_train_samples = [] 
+        for i, sample in tqdm(enumerate(tr_sorted_samples)):
             uid = sample[3] 
-            if uid not in random_user_subset: 
-                filtered_tr_samples.append(sample) 
+            if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
+                cb_valid_samples.append(sample) 
 
-        sorted_filtered_tr_samples = [i for i in sorted(filtered_tr_samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+            if uid not in random_user_subset and i <= split_threshold:
+                cb_train_samples.append(sample)
+
+        # Shuffle the list 
+        random.shuffle(cb_train_samples)	
+        random.shuffle(cb_valid_samples)	
         
-        with open(os.path.join(out_path, "train_contexts_nuserexcluded={}_trial={}.pkl".format(args.num_selected_users, trial)), "wb") as f:
-            pickle.dump(filtered_tr_samples, f)
-        with open(os.path.join(out_path, "sorted_train_contexts_nuserexcluded={}_trial={}.pkl".format(args.num_selected_users, trial)), "wb") as f:
-            pickle.dump(sorted_filtered_tr_samples, f)
+        with open(os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial)), "wb") as f:
+            pickle.dump(cb_train_samples, f)
+        with open(os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial)), "wb") as f:
+            pickle.dump(cb_valid_samples, f)
 
 
 def generate_random_ids_over_runs( num_trials = 10):
-    n_val_users = 255990
+    # n_val_users = 255990
+    n_train_users = 711222
     np.random.seed(2022)
     meta_data_path = './meta_data'
     print('WARNING: This is to generate meta data for dataset generation, and should only be performed once.' 
@@ -223,7 +222,7 @@ def generate_random_ids_over_runs( num_trials = 10):
 
         for sim_id in range(num_trials):
             np.random.seed(sim_id)
-            indices = np.random.permutation(n_val_users)
+            indices = np.random.permutation(n_train_users)
             np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(sim_id)), indices)
 
 
