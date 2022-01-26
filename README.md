@@ -10,26 +10,6 @@ contextual bandits for user interest exploration
   - CB Predictor: [NRMS](https://aclanthology.org/D19-1671/)
 
 
-## API Ideas
-
-We have offline data and we want to build a CB4Rec out of the offline data such that it works in a live rec as well. We also use the offline data to simulate a live rec system. Thus, the internal representation of the learner should be built on the training data while the simulator is built on the entire offline data independent of the internal representation of the learner. 
-
-* stream_user_encoder, stream_news_encoder: get updated after iteration t (or slower)
-* simulator (simulated environment): takes as input user_id and a list of items, outputs a simulated reward: {0,1}  
-
-  * a pre-trained model with a global user encoder and news encoder 
-
-* learner: 
-
-  * sample topic 
-  * sample items (sequentially or batched, the top most likely items to a user) @TODO: How to retrieve K most relevant items out of 1 million in practice, without computing the score for each of the 1 mil items 
-  * observe (simulated) rewards 
-  * update its internal model (topic model, streaming user encoder, streaming news encoder)  
-
-
-
-  How item and user representation in online CB should look like? 
-
 
 ## API 
 
@@ -48,12 +28,17 @@ We have offline data and we want to build a CB4Rec out of the offline data such 
 * `configs`: Contains experiment hyperparameter configurations. 
 * `unit_test.py`: All unit tests are written (and run) here. 
 * `run_experiment.py`: Run experiments here   
+* `thanh_preprocess.py`: word2vec using glove6B and split data for training simulators and CB learners. Simulators are trained on the MIND train data and are selected on the MIND valid data. For CB simulation, we do as follows: 
+    * In each trial out of `args.n_trials` (i.e. the number of experiments), we randomly select `args.num_selected_users` from the MIND train set. The first portion of the MIND train set with all the behaviour data of those `args.num_selected_users` removed is used to pre-train the internal model of a CB learner. The first portion of the MIND train set is controlled by `args.cb_train_ratio`
+    * Then, at each iteration, we randomly sample a user from the set of `args.num_selected_users` users and obtain the user's context from the other portion of the MIND train set at the iteration. A CB learner observes the user's context and produces recommendations. 
+    * Note that in each trial, we randomly generate a different set of `args.num_selected_users` users. Thus, we need to retrain the internal model of the CB learner in each trial. 
 
-## Progress 
-* Basic API for all modules that are interacting and working 
-* @TODO: 
-  * Implement `update` for CBlearner and simulator 
-  * Add complicated CBlearners and simulators to the API
+    * With the MIND data statistics as below: 
+
+|             | train       | valid   | intersection | 
+| ----------- | ----------- |---------|--------------|
+| # of users  | 711,222     |  255,990|216,778       |
+| # of samples| 2,232,748   |  376,471|N/A           |
 
 ## Guideline for writing classes/functions 
 * Try to explain the function and define their args and returns. Eg. 

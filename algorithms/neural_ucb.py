@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news
 
 class SingleStageNeuralUCB(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -27,8 +27,9 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         self.device = device 
 
         # preprocessed data 
-        self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
-        # self.news_index: (None, 30) - a set of integers. 
+        # self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
+        self.nid2index, embedding_matrix, self.news_index = load_word2vec(args)
+        self.cb_news = load_cb_topic_news(args)
 
         # model 
         self.model = NRMS_Model(embedding_matrix).to(self.device)
@@ -98,11 +99,12 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
                     tr_samples.append([pos, negs, his, uid, tsp])
         return tr_samples
 
-    def update(self, contexts, h_actions, h_rewards):
+    def update(self, contexts, h_topics, h_actions, h_rewards):
         """Update its internal model. 
 
         Args:
             contexts: list of user samples
+            h_topics: dummy 
             h_actions: (num_context, rec_batch_size,) 
             h_rewards: (num_context, rec_batch_size,) 
         """
@@ -225,7 +227,6 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             
         return news_vecs, cb_vecs, np.array(cb_indexs)
 
-
     def topic_rec(self):
         """    
         Return
@@ -254,17 +255,18 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         sorted_ids = np.argsort(ucb, axis=0)[-1,:] 
         return cb_indexs[sorted_ids]
 
-    def update(self, contexts, h_actions, h_rewards, mode = 'learner'):
+    def update(self, contexts, h_topics, h_actions, h_rewards, mode = 'learner'):
         """Update its internal model. 
 
         Args:
             context: list of user samples 
             h_actions: (num_context, rec_batch_size,) 
+            h_topics: (num_context, rec_batch_size)
             h_rewards: (num_context, rec_batch_size,) 
             mode: one of {'learner', 'ts', 'user_emb'}
         """
         if mode == 'ts':
-            for i, topic in enumerate(h_actions):  # h_actions are topics
+            for i, topic in enumerate(h_topics):  # h_actions are topics
                 assert h_rewards[i] in {0,1}
                 self.alphas[topic] += h_rewards[i]
                 self.betas[topic] += 1 - h_rewards[i] 
@@ -284,7 +286,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             rec_items.append(rec_item)
         
         # return [rec_items, rec_topics]
-        return rec_items
+        return np.array(rec_items), np.array(rec_topics)
 
         
     

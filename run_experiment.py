@@ -12,12 +12,12 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 def main():
-    # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
+    from configs.thanh_params import parse_args
+    # from configs.mezhang_params import parse_args
 
     args = parse_args()
 
-    rec_batch_size = 2
+    rec_batch_size = 3
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 
@@ -27,10 +27,10 @@ def main():
     algos = [ucblearner]
 
     # construct dataset
-    contexts = simulator.valid_samples 
+    # contexts = simulator.valid_samples 
 
     # runner 
-    h_actions, h_rewards = run_contextual_bandit(args, contexts, simulator, rec_batch_size, algos)
+    h_actions, h_rewards = run_contextual_bandit(args, simulator, rec_batch_size, algos)
 
 
 if __name__ == '__main__':

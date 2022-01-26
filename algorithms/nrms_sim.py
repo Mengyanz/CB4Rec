@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from core.simulator import Simulator 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec
 
 class NRMS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=True, name='NRMS_Simulator'): 
@@ -21,12 +21,12 @@ class NRMS_Sim(Simulator):
         self.args = args 
 
         # preprocessed data 
-        self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
-        # self.news_index: (None, 30) - a set of integers. 
+        # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
 
+        self.nid2index, word2vec, self.news_index = load_word2vec(args)
 
         # model 
-        self.model = NRMS_Model(embedding_matrix).to(self.device)
+        self.model = NRMS_Model(word2vec).to(self.device)
         if self.pretrained_mode == 'pretrained':
             self.model.load_state_dict(torch.load(args.sim_path)) 
 
@@ -80,6 +80,12 @@ class NRMS_Sim(Simulator):
         news_vecs = self.news_vecs[news_ids,:] 
 
         reward_scores = user_vecs @ news_vecs.T 
+        p = sigmoid(reward_scores) 
+        reward_scores = np.random.binomial(size=p.shape, n=1, p=p)
         # @TODO: convert scores into binary 
         return reward_scores 
+
+
+def sigmoid(u):
+    return 1/(1+np.exp(-u))
 
