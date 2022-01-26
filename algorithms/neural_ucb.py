@@ -4,6 +4,7 @@ import math
 import numpy as np 
 import torch 
 import torch.optim as optim
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
@@ -25,6 +26,7 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         self.pretrained_mode = pretrained_mode 
         self.name = name 
         self.device = device 
+        self.args = args
 
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
@@ -36,7 +38,11 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         if self.pretrained_mode == 'pretrained':
             self.model.load_state_dict(torch.load(args.learner_path)) 
         self.news_vecss, self.cb_vecss, self.cb_indexs = self.inference_cb_news()
- 
+
+        # internal buffer for update
+        self.h_contexts = []
+        self.h_actions = []
+        self.h_rewards = []
 
     def inference_cb_news(self):
         """Generate cb news vecs by inferencing model on cb news
@@ -70,28 +76,24 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         return news_vecss, cb_vecss, np.array(cb_indexs)
 
 
-    def construct_trainable_samples(self, samples, h_actions, h_rewards):
+    def construct_trainable_samples(self):
         """construct trainable samples which will be used in NRMS model training
-
-        Args:
-            contexts: list of user samples 
-            h_actions: (num_context, rec_batch_size,) 
-            h_rewards: (num_context, rec_batch_size,) 
+        from self.h_contexts, self.h_actions, self.h_rewards
         """
         tr_samples = []
-        for i, l in enumerate(samples):
+        for i, l in enumerate(self.h_contexts):
             _, _, his, uid, tsp = l
             poss = []
             negs = []
-            for j, reward in enumerate(h_rewards[i]):
+            for j, reward in enumerate(self.h_rewards[i]):
                 if reward == 1:
-                    poss.append(h_actions[i][j])
+                    poss.append(self.h_actions[i][j])
                 elif reward == 0:
-                    negs.append(h_actions[i][j])
+                    negs.append(self.h_actions[i][j])
                 else:
                     raise Exception("invalid reward")
 
-            if len(poss) > 0:  
+            if len(poss) > 0 and len(negs) > 0:  
                 if len(negs) == 0:
                     pass
                     # TODO: sample negative samples
@@ -99,40 +101,59 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
                     tr_samples.append([pos, negs, his, uid, tsp])
         return tr_samples
 
-    def update(self, contexts, h_topics, h_actions, h_rewards):
+    def update_learner(self, context, actions, rewards):
+        
+        if len(self.h_contexts) < self.args.update_learn_size:
+            # store samples into buffer
+            self.h_contexts.append(context)
+            self.h_actions.append(actions)
+            self.h_rewards.append(rewards)
+        else:
+            # update learner
+            print('Updating the internal model of the bandit!')
+            optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
+            ft_sam = self.construct_trainable_samples()
+            ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.news_index)
+            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
+            
+            # do one epoch only
+            loss = 0
+            self.model.train()
+            ft_loader = tqdm(ft_dl)
+            for cnt, batch_sample in enumerate(ft_loader):
+                candidate_news_index, his_index, label = batch_sample
+                sample_num = candidate_news_index.shape[0]
+                candidate_news_index = candidate_news_index.to(self.device)
+                his_index = his_index.to(self.device)
+                label = label.to(self.device)
+                bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
+
+                loss += bz_loss.detach().cpu().numpy()
+                optimizer.zero_grad()
+                bz_loss.backward()
+
+                optimizer.step()
+
+                # if cnt % 10 == 0:
+                #     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
+                #     ft_loader.refresh() 
+            
+            # clear buffer
+            self.h_contexts = []
+            self.h_actions = []
+            self.h_rewards = []
+
+    def update(self, context, topics, actions, rewards):
         """Update its internal model. 
 
         Args:
-            contexts: list of user samples
-            h_topics: dummy 
-            h_actions: (num_context, rec_batch_size,) 
-            h_rewards: (num_context, rec_batch_size,) 
+            context: a user sample
+            topics: dummy 
+            actions: list of actions; len: rec_batch_size
+            rewards: list of rewards; len: rec_batch_size
         """
-        print('Updating the internal model of the bandit!')
-        optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
-        ft_sam = self.construct_trainable_samples(contexts, h_actions, h_rewards)
-        ft_ds = TrainDataset(ft_sam, self.nid2index, self.news_index)
-        ft_dl = DataLoader(ft_ds, batch_size=self.args.finetune_batch_size, shuffle=True, num_workers=0)
+        self.update_learner(context, actions, rewards)
         
-        self.model.train()
-        ft_loader = tqdm(ft_dl)
-        for cnt, batch_sample in enumerate(ft_loader):
-            candidate_news_index, his_index, label = batch_sample
-            sample_num = candidate_news_index.shape[0]
-            candidate_news_index = candidate_news_index.to(device)
-            his_index = his_index.to(device)
-            label = label.to(device)
-            bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
-
-            loss += bz_loss.detach().cpu().numpy()
-            optimizer.zero_grad()
-            bz_loss.backward()
-
-            optimizer.step()
-
-            # if cnt % 10 == 0:
-            #     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
-            #     ft_loader.refresh() 
 
     def _get_news_vecs(self):
         news_dataset = NewsDataset(self.news_index) 
@@ -179,7 +200,7 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
         ucb = mu + std # (n,b) 
         sorted_ids = np.argsort(ucb, axis=0)[-self.rec_batch_size:,:] 
-        return self.cb_indexs[sorted_ids]
+        return self.cb_indexs[sorted_ids], np.empty(0)
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
@@ -255,28 +276,29 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         sorted_ids = np.argsort(ucb, axis=0)[-1,:] 
         return cb_indexs[sorted_ids]
 
-    def update(self, contexts, h_topics, h_actions, h_rewards, mode = 'learner'):
+    def update(self, context, topics, actions, rewards):
         """Update its internal model. 
 
         Args:
-            context: list of user samples 
-            h_actions: (num_context, rec_batch_size,) 
-            h_topics: (num_context, rec_batch_size)
-            h_rewards: (num_context, rec_batch_size,) 
-            mode: one of {'learner', 'ts', 'user_emb'}
+            context: a user sample
+            topics: dummy 
+            actions: list of actions; len: rec_batch_size
+            rewards: list of rewards; len: rec_batch_size
         """
-        if mode == 'ts':
-            for i, topic in enumerate(h_topics):  # h_actions are topics
-                assert h_rewards[i] in {0,1}
-                self.alphas[topic] += h_rewards[i]
-                self.betas[topic] += 1 - h_rewards[i] 
-        elif mode == 'learner':
-            pass
+        # update ts
+        print('Updating TS parameters')
+        for i, topic in enumerate(topics):  # h_actions are topics
+            assert rewards[i] in {0,1}
+            self.alphas[topic] += rewards[i]
+            self.betas[topic] += 1 - rewards[i] 
+        
+        # update cb learner
+        self.update_learner(context, actions, rewards)
 
     def sample_actions(self, user_samples): 
         rec_topics = []
         rec_items = []
-        self.active_topics = self.cb_topics
+        self.active_topics = self.cb_topics.copy()
         while len(rec_items) < self.rec_batch_size:
             rec_topic = self.topic_rec()
             rec_topics.append(rec_topic)
