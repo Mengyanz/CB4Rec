@@ -32,48 +32,40 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         # self.nid2index, _, self.news_index, embedding_matrix, self.cb_users, self.cb_news = read_data(args, mode='cb') 
         self.nid2index, embedding_matrix, self.news_index = load_word2vec(args)
         self.cb_news = load_cb_topic_news(args)
+        self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
         # model 
         self.model = NRMS_Model(embedding_matrix).to(self.device)
         if self.pretrained_mode == 'pretrained':
             self.model.load_state_dict(torch.load(args.learner_path)) 
-        self.news_vecss, self.cb_vecss, self.cb_indexs = self.inference_cb_news()
+        # self.news_vecss, self.cb_vecss, self.cb_indexs = self.inference_cb_news()
+
+        # pre-generate news embeddings
+        self.news_vecss = []
+        for i in range(self.n_inference): 
+            news_vecs = self._get_news_vecs() # (n,d)
+            self.news_vecss.append(news_vecs) 
 
         # internal buffer for update
         self.h_contexts = []
         self.h_actions = []
         self.h_rewards = []
 
-    def inference_cb_news(self):
+    def _get_cb_news_index(self, cb_news):
         """Generate cb news vecs by inferencing model on cb news
 
+        Args
+            cb_news: list of cb news samples
+
         Return
-            news_vess: list of news vecs, len = n_inference
-                        news_vecs: (num_news, d) array, news embedding
-            cb_vess: list of news vecs, len = n_inference
-                        news_vecs: (num_cb_news, d) array, news embedding
-            cb_indexs: array (num_cb_news, ) of indexs
+            cb_indexs: list of indexs corresponding to the input cb_news
         """
-        cb_nids = []
+        print('#cb news: ', len(cb_news))
         cb_indexs = []
-        for subvert, value in self.cb_news.items():
-            for l in value:
-                nid = l.strip('\n').split("\t")[0]
-                cb_nids.append(nid)
-                cb_indexs.append(self.nid2index[nid])
-        self.num_news = len(cb_nids)
-        print('#cb news: ', self.num_news)
-
-        print('inferencing news vecs')
-        news_vecss = []
-        cb_vecss = []
-        for i in range(self.n_inference): 
-            news_vecs = self._get_news_vecs() # (n,d)
-            cb_vecs = news_vecs[np.array(cb_indexs)]
-            news_vecss.append(news_vecs)
-            cb_vecss.append(cb_vecs)
-
-        return news_vecss, cb_vecss, np.array(cb_indexs)
+        for l in cb_news:
+            nid = l.strip('\n').split("\t")[0]
+            cb_indexs.append(self.nid2index[nid])
+        return np.array(cb_indexs)
 
 
     def construct_trainable_samples(self):
@@ -192,7 +184,7 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         self.model.eval()
         for i in range(self.n_inference): # @TODO: accelerate
             user_vecs = self._get_user_vecs(self.news_vecss[i], user_samples) # (b,d)
-            scores = self.cb_vecss[i] @ user_vecs.T # (n,b) 
+            scores = self.news_vecss[i][self.cb_indexs] @ user_vecs.T # (n,b) 
             all_scores.append(scores) 
         
         all_scores = np.array(all_scores) # (n_inference,n,b)
@@ -222,32 +214,6 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             self.alphas[topic] = 1
             self.betas[topic] = 1
 
-    def inference_cb_news(self, news = []):
-        # TODO
-        """Generate cb news vecs by inferencing model on cb news
-
-        Return
-            news_ves: (num_all_news, d) array, 
-            cb_vecs: (num_cb_news, d) array,
-            cb_indexs: array (num_cb_news, ) of indexs 
-        """
-        cb_nids = []
-        cb_indexs = []
-        
-        for l in news:
-            nid = l.strip('\n').split("\t")[0]
-            cb_nids.append(nid)
-            cb_indexs.append(self.nid2index[nid])
-        self.num_news = len(cb_nids)
-        print('#inference news: ', self.num_news)
-        news_vecs = self._get_news_vecs() # (n,d)
-        if len(cb_indexs) > 0:
-            cb_vecs = news_vecs[np.array(cb_indexs)]
-        else:
-            cb_vecs = []
-            
-        return news_vecs, cb_vecs, np.array(cb_indexs)
-
     def topic_rec(self):
         """    
         Return
@@ -263,10 +229,10 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
     def item_rec(self, user_samples, cand_news):
         all_scores = []
         self.model.eval()
-        for i in range(self.n_inference): # @TODO: accelerate
-            news_vecs, cb_vecs, cb_indexs = self.inference_cb_news(cand_news)
-            user_vecs = self._get_user_vecs(news_vecs, user_samples) # (b,d)
-            scores = cb_vecs @ user_vecs.T # (n,b) 
+        cb_indexs = self._get_cb_news_index(cand_news)
+        for i in range(self.n_inference): 
+            user_vecs = self._get_user_vecs(self.news_vecss[i], user_samples) # (b,d)
+            scores = self.news_vecss[i][cb_indexs] @ user_vecs.T # (n,b) 
             all_scores.append(scores) 
         
         all_scores = np.array(all_scores) # (n_inference,n,b)
