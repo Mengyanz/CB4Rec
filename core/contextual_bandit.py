@@ -1,39 +1,100 @@
 """Define abstract CB algorithm. """
 
+from operator import itemgetter
 import numpy as np 
+import pickle, os
+from collections import defaultdict
 from utils.data_util import load_cb_train_data, load_cb_valid_data
 import os
 
 class ContextualBanditLearner(object):
-    def __init__(self, args, rec_batch_size = 1):
+    def __init__(self, args, rec_batch_size = 1, name='ContextualBanditLearner'):
+        self.name = name 
+        print(name)
         self.args = args
-        self.rec_batch_size =  rec_batch_size
+        self.rec_batch_size = rec_batch_size
+        
+        self.reset()
+        
+    def set_clicked_history(self, init_clicked_history):
+        self.clicked_history = init_clicked_history
 
-    def sample_actions(self, user_samples):
+    def update_data_buffer(self, pos, neg, uid, t): 
+        self.data_buffer.append([pos, neg, self.clicked_history[uid], uid, t]) 
+
+    def update_clicked_history(self, pos, uid):
+        """
+        Args:
+            pos: a list of str nIDs, positive news of uid 
+            uid: str, user id 
+        """
+        for item in pos:
+            if item not in self.clicked_history[uid]:
+                self.clicked_history[uid].append(item)
+
+    def sample_actions(self, uids):
         """Choose an action given a context. 
         
         Args:
-            user_samples: A list of format (poss, negs, his, uid, tsp)
+            uids: a list of str uIDs (user ids). 
 
         Return: 
-            top_k: top `rec_batch_size` news ids associated with each user_samples
+            topics: (len(uids), `rec_batch_size`)
+            items: (len(uids), `rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
         """
+        # 
+
+        ## Topic recommendation 
+        # Recommend `len(uids)` topics using the current topic model. 
+
+        ## Item recommendation 
+        # * Compute the user representation of each `uids` user using the current clicked history `self.clicked_history` 
+        # and the current `user_encoder``
+        # * Compute the news representation using the current `news_encoder`` for each news of each recommended topics above 
+        # * Run these two steps above for `n_inference` times to estimate score uncertainty 
         pass 
 
-    def update(self, context, topics, actions, rewards):
+    def update(self, topics, items, rewards, mode = 'topic'):
         """Update its internal model. 
 
         Args:
-            context: a user sample
-            topics: dummy 
-            actions: list of actions; len: rec_batch_size
-            rewards: list of rewards; len: rec_batch_size
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its integer index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+
+        @TODO: they recommend `rec_batch_size` topics 
+            and each of the topics they recommend an item (`rec_batch_size` items in total). 
+            What if one item appears more than once in the list of `rec_batch_size` items? 
+
+        # main
+        # def update(self, context, topics, actions, rewards):
+        #    """Update its internal model. 
+
+        #    Args:
+        #        context: a user sample
+        #        topics: dummy 
+        #        actions: list of actions; len: rec_batch_size
+        #        rewards: list of rewards; len: rec_batch_size
+
         """
-        print('Abstract update for the internal model of the bandit!')
+        # Update the topic model 
+
+        # Update the user_encoder and news_encoder using `self.clicked_history`
         pass
 
-    def reset(self, seed):
-        pass 
+    def reset(self):
+        """Reset the CB learner to its initial state (do this for each experiment). """
+        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+        #TODO: reset the internal model here for each instance of `ContextualBanditLearner`
+
+
+    def train(self):
+        print('TODO: Train `self.model` using `self.data_buffer.')
+        print('Note that `self.data_buffer` gets updated after every learner-simulator interaciton in `run_contextual_bandit`')
+        print('size(data_buffer): {}'.format(len(self.data_buffer)))
+        pass
 
 
 def run_contextual_bandit(args, simulator, rec_batch_size, algos):
@@ -53,55 +114,106 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     # num_exper = args.num_exper
     # num_round = args.num_round
 
+    clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
+    with open(clicked_history_fn, 'rb') as fo: 
+        train_clicked_history = pickle.load(fo)
+    train_users = list(train_clicked_history)
+
     # TODO: in each round, sample user from selected users
     for e in range(args.n_trials):
-        h_actions_all = [] 
+        h_items_all = [] 
         h_rewards_all = []
+
+        # reset each CB learner
+        [a.reset() for a in algos] 
 
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
 
         # @TODO: Load the CB train data for this trial and pre-train each CB learner on this
-        print('Load the CB train data for this trial and pre-train each CB learner on this')
+        print('TODO: Load the CB train data for this trial and pre-train each CB learner on this trial.')
 
-        # Load the CB valid data for this trial 
-        contexts = load_cb_valid_data(args, trial=e)
-        num_contexts = len(contexts)
+        # Load the initial history for each user in each CB learner
+        random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
+        user_set = [train_users[j] for j in random_ids[:args.num_selected_users]]
+
+        init_history = {key:train_clicked_history[key] for key in user_set}
+
+        # Set the init clicked history in each CB learner 
+        [a.set_clicked_history(init_history) for a in algos]
 
         
         # Run the contextual bandit process
-        h_actions = np.empty((len(algos), rec_batch_size,0), float)
-        h_rewards = np.empty((len(algos), rec_batch_size,0), float)
-        for i in range(num_contexts):
+        h_items = np.empty((len(algos), rec_batch_size,0), float)
+        h_rewards = np.empty((len(algos), rec_batch_size,0), float) # (n_algos, rec_bs, T)
+        for t in range(args.T):
             # iterate over selected users
-            print('iteration', i)
-            context = contexts[i] # user_sample
+            print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
-            action_batches = []
+            # Randomly sample a user 
+            u = np.random.choice(user_set) 
+            print('user: {}.'.format(u))
+            
+            item_batches = []
             topic_batches = []
             for a in algos:
-                actions, topics = a.sample_actions([context])
+                topics, items = a.sample_actions([u]) # recommend for user u using their current history 
 
-                action_batches.append(actions.ravel()) 
                 topic_batches.append(topics) 
+                item_batches.append(items) 
 
             # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, rec_batch_size)
-            print('Recommended topics: ')
-            for topics in topic_batches:
-                print(topics.tolist())
+            print('  rec_topic: {}'.format(topic_batches))
 
-            print('Recommended actions: ')
-            for actions in action_batches:
-                print(actions.tolist())
+            print('  rec_news: {}'.format(item_batches))
 
-            reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
-            print('Rewards: {}'.format(reward_batches))
-            for j, a in enumerate(algos):
-                a.update(context, topic_batches[j], action_batches[j], reward_batches[j])
 
-            h_actions = np.concatenate((h_actions, np.array(action_batches)[:,:,None]), axis=2)
+            reward_batches = [simulator.reward([u], items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
+            #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
+            print('  rewards: {}'.format(reward_batches))
+
+            # main
+            # reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
+            # print('Rewards: {}'.format(reward_batches))
+            # for j, a in enumerate(algos):
+            #    a.update(context, topic_batches[j], action_batches[j], reward_batches[j])
+
+
+            h_items = np.concatenate((h_items, np.array(item_batches)[:,:,None]), axis=2)
             h_rewards = np.concatenate((h_rewards, np.array(reward_batches)[:,:,None]), axis=2)
-                
+
+
+            # Update the data buffer and clicked history
+            for j,a in enumerate(algos):
+                topics = topic_batches[j]
+                items = item_batches[j] 
+                rewards = reward_batches[j] 
+                pos = []
+                neg = []
+                for it,r in zip(items, rewards):
+                    if r == 1:
+                        pos.append(it) 
+                    else:
+                        neg.append(it)
+                # WARNING: It's important to `update_data_buffer` before `update_clicked_history`
+                #   because `update_data_buffer` use the current `clicked_history` 
+                #@TODO: `pos` can contain multiple news. Consider further split `pos` further for `update_data_buffer` if necessary
+                a.update_data_buffer(pos, neg, u, t) 
+                a.update_clicked_history(pos, u)
+
+            # Update the topic model 
+            [a.update(topics, items, rewards, mode = 'topic') for a in algos]
+
+            if t % args.update_period == 0: # Update the item model (i.e. news_encoder and user_encoder)
+                [a.update(topics, items, rewards, mode = 'item') for a in algos]
+
+        h_items_all.append(h_items)
+        h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
+
+    return np.array(h_items_all), np.array(h_rewards_all)
+
+      # main  
+       """
             # for j, a in enumerate(algos):
             #     a.update(context, topic_batches[j], h_actions[j], h_rewards[j], mode = 'learner')
 
@@ -117,3 +229,5 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
     # TODO: records all results for different exper and round
     return np.array(h_actions_all), np.array(h_rewards_all)
+      """
+

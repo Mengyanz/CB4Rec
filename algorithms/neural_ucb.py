@@ -2,6 +2,7 @@
 
 import math 
 import numpy as np 
+from collections import defaultdict
 import torch 
 import torch.optim as optim
 from tqdm import tqdm
@@ -9,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset
 
 class SingleStageNeuralUCB(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -147,7 +148,7 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
         self.update_learner(context, actions, rewards)
         
 
-    def _get_news_vecs(self):
+    def _get_news_vecs(self): # @TODO: takes in news ids, returns vect repr via encoder 
         news_dataset = NewsDataset(self.news_index) 
         news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
         news_vecs = []
@@ -277,4 +278,130 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         return np.array(rec_items), np.array(rec_topics)
 
         
-    
+class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of testing my pipeline only 
+    def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+        """Two stage exploration. Use NRMS model. 
+            Args:
+                rec_batch_size: int, recommendation size. 
+                n_inference: int, number of Monte Carlo samples of prediction. 
+                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
+        """
+        super(DummyTwoStageNeuralUCB, self).__init__(args, rec_batch_size, name)
+        self.n_inference = n_inference 
+        self.pretrained_mode = pretrained_mode 
+        self.name = name 
+        self.device = device 
+
+        # preprocessed data 
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
+        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
+        cb_news = defaultdict(list)
+        for k,v in topic_news.items():
+            cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
+        self.cb_news = cb_news 
+
+        # model 
+        self.model = NRMS_Model(word2vec).to(self.device)
+        if self.pretrained_mode == 'pretrained':
+            self.model.load_state_dict(torch.load(args.learner_path)) 
+ 
+        self.cb_topics = list(self.cb_news.keys())
+
+        self.alphas = {}
+        self.betas = {}
+
+        for topic in self.cb_topics:
+            self.alphas[topic] = 1
+            self.betas[topic] = 1
+
+    def topic_rec(self):
+        """    
+        Return
+            rec_topic: one recommended topic
+        """
+        ss =[] 
+        for topic in self.active_topics:
+            s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
+            ss.append(s)
+        rec_topic = self.active_topics[np.argmax(ss)]
+        return rec_topic
+
+    def item_rec(self, uids, cand_news): 
+        """
+        Args:
+            uids: a list of str uIDs 
+            cand_news: a list of int (not nIDs but their index version from `nid2index`) 
+
+        Return: 
+            items: a list of `len(uids)`int 
+        """
+        batch_size = min(16, len(uids))
+        candidate_news = self.nindex2vec[[n for n in cand_news]] 
+        candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
+        sed = SimEvalDataset(self.args, uids, self.nid2index, self.nindex2vec, self.clicked_history)
+        #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
+        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+
+        all_scores = []
+        for _ in range(self.n_inference):
+            scores = []
+            for h in rdl:
+                score = self.model.forward(candidate_news.to(self.device), h.to(self.device), None, compute_loss=False)
+                scores.append(score.detach().cpu().numpy()) 
+            scores = np.concatenate(scores) # (len(uids), len(cand_news))
+            all_scores.append(scores) 
+
+        all_scores = np.array(all_scores) # (n_inference,len(uids), len(cand_news))
+        mu = np.mean(all_scores, axis=0) 
+        std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+        ucb = mu + std # (n,b) 
+        nid_argmax = np.argmax(ucb, axis=1).tolist() # (len(uids),)
+        rec_itms = [cand_news[n] for n in nid_argmax]
+        return rec_itms 
+
+    def update(self, topics, items, rewards, mode = 'topic'):
+        """Update its internal model. 
+
+        Args:
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its numerical index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+
+        @TODO: they recommend `rec_batch_size` topics 
+            and each of the topics they recommend an item (`rec_batch_size` items in total). 
+            What if one item appears more than once in the list of `rec_batch_size` items? 
+        """
+        # Update the topic model 
+        if mode == 'topic': 
+            for i, topic in enumerate(topics):  # h_actions are topics
+                assert rewards[i] in {0,1}
+                self.alphas[topic] += rewards[i]
+                self.betas[topic] += 1 - rewards[i]
+
+        # Update the user_encoder and news_encoder using `self.clicked_history`
+        if mode == 'item': 
+            self.train() 
+
+    def sample_actions(self, uids): 
+        """Choose an action given a context. 
+        Args:
+            uids: a list of str uIDs. 
+
+        Return: 
+            topics: (len(uids), `rec_batch_size`)
+            items: (len(uids), `rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
+        """
+        rec_topics = []
+        rec_items = []
+        self.active_topics = self.cb_topics.copy()
+        while len(rec_items) < self.rec_batch_size:
+            rec_topic = self.topic_rec()
+            rec_topics.append(rec_topic)
+            self.active_topics.remove(rec_topic)
+
+            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            rec_item = self.item_rec(uids, cand_news)
+            rec_items.append(rec_item[0])
+        
+        return rec_topics, rec_items

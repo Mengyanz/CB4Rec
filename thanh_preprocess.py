@@ -54,6 +54,12 @@ def read_news(args, path):
         word_cnt.update(title)
 
 def news_preprocess(args):
+    """
+    Output:
+        news_index: dict, 
+            key: a news id 
+            value: a vector representation for a news, vector length = args.max_title_len 
+    """
     print('Converting to word embedding using glove6B!') 
 
     out_path = os.path.join(args.root_data_dir, 'large/utils')
@@ -73,7 +79,7 @@ def news_preprocess(args):
             if c >= args.min_word_cnt:
                 vocab_dict[w] = len(vocab_dict)
 
-        news_index = np.zeros((len(news_info) + 1, args.max_title_len), dtype="float32")
+        news_index = np.zeros((len(news_info) + 1, args.max_title_len), dtype="float32") # vect representation for each news
         for nid in tqdm(nid2index):
             news_index[nid2index[nid]] = [
                 vocab_dict[w] if w in vocab_dict else 0 for w in news_info[nid]
@@ -159,17 +165,42 @@ def behavior_preprocess(args):
     else:
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
 
-
-    print('Preprocessing for CB learner ...') 
     train_user_set, _, tr_rep_sorted_samples, _ = \
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 1) 
 
     print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
 
+    # Create a click history for each user in train: 
+    # Each user in the MIND train has the same clicked history across samples
+    # @TODO: Consider updating the clicked history of each user at different times in the MIND train, to train the simulator. 
+    # so that the simulator has a larger clicked history than CB learner. Or just don't update it? 
+    # Note that:
+    #   * To train a simulator is to train its news and user encoders - it uses both the clicked history and impression set 
+    #   * To run (or evaluate) a simulator is to run its trained news and user encoders - only clicked history is required 
+    #   * The same comments apply to a CB learner
+    clicked_history = defaultdict(list)
+    for sample in tqdm(tr_rep_sorted_samples): 
+            uid = sample[3]
+            if uid not in clicked_history: 
+                clicked_history[uid] = sample[2] 
+        
+    with open(os.path.join(out_path, "train_clicked_history.pkl"), "wb") as f:
+        pickle.dump(clicked_history, f)
+
+    print('Preprocessing for CB learner ...') 
 
     for trial in range(args.n_trials): 
         print('trial = {}'.format(trial))
-        meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+
+        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+
+        if os.path.exists(cb_train_fname):
+            continue
+
+
+#         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+
         try:
             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
         except:
@@ -200,13 +231,14 @@ def behavior_preprocess(args):
                 for pos in pos_imp:
                     cb_train_samples.append([pos, neg_imp, his, uid, tsp])
 
+
         # Shuffle the list 
         random.shuffle(cb_train_samples)	
         # random.shuffle(cb_valid_samples)	
         
-        with open(os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial)), "wb") as f:
+        with open(cb_train_fname, "wb") as f:
             pickle.dump(cb_train_samples, f)
-        with open(os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial)), "wb") as f:
+        with open(cb_valid_fname, "wb") as f:
             pickle.dump(cb_valid_samples, f)
 
 

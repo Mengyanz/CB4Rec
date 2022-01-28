@@ -97,7 +97,7 @@ def load_word2vec(args):
     print('loading word2vec')
     word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
 
-    print('loading news_index')
+    print('loading nindex2vec')
     news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
 
     return nid2index, word2vec, news_index
@@ -174,6 +174,26 @@ class TrainDataset(Dataset):
         label = np.array(0)
         return candidate_news, his, label
 
+class SimEvalDataset(Dataset):
+    def __init__(self, args, uids, nid2index, nindex2vec, clicked_history): 
+        self.nindex2vec = nindex2vec 
+        self.uids = uids 
+        # self.candidate_news = self.nindex2vec[[n for n in news_indexes]]
+        self.nid2index = nid2index 
+        self.clicked_history = clicked_history 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.uids)
+
+    def __getitem__(self,idx): 
+        hist = self.clicked_history[self.uids[idx]]
+        hist = [self.nid2index[n] for n in hist] + [0] * (self.max_his_len - len(hist))
+        hist = self.nindex2vec[hist]
+        return hist 
+
+
+
 class NewsDataset(Dataset):
     def __init__(self, news_index):
         self.news_index = news_index
@@ -184,8 +204,19 @@ class NewsDataset(Dataset):
     def __getitem__(self, idx):
         return self.news_index[idx]
 
+class NewsDataset2(Dataset):
+    def __init__(self, news2vec, news_indexes):
+        self.news2vec = news2vec
+        self.news_indexes = news_indexes
+        
+    def __len__(self):
+        return len(self.news_indexes)
+    
+    def __getitem__(self, idx):
+        return self.news2vec[self.news_indexes[idx]]
+
 class UserDataset(Dataset):
-    def __init__(self, args,samples,news_vecs,nid2index):
+    def __init__(self, args, samples, news_vecs, nid2index):
         """
         Args:
             samples: list of (poss, negs, his, uid, tsp)
@@ -206,6 +237,25 @@ class UserDataset(Dataset):
     
     def __getitem__(self, idx):
         poss, negs, his, uid, tsp = self.samples[idx]
-        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-        his = self.news_vecs[his]
+        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his)) #@TODO: handle the case len(his) > max_his_len 
+        his = self.news_vecs[his] # (max_his_len, max_title_len)
         return his, tsp
+
+class UserDataset2(Dataset):
+    def __init__(self, args, nid2index , news2code_fn, clk_history):
+        self.nid2index = nid2index 
+        self.news2code_fn = news2code_fn 
+        self.clk_history = clk_history
+        self.max_his_len = args.max_his_len
+
+    def __len__(self):
+        return len(self.clk_history)
+
+    def __getitem__(self, idx): 
+        clk_hist = self.clk_history[idx] 
+
+        #@TODO: handle the case len(his) > max_his_len 
+        clk_hist = [self.nid2index[i] for i in clk_hist] + [0] * (self.max_his_len - len(clk_hist)) 
+        # return self.news2code_fn(clk_hist)
+        self.news2code_fn([0,1])
+        return clk_hist
