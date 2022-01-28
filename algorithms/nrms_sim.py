@@ -7,7 +7,8 @@ from torch.utils.data import DataLoader
 
 from core.simulator import Simulator 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec
+from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, SimEvalDataset
+
 
 class NRMS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=True, name='NRMS_Simulator'): 
@@ -15,6 +16,8 @@ class NRMS_Sim(Simulator):
         Args:
             pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
+        super(NRMS_Sim, self).__init__(name)
+
         self.pretrained_mode = pretrained_mode 
         self.name = name 
         self.device = device 
@@ -23,7 +26,7 @@ class NRMS_Sim(Simulator):
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
 
-        self.nid2index, word2vec, self.news_index = load_word2vec(args)
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
 
         # model 
         self.model = NRMS_Model(word2vec).to(self.device)
@@ -31,61 +34,30 @@ class NRMS_Sim(Simulator):
             self.model.load_state_dict(torch.load(args.sim_path)) 
 
 
-        # get news_vecs
-        print('{}: Getting news_vecs'.format(self.name))
-        self.news_dataset = NewsDataset(self.news_index) 
-        news_dl = DataLoader(self.news_dataset,batch_size=1024, shuffle=False, num_workers=2)
-        news_vecs = []
-        for news in news_dl: # @TODO: avoid for loop
-            news = news.to(self.device)
-            news_vec = self.model.text_encoder(news).detach().cpu().numpy()
-            news_vecs.append(news_vec)
-
-        self.news_vecs = np.concatenate(news_vecs) # (130381, 400)
-
-
-    def _get_user_vecs(self, user_samples): 
-        """Transform user_samples into representation vectors. 
-
-        Args:
-            user_samples: a list of (poss, negs, his, uid, tsp) 
-
-        Return: 
-            user_vecs: [None, dim]
-        """
-        user_dataset = UserDataset(self.args, user_samples, self.news_vecs, self.nid2index)
-        user_vecs = []
-        user_dl = DataLoader(user_dataset, batch_size=min(1024, len(user_samples)), shuffle=False, num_workers=2)
-
-        for his_tsp in user_dl:
-            his, tsp = his_tsp
-            his = his.to(self.device)
-            user_vec = self.model.user_encoder(his).detach().cpu().numpy()
-            user_vecs.append(user_vec)
-            # print(tsp)
-        return np.concatenate(user_vecs)
-
-    
-    def reward(self, user_samples, news_ids): 
+    def reward(self, uids, news_indexes): 
         """Returns a simulated reward. 
 
         Args:
-            user_samples: a list of m user samples
-            news_id: a list of n int, news ids. 
+            uids: a list of user ids  
+            news_indexes: a list of item index (not nID, but its integer version)
 
         Return: 
-            rewards: (m,n) of 0 or 1 
+            rewards: (n,m) of 0 or 1 
         """
-        user_vecs = self._get_user_vecs(user_samples) 
-        news_vecs = self.news_vecs[news_ids,:] 
+        batch_size = min(16, len(uids))
+        candidate_news = self.nindex2vec[[n for n in news_indexes]] 
+        candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
+        sed = SimEvalDataset(self.args, uids, self.nid2index, self.nindex2vec, self.clicked_history)
+        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
-        reward_scores = user_vecs @ news_vecs.T 
-        p = sigmoid(reward_scores) 
-        reward_scores = np.random.binomial(size=p.shape, n=1, p=p)
-        # @TODO: convert scores into binary 
-        return reward_scores 
-
+        scores = []
+        for h in rdl:
+            score = self.model.forward(candidate_news.to(self.device), h.to(self.device), None, compute_loss=False)
+            scores.append(score.detach().cpu().numpy()) 
+        scores = np.concatenate(scores)  
+        p = sigmoid(scores) 
+        rewards = np.random.binomial(size=p.shape, n=1, p=p)
+        return rewards 
 
 def sigmoid(u):
     return 1/(1+np.exp(-u))
-

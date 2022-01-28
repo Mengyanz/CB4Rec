@@ -32,6 +32,10 @@ def parse_args():
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
 
                     
+    parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
+    parser.add_argument("--update_period", type=int, default=1, help = 'Update period for CB model')
+
+
 
     parser.add_argument("--npratio", type=int, default=4)
     parser.add_argument("--max_his_len", type=int, default=50)
