@@ -5,6 +5,7 @@ import numpy as np
 import pickle, os
 from collections import defaultdict
 from utils.data_util import load_cb_train_data, load_cb_valid_data
+import os
 
 class ContextualBanditLearner(object):
     def __init__(self, args, rec_batch_size = 1, name='ContextualBanditLearner'):
@@ -65,6 +66,17 @@ class ContextualBanditLearner(object):
         @TODO: they recommend `rec_batch_size` topics 
             and each of the topics they recommend an item (`rec_batch_size` items in total). 
             What if one item appears more than once in the list of `rec_batch_size` items? 
+
+        # main
+        # def update(self, context, topics, actions, rewards):
+        #    """Update its internal model. 
+
+        #    Args:
+        #        context: a user sample
+        #        topics: dummy 
+        #        actions: list of actions; len: rec_batch_size
+        #        rewards: list of rewards; len: rec_batch_size
+
         """
         # Update the topic model 
 
@@ -93,8 +105,8 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         rec_batch_size: int, number of recommendations per context.
         algos: List of algorithms (instances of `ContextualBanditLearner`) to use in the contextual bandit instance.
     Returns:
-        h_actions: Matrix with actions: size (num_algorithms, num_context, batch_size).
-        h_rewards: Matrix with rewards: size (num_algorithms, num_context).
+        h_actions: Matrix with actions: size (num_algorithms, rec_batch_size, num_context).
+        h_rewards: Matrix with rewards: size (num_algorithms, rec_batch_size, num_context).
     """
 
     # contexts = contexts[:3]
@@ -155,12 +167,21 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
             print('  rec_news: {}'.format(item_batches))
 
+
             reward_batches = [simulator.reward([u], items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
 
+            # main
+            # reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
+            # print('Rewards: {}'.format(reward_batches))
+            # for j, a in enumerate(algos):
+            #    a.update(context, topic_batches[j], action_batches[j], reward_batches[j])
+
+
             h_items = np.concatenate((h_items, np.array(item_batches)[:,:,None]), axis=2)
             h_rewards = np.concatenate((h_rewards, np.array(reward_batches)[:,:,None]), axis=2)
+
 
             # Update the data buffer and clicked history
             for j,a in enumerate(algos):
@@ -190,3 +211,23 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
 
     return np.array(h_items_all), np.array(h_rewards_all)
+
+      # main  
+       """
+            # for j, a in enumerate(algos):
+            #     a.update(context, topic_batches[j], h_actions[j], h_rewards[j], mode = 'learner')
+
+        h_actions_all.append(h_actions)
+        h_rewards_all.append(h_rewards)
+
+        result_path = './results'
+        if not os.path.exists(result_path):
+            os.mkdir(result_path) 
+        np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
+
+
+
+    # TODO: records all results for different exper and round
+    return np.array(h_actions_all), np.array(h_rewards_all)
+      """
+

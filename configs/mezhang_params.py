@@ -35,14 +35,20 @@ def parse_args():
     parser.add_argument("--filter_user", # fliter CB simulation user from training data
                         type=bool,
                         default=False)
-                    
-
-    parser.add_argument("--npratio", type=int, default=4)
+    parser.add_argument("--npratio", type=int, default=1) # 4
     parser.add_argument("--max_his_len", type=int, default=50)
     parser.add_argument("--min_word_cnt", type=int, default=1)
     parser.add_argument("--max_title_len", type=int, default=30)
     parser.add_argument("--eva_batch_size", type=int, default=1024)
 
+    parser.add_argument("--update_learn_size", type=int, default=128)
+
+    # Preprocessing 
+    parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
+    parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
+    parser.add_argument("--cb_train_ratio", type=float, default=0.2)
+
+    # Mengyan
     parser.add_argument("--num_inference", type=int, default=1)
     parser.add_argument("--num_exper", type=int, default=1)
     parser.add_argument("--num_round", type=int, default=1)
@@ -54,7 +60,7 @@ def parse_args():
     parser.add_argument("--m", type=str, default='all')
     
     # model training
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=64) 
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--num_workers", type=int, default=4)
