@@ -47,7 +47,7 @@ class NRMS_Sim(Simulator):
         batch_size = min(16, len(uids))
         candidate_news = self.nindex2vec[[n for n in news_indexes]] 
         candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
-        sed = SimEvalDataset(self.args, uids, self.nid2index, self.nindex2vec, self.clicked_history)
+        sed = SimEvalDataset(self.args, uids, self.nindex2vec, self.clicked_history)
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
         scores = []

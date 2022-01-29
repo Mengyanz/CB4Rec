@@ -338,7 +338,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         batch_size = min(16, len(uids))
         candidate_news = self.nindex2vec[[n for n in cand_news]] 
         candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
-        sed = SimEvalDataset(self.args, uids, self.nid2index, self.nindex2vec, self.clicked_history)
+        sed = SimEvalDataset(self.args, uids, self.nindex2vec, self.clicked_history)
         #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
@@ -402,7 +402,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
 
             cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG
-            print(cand_news)
+            # print(cand_news)
             rec_item = self.item_rec(uids, cand_news)
             rec_items.append(rec_item[0])
         

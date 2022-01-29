@@ -12,8 +12,8 @@ device = torch.device("cuda:1")
 torch.cuda.set_device(device)
 
 def main():
-    # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
+    from configs.thanh_params import parse_args
+    # from configs.mezhang_params import parse_args
 
     args = parse_args()
 
