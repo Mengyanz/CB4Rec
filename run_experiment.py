@@ -12,8 +12,8 @@ device = torch.device("cuda:1")
 torch.cuda.set_device(device)
 
 def main():
-    from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
+    # from configs.thanh_params import parse_args
+    from configs.mezhang_params import parse_args
 
     args = parse_args()
 
@@ -33,7 +33,6 @@ def main():
 
     # runner 
     h_actions, h_rewards = run_contextual_bandit(args, simulator, rec_batch_size, algos)
-
 
 if __name__ == '__main__':
     main()

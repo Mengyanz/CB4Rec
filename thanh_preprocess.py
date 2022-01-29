@@ -198,13 +198,16 @@ def behavior_preprocess(args):
         if os.path.exists(cb_train_fname):
             continue
 
+
+#         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+
         try:
-            random_ids = np.load('./meta_data/indices_{}.npy'.format(trial))
+            random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
         except:
             print('The meta data has not been generated.') 
-            generate_random_ids_over_runs(args.n_trials) 
+            generate_random_ids_over_runs(args.n_trials, meta_data_path) 
             time.sleep(5)
-            random_ids = np.load('./meta_data/indices_{}.npy'.format(trial))
+            random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
             # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
 
         print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
@@ -231,7 +234,7 @@ def behavior_preprocess(args):
 
         # Shuffle the list 
         random.shuffle(cb_train_samples)	
-        random.shuffle(cb_valid_samples)	
+        # random.shuffle(cb_valid_samples)	
         
         with open(cb_train_fname, "wb") as f:
             pickle.dump(cb_train_samples, f)
@@ -323,11 +326,13 @@ def split_then_select_behavior_preprocess(args):
         with open(cb_train_fname, "wb") as f:
             pickle.dump(cb_train_uremoved, f)
 
-def generate_random_ids_over_runs( num_trials = 10):
+# def generate_random_ids_over_runs( num_trials = 10):
+def generate_random_ids_over_runs(num_trials, meta_data_path):
+# >>>>>>> d58630b1cc4f37dcdcbc90e55e93d45e49308639
     # n_val_users = 255990
     n_train_users = 711222
     np.random.seed(2022)
-    meta_data_path = './meta_data'
+    # meta_data_path = './meta_data'
     print('WARNING: This is to generate meta data for dataset generation, and should only be performed once.' 
         'Quit now if you are not sure what you are doing!!!')
     s = input('Type yesimnotstupid to proceed: ')
@@ -385,6 +390,8 @@ def generate_cb_news(args):
 if __name__ == "__main__":
     # from parameters import parse_args
     from configs.thanh_params import parse_args
+    # from configs.mezhang_params import parse_args
+
 
     args = parse_args()
     news_preprocess(args)
