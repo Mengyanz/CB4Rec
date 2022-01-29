@@ -413,6 +413,8 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
             self.active_topics.remove(rec_topic)
 
             cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            # DEBUG
+            print(cand_news)
             rec_item = self.item_rec(uids, cand_news)
             rec_items.append(rec_item[0])
         

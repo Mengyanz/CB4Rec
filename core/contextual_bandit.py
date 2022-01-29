@@ -102,12 +102,15 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     # num_exper = args.num_exper
     # num_round = args.num_round
 
+    np.random.seed(2022)
+
     clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
         train_clicked_history = pickle.load(fo)
-    train_users = list(train_clicked_history)
 
-    # TODO: in each round, sample user from selected users
+    with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
+        cb_val_users = pickle.load(fo) 
+
     for e in range(args.n_trials):
         h_items_all = [] 
         h_rewards_all = []
@@ -123,7 +126,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
         # Load the initial history for each user in each CB learner
         random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
-        user_set = [train_users[j] for j in random_ids[:args.num_selected_users]]
+        user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
 
         init_history = {key:train_clicked_history[key] for key in user_set}
 
