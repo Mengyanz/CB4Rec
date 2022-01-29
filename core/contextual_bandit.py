@@ -66,17 +66,6 @@ class ContextualBanditLearner(object):
         @TODO: they recommend `rec_batch_size` topics 
             and each of the topics they recommend an item (`rec_batch_size` items in total). 
             What if one item appears more than once in the list of `rec_batch_size` items? 
-
-        # main
-        # def update(self, context, topics, actions, rewards):
-        #    """Update its internal model. 
-
-        #    Args:
-        #        context: a user sample
-        #        topics: dummy 
-        #        actions: list of actions; len: rec_batch_size
-        #        rewards: list of rewards; len: rec_batch_size
-
         """
         # Update the topic model 
 
@@ -114,12 +103,15 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     # num_exper = args.num_exper
     # num_round = args.num_round
 
+    np.random.seed(2022)
+
     clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
         train_clicked_history = pickle.load(fo)
-    train_users = list(train_clicked_history)
 
-    # TODO: in each round, sample user from selected users
+    with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
+        cb_val_users = pickle.load(fo) 
+
     for e in range(args.n_trials):
         h_items_all = [] 
         h_rewards_all = []
@@ -135,7 +127,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
         # Load the initial history for each user in each CB learner
         random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
-        user_set = [train_users[j] for j in random_ids[:args.num_selected_users]]
+        user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
 
         init_history = {key:train_clicked_history[key] for key in user_set}
 
@@ -210,24 +202,13 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
 
-    return np.array(h_items_all), np.array(h_rewards_all)
 
-      # main  
-       """
-            # for j, a in enumerate(algos):
-            #     a.update(context, topic_batches[j], h_actions[j], h_rewards[j], mode = 'learner')
-
-        h_actions_all.append(h_actions)
-        h_rewards_all.append(h_rewards)
-
-        result_path = './results'
-        if not os.path.exists(result_path):
-            os.mkdir(result_path) 
-        np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
-
-
+    result_path = './results'
+    if not os.path.exists(result_path):
+        os.mkdir(result_path) 
+    np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
 
     # TODO: records all results for different exper and round
-    return np.array(h_actions_all), np.array(h_rewards_all)
-      """
+    return np.array(h_items_all), np.array(h_rewards_all)
+    
 
