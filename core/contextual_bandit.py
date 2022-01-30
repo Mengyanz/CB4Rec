@@ -29,7 +29,7 @@ class ContextualBanditLearner(object):
             uid: str, user id 
         """
         for item in pos:
-            if item not in self.clicked_history[uid]:
+            if item not in self.clicked_history[uid]: #TODO: Is it OK for an item to appear multiple times in a clicked history?
                 self.clicked_history[uid].append(item)
 
     def sample_actions(self, uids):
