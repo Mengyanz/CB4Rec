@@ -12,10 +12,13 @@
 model/* 
 plots/* 
 Simulator/* 
+results/*
+meta_data/*
+logs/*
 ckpt/* 
 __pycache__
 
-*.py 
+
 *.sh
 *.ipynb 
 

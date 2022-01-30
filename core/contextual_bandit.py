@@ -198,7 +198,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             # Update the topic model 
             [a.update(topics, items, rewards, mode = 'topic') for a in algos]
 
-            if t % args.update_period == 0: # Update the item model (i.e. news_encoder and user_encoder)
+            if t % args.update_period == 100: # Update the item model (i.e. news_encoder and user_encoder)
                 [a.update(topics, items, rewards, mode = 'item') for a in algos]
 
         h_items_all.append(h_items)

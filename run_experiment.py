@@ -4,6 +4,7 @@ import math, os
 import numpy as np 
 import torch 
 from algorithms.nrms_sim import NRMS_Sim 
+from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB
 from core.contextual_bandit import run_contextual_bandit
 import logging
@@ -32,6 +33,7 @@ def main():
     # ucblearner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=10)
     # ucblearner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=3)
     dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
 
     algos = [dummylearner]
     for learner in algos:

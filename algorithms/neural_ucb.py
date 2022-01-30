@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimTrainDataset
 
 class SingleStageNeuralUCB(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -329,7 +329,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         ft_sam = self.construct_trainable_samples()
         if len(ft_sam) > 0:
             print('Updating the internal model of the bandit!')
-            ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
+            ft_ds = SimTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
             ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
             
             # do one epoch only

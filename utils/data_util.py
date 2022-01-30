@@ -174,6 +174,38 @@ class TrainDataset(Dataset):
         label = np.array(0)
         return candidate_news, his, label
 
+class SimTrainDataset(Dataset):
+    def __init__(self, args, samples, nid2index, news_index):
+        self.news_index = news_index
+        self.nid2index = nid2index
+        self.samples = samples
+        self.npratio = 1
+        self.max_his_len = args.max_his_len
+        
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        # pos, neg, his, neg_his
+        pos, neg, his, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        
+        candidate_news = [pos] + neg
+        # print('pos: ', pos)
+        # for n in candidate_news:
+        #     print(n)
+        #     print(self.nid2index[n])
+        if type(candidate_news[0]) is str:
+            assert candidate_news[0].startswith('N') # nid
+            candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
+        else: # nindex
+            candidate_news = self.news_index[[n for n in candidate_news]]
+        his = his + [0] * (self.max_his_len - len(his))
+        his = self.news_index[his]
+        
+        label = np.array(0)
+        return candidate_news, his, label
+
 class SimEvalDataset(Dataset):
     def __init__(self, args, uids, nindex2vec, clicked_history): 
         self.nindex2vec = nindex2vec 
