@@ -175,11 +175,10 @@ class TrainDataset(Dataset):
         return candidate_news, his, label
 
 class SimEvalDataset(Dataset):
-    def __init__(self, args, uids, nid2index, nindex2vec, clicked_history): 
+    def __init__(self, args, uids, nindex2vec, clicked_history): 
         self.nindex2vec = nindex2vec 
         self.uids = uids 
         # self.candidate_news = self.nindex2vec[[n for n in news_indexes]]
-        self.nid2index = nid2index 
         self.clicked_history = clicked_history 
         self.max_his_len = args.max_his_len 
 
@@ -188,15 +187,7 @@ class SimEvalDataset(Dataset):
 
     def __getitem__(self,idx): 
         hist = self.clicked_history[self.uids[idx]]
-        new_hist = []
-        for n in hist:
-            if type(n) is str:
-                assert n.startswith('N')
-                new_hist.append(self.nid2index[n])
-            else:
-                new_hist.append(n)
-        hist = new_hist + [0] * (self.max_his_len - len(hist))
-        # hist = [self.nid2index[n] for n in hist] + [0] * (self.max_his_len - len(hist))
+        hist = hist + [0] * (self.max_his_len - len(hist))
         hist = self.nindex2vec[hist]
         return hist 
 
