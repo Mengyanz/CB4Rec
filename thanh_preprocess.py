@@ -278,6 +278,12 @@ def split_then_select_behavior_preprocess(args):
             uid = sample[3]
             if uid not in clicked_history: 
                 clicked_history[uid] = sample[2] 
+  
+    with open(os.path.join(out_path,"nid2index.pkl"), "rb") as f:
+        nid2index = pickle.load(f)
+    
+    for u,v in clicked_history.items(): 
+        clicked_history[u] = [nid2index[l] for l in v]
         
     with open(os.path.join(out_path, "train_clicked_history.pkl"), "wb") as f:
         pickle.dump(clicked_history, f)
@@ -394,7 +400,7 @@ if __name__ == "__main__":
 
 
     args = parse_args()
-    news_preprocess(args)
-    generate_cb_news(args)
+    # news_preprocess(args)
+    # generate_cb_news(args)
     ## behavior_preprocess(args)
     split_then_select_behavior_preprocess(args)
