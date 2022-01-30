@@ -304,7 +304,8 @@ def split_then_select_behavior_preprocess(args):
     with open(os.path.join(out_path, 'cb_val_users.pkl'), 'wb') as fo: 
         pickle.dump(cb_val_users, fo) 
 
-    meta_data_path = './meta_data'
+    # meta_data_path = './meta_data'
+    meta_data_path = os.path.join(args.root_proj_dir, 'meta_data')
     if not os.path.exists(meta_data_path):
         os.mkdir(meta_data_path) 
     for trial in range(args.n_trials): 
@@ -332,7 +333,6 @@ def generate_random_ids_over_runs(num_trials, meta_data_path):
     # n_val_users = 255990
     n_train_users = 711222
     np.random.seed(2022)
-    # meta_data_path = './meta_data'
     print('WARNING: This is to generate meta data for dataset generation, and should only be performed once.' 
         'Quit now if you are not sure what you are doing!!!')
     s = input('Type yesimnotstupid to proceed: ')
@@ -389,12 +389,12 @@ def generate_cb_news(args):
 
 if __name__ == "__main__":
     # from parameters import parse_args
-    from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
+    # from configs.thanh_params import parse_args
+    from configs.mezhang_params import parse_args
 
 
     args = parse_args()
     news_preprocess(args)
     generate_cb_news(args)
-    ## behavior_preprocess(args)
+    # behavior_preprocess(args)
     split_then_select_behavior_preprocess(args)

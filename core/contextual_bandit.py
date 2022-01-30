@@ -112,9 +112,9 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
         cb_val_users = pickle.load(fo) 
 
+    h_items_all = [] 
+    h_rewards_all = []
     for e in range(args.n_trials):
-        h_items_all = [] 
-        h_rewards_all = []
 
         # reset each CB learner
         [a.reset() for a in algos] 
@@ -126,7 +126,9 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         print('TODO: Load the CB train data for this trial and pre-train each CB learner on this trial.')
 
         # Load the initial history for each user in each CB learner
-        random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
+        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
+        # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
+        random_ids = np.load(indices_path)
         user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
 
         init_history = {key:train_clicked_history[key] for key in user_set}
@@ -202,13 +204,11 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
 
+        result_path = os.path.join(args.root_proj_dir, 'results')
+        if not os.path.exists(result_path):
+            os.mkdir(result_path) 
+        np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
 
-    result_path = './results'
-    if not os.path.exists(result_path):
-        os.mkdir(result_path) 
-    np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
-
-    # TODO: records all results for different exper and round
     return np.array(h_items_all), np.array(h_rewards_all)
     
 

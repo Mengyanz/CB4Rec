@@ -11,6 +11,7 @@ def parse_args():
         # "/home/v-mezhang/blob/data/",
         "/home/thanhnt/data/MIND"
     )
+    parser.add_argument("--root_proj_dir",type=str,default="/home/thanhnt/projects/CB4Rec/")
     parser.add_argument("--model_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/")
     parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
     # NRMS: large/large.pkl 

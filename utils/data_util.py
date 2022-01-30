@@ -188,7 +188,15 @@ class SimEvalDataset(Dataset):
 
     def __getitem__(self,idx): 
         hist = self.clicked_history[self.uids[idx]]
-        hist = [self.nid2index[n] for n in hist] + [0] * (self.max_his_len - len(hist))
+        new_hist = []
+        for n in hist:
+            if type(n) is str:
+                assert n.startswith('N')
+                new_hist.append(self.nid2index[n])
+            else:
+                new_hist.append(n)
+        hist = new_hist + [0] * (self.max_his_len - len(hist))
+        # hist = [self.nid2index[n] for n in hist] + [0] * (self.max_his_len - len(hist))
         hist = self.nindex2vec[hist]
         return hist 
 

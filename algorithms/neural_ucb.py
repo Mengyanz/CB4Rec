@@ -70,71 +70,10 @@ class SingleStageNeuralUCB(ContextualBanditLearner):
 
 
     def construct_trainable_samples(self):
-        """construct trainable samples which will be used in NRMS model training
-        from self.h_contexts, self.h_actions, self.h_rewards
-        """
-        tr_samples = []
-        for i, l in enumerate(self.h_contexts):
-            _, _, his, uid, tsp = l
-            poss = []
-            negs = []
-            for j, reward in enumerate(self.h_rewards[i]):
-                if reward == 1:
-                    poss.append(self.h_actions[i][j])
-                elif reward == 0:
-                    negs.append(self.h_actions[i][j])
-                else:
-                    raise Exception("invalid reward")
+        pass
 
-            if len(poss) > 0 and len(negs) > 0:  
-                if len(negs) == 0:
-                    pass
-                    # TODO: sample negative samples
-                for pos in poss:
-                    tr_samples.append([pos, negs, his, uid, tsp])
-        return tr_samples
-
-    def update_learner(self, context, actions, rewards):
-        
-        if len(self.h_contexts) < self.args.update_learn_size:
-            # store samples into buffer
-            self.h_contexts.append(context)
-            self.h_actions.append(actions)
-            self.h_rewards.append(rewards)
-        else:
-            # update learner
-            print('Updating the internal model of the bandit!')
-            optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
-            ft_sam = self.construct_trainable_samples()
-            ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.news_index)
-            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
-            
-            # do one epoch only
-            loss = 0
-            self.model.train()
-            ft_loader = tqdm(ft_dl)
-            for cnt, batch_sample in enumerate(ft_loader):
-                candidate_news_index, his_index, label = batch_sample
-                sample_num = candidate_news_index.shape[0]
-                candidate_news_index = candidate_news_index.to(self.device)
-                his_index = his_index.to(self.device)
-                label = label.to(self.device)
-                bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
-
-                loss += bz_loss.detach().cpu().numpy()
-                optimizer.zero_grad()
-                bz_loss.backward()
-
-                optimizer.step()
-
-                # if cnt % 10 == 0:
-                #     ft_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
-                #     ft_loader.refresh() 
-            
-            # clear buffer
-            self.h_contexts = []
-            self.h_actions = []
-            self.h_rewards = []
+    def train(self):
+        pass
 
     def update(self, context, topics, actions, rewards):
         """Update its internal model. 
@@ -359,6 +298,60 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
 
+    def construct_trainable_samples(self):
+        """construct trainable samples which will be used in NRMS model training
+        from self.h_contexts, self.h_actions, self.h_rewards
+        """
+        tr_samples = []
+        # for i, l in enumerate(self.h_contexts):
+        #     _, _, his, uid, tsp = l
+        #     poss = []
+        #     negs = []
+        #     for j, reward in enumerate(self.h_rewards[i]):
+        #         if reward == 1:
+        #             poss.append(self.h_actions[i][j])
+        #         elif reward == 0:
+        #             negs.append(self.h_actions[i][j])
+        #         else:
+        #             raise Exception("invalid reward")
+
+        for i, l in enumerate(self.data_buffer):
+            poss, negs, his, uid, tsp = l
+            if len(poss) > 0 and len(negs) > 0:  # TODO: change when use BCE
+                for pos in poss:
+                    tr_samples.append([pos, negs, his, uid, tsp])
+        return tr_samples
+
+    def train(self):
+        
+        # update learner
+        optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
+        ft_sam = self.construct_trainable_samples()
+        if len(ft_sam) > 0:
+            print('Updating the internal model of the bandit!')
+            ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
+            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
+            
+            # do one epoch only
+            loss = 0
+            self.model.train()
+            ft_loader = tqdm(ft_dl)
+            for cnt, batch_sample in enumerate(ft_loader):
+                candidate_news_index, his_index, label = batch_sample
+                sample_num = candidate_news_index.shape[0]
+                candidate_news_index = candidate_news_index.to(self.device)
+                his_index = his_index.to(self.device)
+                label = label.to(self.device)
+                bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
+
+                loss += bz_loss.detach().cpu().numpy()
+                optimizer.zero_grad()
+                bz_loss.backward()
+
+                optimizer.step()  
+        else:
+            print('Skip update cb learner due to lack valid samples!')
+
     def update(self, topics, items, rewards, mode = 'topic'):
         """Update its internal model. 
 
@@ -402,7 +395,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
 
             cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG
-            print(cand_news)
+            # print(cand_news)
             rec_item = self.item_rec(uids, cand_news)
             rec_items.append(rec_item[0])
         
