@@ -149,7 +149,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             item_batches = []
             topic_batches = []
             for a in algos:
-                topics, items = a.sample_actions([u]) # recommend for user u using their current history 
+                topics, items = a.sample_actions(u) # recommend for user u using their current history 
 
                 topic_batches.append(topics) 
                 item_batches.append(items) 
@@ -160,7 +160,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             print('  rec_news: {}'.format(item_batches))
 
 
-            reward_batches = [simulator.reward([u], items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
+            reward_batches = [simulator.reward(u, items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
 

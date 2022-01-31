@@ -8,7 +8,7 @@ from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, Dummy
 from core.contextual_bandit import run_contextual_bandit
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-device = torch.device("cuda:1")
+device = torch.device("cuda:2")
 torch.cuda.set_device(device)
 
 def main():

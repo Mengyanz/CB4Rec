@@ -191,7 +191,16 @@ class SimEvalDataset(Dataset):
         hist = self.nindex2vec[hist]
         return hist 
 
+class SimEvalDataset2(Dataset):
+    def __init__(self, args, cand_news, nindex2vec): 
+        self.cand_news = cand_news 
+        self.nindex2vec = nindex2vec 
 
+    def __len__(self):
+        return len(self.cand_news)
+
+    def __getitem__(self,idx): 
+        return self.nindex2vec[self.cand_news[idx]] 
 
 class NewsDataset(Dataset):
     def __init__(self, news_index):
