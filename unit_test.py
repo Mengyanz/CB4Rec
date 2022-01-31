@@ -3,26 +3,50 @@
 import math, os 
 import numpy as np 
 import torch 
+import pickle 
 from algorithms.nrms_sim import NRMS_Sim 
+from algorithms.neural_ucb import DummyTwoStageNeuralUCB
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 print(device)
+from configs.thanh_params import parse_args
+args = parse_args()
 
 def test_NRMS_Sim():
     """Test NRMS_Sim"""
-    from configs.thanh_params import parse_args
-    args = parse_args()
-    print(args)
+    # print(args)
     nrms = NRMS_Sim(device, args)
 
-    print(nrms.model)
-    print(nrms.news_index.shape)
+    # print(nrms.model)
 
-    print(nrms.news_vecs.shape)
+    clicked_history_fn = '/home/thanhnt/data/MIND/large/utils/train_clicked_history.pkl'
+    with open(clicked_history_fn, 'rb') as fo: 
+        clicked_history = pickle.load(fo)
+
+    nrms.set_clicked_history(clicked_history)
+
+    # uids = ['U403465','U493092','U172654','U248125','U495159','U288476','U92329'] 
+    uid = 'U403465'
+    news_indexes = [0,1,2,3,4] 
+    rewards = nrms.reward(uid, news_indexes)
+
+    print(rewards)
+
+def test_DummyTwoStageNeuralUCB(): 
+    cbln = DummyTwoStageNeuralUCB(device, args, rec_batch_size = 3)
+    uid = 'U403465'
+    news_indexes = [0,1,2,3,4] 
+    # res = cbln.item_rec(uid, news_indexes)
+    # print(res.shape)
+    # print(res)
+    tp, it = cbln.sample_actions(uid) 
+    print(tp)
+    print(it)
 
 
 if __name__ == '__main__': 
-    test_NRMS_Sim()
+    # test_NRMS_Sim()
+    test_DummyTwoStageNeuralUCB()

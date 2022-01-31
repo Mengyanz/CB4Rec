@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
     parser.add_argument("--update_period", type=int, default=1, help = 'Update period for CB model')
 
+    parser.add_argument("--max_batch_size", type=int, default=256, help = 'Maximum batch size your GPU can fit in.')
 
 
     parser.add_argument("--npratio", type=int, default=4)

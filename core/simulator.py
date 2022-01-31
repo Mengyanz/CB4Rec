@@ -30,11 +30,11 @@ class Simulator(object):
         """
         pass
 
-    def reward(self, uids, news_indexes): 
+    def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
 
         Args:
-            uids: a list of user ids  
+            uid: str, a user id   
             news_indexes: a list of item index (not nID, but its integer version)
 
         Return: 

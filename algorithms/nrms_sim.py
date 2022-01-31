@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from core.simulator import Simulator 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, SimEvalDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, SimEvalDataset, SimEvalDataset2
 
 
 class NRMS_Sim(Simulator): 
@@ -34,25 +34,30 @@ class NRMS_Sim(Simulator):
             self.model.load_state_dict(torch.load(args.sim_path)) 
 
 
-    def reward(self, uids, news_indexes): 
+    def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
 
         Args:
-            uids: a list of user ids  
+            uid: str, user id 
             news_indexes: a list of item index (not nID, but its integer version)
 
         Return: 
             rewards: (n,m) of 0 or 1 
         """
-        batch_size = min(16, len(uids))
-        candidate_news = self.nindex2vec[[n for n in news_indexes]] 
-        candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
-        sed = SimEvalDataset(self.args, uids, self.nindex2vec, self.clicked_history)
+        batch_size = min(self.args.max_batch_size, len(news_indexes))
+
+        h = self.clicked_history[uid]
+        h = h + [0] * (self.args.max_his_len - len(h))
+        h = self.nindex2vec[h]
+
+        h = torch.Tensor(h[None,:,:])
+
+        sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
         scores = []
-        for h in rdl:
-            score = self.model.forward(candidate_news.to(self.device), h.to(self.device), None, compute_loss=False)
+        for cn in rdl:
+            score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
             scores.append(score.detach().cpu().numpy()) 
         scores = np.concatenate(scores)  
         p = sigmoid(scores) 

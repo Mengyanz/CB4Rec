@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimTrainDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -265,38 +265,43 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         rec_topic = self.active_topics[np.argmax(ss)]
         return rec_topic
 
-    def item_rec(self, uids, cand_news): 
+    def item_rec(self, uid, cand_news): 
         """
         Args:
-            uids: a list of str uIDs 
+            uid: str, a user id 
             cand_news: a list of int (not nIDs but their index version from `nid2index`) 
 
         Return: 
-            items: a list of `len(uids)`int 
+            item: int 
         """
-        batch_size = min(16, len(uids))
-        candidate_news = self.nindex2vec[[n for n in cand_news]] 
-        candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
-        sed = SimEvalDataset(self.args, uids, self.nindex2vec, self.clicked_history)
+        batch_size = min(self.args.max_batch_size, len(cand_news))
+
+        # get user vect 
+     
+        h = self.clicked_history[uid]
+        h = h + [0] * (self.args.max_his_len - len(h))
+        h = self.nindex2vec[h]
+
+        h = torch.Tensor(h[None,:,:])
+        sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
         #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
         all_scores = []
         for _ in range(self.n_inference):
             scores = []
-            for h in rdl:
-                score = self.model.forward(candidate_news.to(self.device), h.to(self.device), None, compute_loss=False)
+            for cn in rdl:
+                score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
                 scores.append(score.detach().cpu().numpy()) 
-            scores = np.concatenate(scores) # (len(uids), len(cand_news))
+            scores = np.concatenate(scores) 
             all_scores.append(scores) 
 
-        all_scores = np.array(all_scores) # (n_inference,len(uids), len(cand_news))
+        all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
         mu = np.mean(all_scores, axis=0) 
         std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
         ucb = mu + std # (n,b) 
-        nid_argmax = np.argmax(ucb, axis=1).tolist() # (len(uids),)
-        rec_itms = [cand_news[n] for n in nid_argmax]
-        return rec_itms 
+        nid_argmax = np.argmax(ucb).tolist() 
+        return cand_news[nid_argmax] 
 
     def construct_trainable_samples(self):
         """construct trainable samples which will be used in NRMS model training
@@ -376,14 +381,14 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         if mode == 'item': 
             self.train() 
 
-    def sample_actions(self, uids): 
+    def sample_actions(self, uid): 
         """Choose an action given a context. 
         Args:
-            uids: a list of str uIDs. 
+            uid: str, user id
 
         Return: 
-            topics: (len(uids), `rec_batch_size`)
-            items: (len(uids), `rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
+            topics: (`rec_batch_size`)
+            items: (`rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
         """
         rec_topics = []
         rec_items = []
@@ -395,8 +400,8 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
 
             cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG
-            # print(cand_news)
-            rec_item = self.item_rec(uids, cand_news)
-            rec_items.append(rec_item[0])
+            print('DEBUG:', rec_topic, len(cand_news))
+            rec_item = self.item_rec(uid, cand_news)
+            rec_items.append(rec_item)
         
         return rec_topics, rec_items
