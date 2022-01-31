@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralGreedy(ContextualBanditLearner):
     def __init__(self,device, args, rec_batch_size = 1, pretrained_mode=True, name='SingleStageNeuralGreedy'):
@@ -95,34 +95,40 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
             and each of the topics they recommend an item (`rec_batch_size` items in total). 
             What if one item appears more than once in the list of `rec_batch_size` items? 
         """
-        self.train() 
+        if mode == 'item':
+            self.train() 
 
-    def item_rec(self, uids, cand_news, m = 1): 
+    def item_rec(self, uid, cand_news, m = 1): 
         """
         Args:
-            uids: a list of str uIDs 
+            uid: str, a user id 
             cand_news: a list of int (not nIDs but their index version from `nid2index`) 
             m: int, number of items to rec 
 
         Return: 
             items: a list of `len(uids)`int 
         """
-        batch_size = min(16, len(uids))
-        candidate_news = self.nindex2vec[[n for n in cand_news]] 
-        candidate_news = torch.Tensor(candidate_news[None,:,:]).repeat(batch_size,1,1)
-        sed = SimEvalDataset(self.args, uids, self.nindex2vec, self.clicked_history)
+        batch_size = min(self.args.max_batch_size, len(cand_news))
+
+        # get user vect 
+     
+        h = self.clicked_history[uid]
+        h = h + [0] * (self.args.max_his_len - len(h))
+        h = self.nindex2vec[h]
+
+        h = torch.Tensor(h[None,:,:])
+        sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
         #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
-        
         scores = []
-        for h in rdl:
-            # TODO: out of memory when use all news as candidate news
-            score = self.model.forward(candidate_news.to(self.device), h.to(self.device), None, compute_loss=False)
+        for cn in rdl:
+            score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
             scores.append(score.detach().cpu().numpy()) 
-        scores = np.concatenate(scores) # (len(uids), len(cand_news))
+        scores = np.concatenate(scores).squeeze(-1)
+        print(scores.shape)   
 
-        nid_argmax = np.argsort(scores, axis=1)[::-1][:m].tolist() # (len(uids),)
+        nid_argmax = np.argsort(scores)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
 

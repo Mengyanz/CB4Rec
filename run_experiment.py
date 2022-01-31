@@ -35,7 +35,7 @@ def main():
     dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
 
-    algos = [dummylearner]
+    algos = [greedylearner]
     for learner in algos:
         logging.info(learner.name)
 
