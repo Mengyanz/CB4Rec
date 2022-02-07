@@ -29,10 +29,14 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         # preprocessed data 
         self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
-        self.candidate_news = []
+        cb_news = []
         for k,v in topic_news.items():
-            self.candidate_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
-        self.candidate_news = [item for sublist in self.candidate_news for item in sublist]
+            cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
+        cb_news = [item for sublist in cb_news for item in sublist]
+        # DEBUG:
+        print('Warning: for debug, sample 1000 candidates news! Remove this line for full evaluation!')
+        cb_news = np.random.choice(cb_news, size=1000, replace=False).tolist()
+        self.cb_news=cb_news
 
         # model 
         self.model = NRMS_Model(word2vec).to(self.device)
@@ -118,7 +122,6 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
 
         h = torch.Tensor(h[None,:,:])
         sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-        #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
         scores = []
@@ -126,7 +129,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
             score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
             scores.append(score.detach().cpu().numpy()) 
         scores = np.concatenate(scores).squeeze(-1)
-        print(scores.shape)   
+        # print(scores.shape)   
 
         nid_argmax = np.argsort(scores)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]
@@ -145,9 +148,9 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
 
         # print(self.nid2index)
         # cand_news = []
-        # for n in self.candidate_news:
+        # for n in cb_news:
         #     cand_news.append(self.nid2index[n])
-        cand_news = [self.nid2index[n] for n in self.candidate_news]
+        cand_news = [self.nid2index[n] for n in self.cb_news]
         rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
 
         

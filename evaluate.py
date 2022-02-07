@@ -39,7 +39,7 @@ def cal_metric(h_rewards_all, metric_names = ['cumu_reward']):
     
     return metrics
 
-def plot_metrics(metrics, plot_title):
+def plot_metrics(args, metrics, plot_title):
     plt_path = os.path.join(args.root_proj_dir, 'plots')
     if not os.path.exists(plt_path):
         os.mkdir(plt_path) 
@@ -51,6 +51,7 @@ def plot_metrics(metrics, plot_title):
         for i in range(n_algos):
             plt.plot(range(T), mean[i], label = str(i))
             plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
+        plt.legend()
         plt.xlabel('Iteration')
         plt.ylabel(name)
         plt.title(plot_title)
@@ -61,11 +62,11 @@ def main():
     from configs.mezhang_params import parse_args
 
     args = parse_args()
-    result_path = os.path.join(args.root_proj_dir, "rewards-8.npy")
+    result_path = os.path.join(args.root_proj_dir, "results", "rewards-0.npy")
     
     h_rewards_all = np.load(result_path)
     metrics = cal_metric(h_rewards_all, ['cumu_reward', 'ctr'])
-    plot_metrics(metrics, plot_title=result_path)
+    plot_metrics(args, metrics, plot_title=result_path)
 
 
 if __name__ == '__main__':

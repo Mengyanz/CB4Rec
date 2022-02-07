@@ -24,18 +24,19 @@ def main():
     logging.basicConfig(filename=os.path.join(log_path, 'mylog.log'), level=logging.INFO)
     logging.info(args)
 
-    rec_batch_size = 3
-    n_inference = 3
+    rec_batch_size = 5
+    n_inference = 5
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 
     # construct a list of CB learners 
-    # ucblearner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=10)
-    # ucblearner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=3)
-    dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    single_neuralucb_learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
 
-    algos = [greedylearner]
+    algos = [single_neuralucb_learner, ts_neuralucb_learner, greedylearner]
+    # algos = [greedylearner]
     for learner in algos:
         logging.info(learner.name)
 
