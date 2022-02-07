@@ -131,7 +131,7 @@ def read_imprs(args, path, mode, save=False):
                 user_indices[uid].append(index)
                 index += 1
         else:
-            samples.append([pos_imp, neg_imp, his, uid, tsp])
+            samples.append([pos_imp, neg_imp, his, uid, tsp]) #TODO: Read [news, label, his, uid, tsp] one news at a time
 
     sorted_samples = [i for i in sorted(samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
 
@@ -146,6 +146,36 @@ def read_imprs(args, path, mode, save=False):
 
     user_set = list(user_imprs)
     return user_set, samples, sorted_samples, user_indices
+
+
+def read_imprs_for_val_set_for_sim(args, path):
+    """
+    Args:
+        mode: 0 (train), 1 (valid)
+    """
+    samples = []
+    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+
+    for l in tqdm(open(path, "r")):
+        imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
+
+        his = his.split()
+        tsp = t
+        # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
+        #tsp = int(t)
+        imprs = [i.split("-") for i in imprs.split(" ")]
+        neg_imp = [i[0] for i in imprs if i[1] == "0"]
+        pos_imp = [i[0] for i in imprs if i[1] == "1"]
+
+        his = his[-args.max_his_len:]
+        labels = [1] * len(pos_imp) + [0] * len(neg_imp) 
+        nns = pos_imp + neg_imp 
+        for n,l in zip(nns, labels):
+            samples.append([n, l, his, uid, tsp]) 
+
+    with open(os.path.join(out_path, "val_contexts.pkl"), "wb") as f:
+        pickle.dump(samples, f)
+
 
 def behavior_preprocess(args):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
@@ -403,4 +433,7 @@ if __name__ == "__main__":
     # news_preprocess(args)
     # generate_cb_news(args)
     ## behavior_preprocess(args)
-    split_then_select_behavior_preprocess(args)
+    # split_then_select_behavior_preprocess(args)
+
+    # Get val set for sim 
+    read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))

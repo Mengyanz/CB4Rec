@@ -7,15 +7,11 @@ import pickle
 from algorithms.nrms_sim import NRMS_Sim 
 from algorithms.neural_ucb import DummyTwoStageNeuralUCB
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-device = torch.device("cuda:0")
-torch.cuda.set_device(device)
 
-print(device)
 from configs.thanh_params import parse_args
 args = parse_args()
 
-def test_NRMS_Sim():
+def test_NRMS_Sim(device):
     """Test NRMS_Sim"""
     # print(args)
     nrms = NRMS_Sim(device, args)
@@ -35,7 +31,11 @@ def test_NRMS_Sim():
 
     print(rewards)
 
-def test_DummyTwoStageNeuralUCB(): 
+def test_NRMS_Sim_train(device):
+    nrms = NRMS_Sim(device, args)
+    nrms.train()
+
+def test_DummyTwoStageNeuralUCB(device): 
     cbln = DummyTwoStageNeuralUCB(device, args, rec_batch_size = 3)
     uid = 'U403465'
     news_indexes = [0,1,2,3,4] 
@@ -48,5 +48,10 @@ def test_DummyTwoStageNeuralUCB():
 
 
 if __name__ == '__main__': 
+    # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+    device = torch.device("cuda:0,1,2,3")
+    torch.cuda.set_device(device)
+    
     # test_NRMS_Sim()
-    test_DummyTwoStageNeuralUCB()
+    # test_DummyTwoStageNeuralUCB()
+    test_NRMS_Sim_train(device)
