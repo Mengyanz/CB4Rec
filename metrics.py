@@ -42,6 +42,8 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
     for i in tqdm(range(len(samples))):
         poss, negs, _, _, _ = samples[i]
         user_vec = user_vecs[i]
+        if type(poss) is str:
+            poss = [poss]
         y_true = [1] * len(poss) + [0] * len(negs)
         news_ids = [nid2index[i] for i in poss + negs]
         news_vec = news_vecs[news_ids]
