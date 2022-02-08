@@ -6,15 +6,34 @@ import pickle, os
 from collections import defaultdict
 from utils.data_util import load_cb_train_data, load_cb_valid_data
 import os
+import torch
 
 class ContextualBanditLearner(object):
-    def __init__(self, args, rec_batch_size = 1, name='ContextualBanditLearner'):
+    def __init__(self, args, rec_batch_size = 1, pretrained_mode=True, name='ContextualBanditLearner'):
+        """Args:
+                rec_batch_size: int, recommendation size. 
+                n_inference: int, number of Monte Carlo samples of prediction. 
+                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
+        """
         self.name = name 
         print(name)
         self.args = args
         self.rec_batch_size = rec_batch_size
+        self.pretrained_mode = pretrained_mode 
         
         self.reset()
+
+    def load_cb_learner(self, cb_learner_path = None):
+        """load pretrained 
+        Args
+            cb_learner_path: str, pretrained cb learner path
+        """
+        if self.pretrained_mode:
+            if not os.path.exists(cb_learner_path):
+                raise Exception("No cb learner pretrained for this trial!")
+            self.model.load_state_dict(torch.load(cb_learner_path))
+        else:
+            raise NotImplementedError()
         
     def set_clicked_history(self, init_clicked_history):
         self.clicked_history = init_clicked_history
@@ -80,7 +99,6 @@ class ContextualBanditLearner(object):
 
 
     def train(self):
-        print('TODO: Train `self.model` using `self.data_buffer.')
         print('Note that `self.data_buffer` gets updated after every learner-simulator interaciton in `run_contextual_bandit`')
         print('size(data_buffer): {}'.format(len(self.data_buffer)))
         pass
@@ -123,7 +141,10 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         # independents runs to show empirical regret means, std
 
         # @TODO: Load the CB train data for this trial and pre-train each CB learner on this
-        print('TODO: Load the CB train data for this trial and pre-train each CB learner on this trial.')
+        
+        cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
+        print('Load pre-trained CB learner on this trial from ', cb_learner_path)
+        [a.load_cb_learner(cb_learner_path) for a in algos]
 
         # Load the initial history for each user in each CB learner
         indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))

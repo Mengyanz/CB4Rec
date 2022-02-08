@@ -19,10 +19,8 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
-
         """
-        super(SingleStageNeuralGreedy, self).__init__(args, rec_batch_size, name) 
-        self.pretrained_mode = pretrained_mode 
+        super(SingleStageNeuralGreedy, self).__init__(args, rec_batch_size, pretrained_mode, name) 
         self.name = name 
         self.device = device 
 
@@ -40,8 +38,6 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
 
         # model 
         self.model = NRMS_Model(word2vec).to(self.device)
-        if self.pretrained_mode == 'pretrained':
-            self.model.load_state_dict(torch.load(args.learner_path)) 
 
     def construct_trainable_samples(self):
         """construct trainable samples which will be used in NRMS model training

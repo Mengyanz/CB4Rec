@@ -14,15 +14,17 @@ from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
-    def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
         """Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
+                gamma: float, parameter that balancing two terms in ucb.
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
         """
         self.n_inference = n_inference 
+        self.gamma = gamma
         super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, pretrained_mode, name)
         # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
@@ -114,7 +116,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
         mu = np.mean(all_scores, axis=0) 
         std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
-        ucb = mu + std # (n,b) 
+        ucb = mu + self.gamma * std # (n,b) 
        
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]
@@ -150,15 +152,16 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
-                rec_batch_size: int, recommendation size. 
+                rec_batch_size: int, recommendation size.
+                gamma: float, parameter that balancing two terms in ucb. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
         """
-        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, n_inference, pretrained_mode, name)
+        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, gamma, n_inference, pretrained_mode, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
