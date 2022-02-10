@@ -6,6 +6,7 @@ import torch
 from algorithms.nrms_sim import NRMS_Sim 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB
+from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
 import logging
 
@@ -30,13 +31,14 @@ def main():
     simulator = NRMS_Sim(device, args)
 
     # construct a list of CB learners 
-    single_neuralucb_learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    # single_neuralucb_learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    # ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
+    # greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
+    single_linucb = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size)
 
-    algos = [single_neuralucb_learner, ts_neuralucb_learner, greedylearner]
-    # algos = [greedylearner]
+    algos = [single_linucb]
+    # algos = [greedylearner, single_neuralucb_learner, ts_neuralucb_learner]
     for learner in algos:
         logging.info(learner.name)
 
