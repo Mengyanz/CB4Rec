@@ -31,7 +31,10 @@ class ContextualBanditLearner(object):
         if self.pretrained_mode:
             if not os.path.exists(cb_learner_path):
                 raise Exception("No cb learner pretrained for this trial!")
-            self.model.load_state_dict(torch.load(cb_learner_path))
+            try:
+                self.model.load_state_dict(torch.load(cb_learner_path))
+            except:
+                print('Current algorithm has no model. Load checkpoint failed.')
         else:
             raise NotImplementedError()
         
@@ -59,7 +62,7 @@ class ContextualBanditLearner(object):
 
         Return: 
             topics: (len(uids), `rec_batch_size`)
-            items: (len(uids), `rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
+            items: (len(uids), `rec_batch_size`) 
         """
         # 
 
@@ -81,10 +84,6 @@ class ContextualBanditLearner(object):
             items: a list of `rec_batch_size` item index (not nIDs, but its integer index from `nid2index`) 
             rewards: a list of `rec_batch_size` {0,1}
             mode: `topic`/`item`
-
-        @TODO: they recommend `rec_batch_size` topics 
-            and each of the topics they recommend an item (`rec_batch_size` items in total). 
-            What if one item appears more than once in the list of `rec_batch_size` items? 
         """
         # Update the topic model 
 
@@ -139,9 +138,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
-
-        # @TODO: Load the CB train data for this trial and pre-train each CB learner on this
-        
+      
         cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
         print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]

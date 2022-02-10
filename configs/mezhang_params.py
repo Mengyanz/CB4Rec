@@ -22,7 +22,7 @@ def parse_args():
 
     # Preprocessing 
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
-    parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
+    parser.add_argument("--n_trials", type=int, default=4, help = 'number of experiment runs')
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
 
     parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
