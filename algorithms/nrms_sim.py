@@ -4,7 +4,7 @@ import math, os, pickle
 import numpy as np 
 from datetime import datetime
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_curve, precision_recall_curve
 from tqdm import tqdm
 import torch 
 from torch import nn
@@ -154,6 +154,7 @@ class NRMS_Sim(Simulator):
                     vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device))
                  
                     running_vloss += vloss 
+                    vscore = torch.sigmoid(vscore)
 
                     y_true = targets.cpu().detach().numpy().ravel() 
                     y_score = vscore.cpu().detach().numpy().ravel() 
@@ -181,15 +182,15 @@ class NRMS_Sim(Simulator):
             auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_trues.ravel(), y_scores.ravel())
 
             # Select threshold 
-            fpr, tpr, thresholds = roc_curve(y_trues, y_scores)
-            gmeans = np.sqrt(tpr * (1-fpr))
-            ix = np.argmax(gmeans)
+            precision, recall, thresholds = precision_recall_curve(y_trues, y_scores)
+            fscore = (2 * precision * recall) / (precision + recall)
+            ix = np.argmax(fscore)
 
             print(' LOSS train {:.3f} valid {:.3f}'.format(avg_loss, avg_vloss))
             print(' PER-IMP METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'\
                 .format(imp_metrics_mean[0],imp_metrics_mean[1], imp_metrics_mean[2], imp_metrics_mean[3], imp_metrics_mean[4]))
             print(' GLOBAL METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'.format(auc, mrr, ndcg5, ndcg10, ctr))
-            print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
+            print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], fscore[ix]))
 
 
             writer.add_scalars('Training vs. Val Loss',
