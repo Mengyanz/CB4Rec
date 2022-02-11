@@ -2,6 +2,7 @@
 
 import math 
 import numpy as np 
+import pandas as pd
 from collections import defaultdict
 import torch 
 import torch.optim as optim
@@ -11,7 +12,8 @@ from torch.utils.data import DataLoader
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.nrms_model import NRMS_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
+from algorithms.nrms_topic_model import NRMS # only for stage one
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset, load_behaviors, load_news_parsed
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
     def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -439,6 +441,143 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
             # DEBUG
             print('DEBUG:', rec_topic, len(cand_news))
             rec_item = self.item_rec(uid, cand_news)
+            rec_items.append(rec_item)
+        
+        return rec_topics, rec_items
+    
+    
+class TwoStageNeuralUCB_zhenyu(TwoStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
+    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+        """Two stage exploration. Use NRMS model. 
+            Args:
+                rec_batch_size: int, recommendation size.
+                gamma: float, parameter that balancing two terms in ucb. 
+                n_inference: int, number of Monte Carlo samples of prediction. 
+                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
+
+        """
+        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, rec_batch_size, gamma, n_inference, pretrained_mode, name)
+        self.device = device
+        self.behaviors = load_behaviors(args, mode='train')
+        self.behaviors.clicked_news.fillna(' ', inplace=True)
+        self.behaviors.drop_duplicates(inplace=True)
+        self.news_parsed = load_news_parsed(args, mode='train')
+        self.news2dict = self.news_parsed.to_dict('id')
+        for key1 in self.news2dict.keys():
+            for key2 in self.news2dict[key1].keys():
+                if type(self.news2dict[key1][key2]) != str:
+                    self.news2dict[key1][key2] = torch.tensor(
+                        self.news2dict[key1][key2])
+                    
+        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
+        topic_list = load_cb_topic_news(args, ordered=True) # a list of all the topic names, the order of them matters
+        self.topic_order = [i+1 for i in range(len(topic_list))] # used as index to get topic embeddings
+        self.topic_order_dict = {} # used as map for topic to topic_order
+        for topic in topic_list:
+            
+            self.topic_order_dict[topic] = len(self.topic_order_dict) + 1
+        cb_news = defaultdict(list)
+        for k,v in topic_news.items():
+            cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
+        self.cb_news = cb_news 
+        self.cb_topics = topic_list
+        self.model = NRMS(device).to(device)
+        # self.alphas = {}
+        # self.betas = {}
+        self.num_clicked_news_a_user = 50
+
+        # for topic in self.cb_topics:
+        #     self.alphas[topic] = 1
+        #     self.betas[topic] = 1
+    @torch.no_grad()
+    def get_user_vector(self, uid):
+        clicked_news = self.behaviors.at(uid, 'clicked_news').split()[:self.num_clicked_news_a_user]
+        repeated_times = self.num_clicked_news_a_user - len(clicked_news)
+        assert repeated_times >= 0
+        clicked_news = ['PADDED_NEWS'] * repeated_times + clicked_news
+        
+        clicked_news_vectors = [self.model.get_news_vector(self.news2dict[news]).squeeze(0) if news!='PADDED_NEWS' else torch.zeros(64) for news in clicked_news]
+        clicked_news_vectors = torch.stack([vector.to(self.device) for vector in clicked_news_vectors]) # num_history x embedding_dim
+        user_vector = self.model.get_user_vector(clicked_news_vectors.unsqueeze(0)).squeeze(0)
+        return user_vector
+
+    @torch.no_grad()
+    def topic_rec(self, uid):
+        """    
+        Return
+            rec_topic: one recommended topic
+        """
+        self.model.train()
+        user_vector = self.get_user_vector(uid)
+        ss = self.model.get_all_topic_score(user_vector, self.topic_order) # get all active topic scores
+        # for topic in self.active_topics:
+        #     s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
+        #     ss.append(s)
+        rec_topic = self.active_topics[np.argmax(ss)]
+        return rec_topic
+
+    # def item_rec(self, user_samples, cand_news):
+    #     all_scores = []
+    #     self.model.eval()
+    #     cb_indexs = self._get_cb_news_index(cand_news)
+    #     for i in range(self.n_inference): 
+    #         user_vecs = self._get_user_vecs(self.news_vecss[i], user_samples) # (b,d)
+    #         scores = self.news_vecss[i][cb_indexs] @ user_vecs.T # (n,b) 
+    #         all_scores.append(scores) 
+        
+    #     all_scores = np.array(all_scores) # (n_inference,n,b)
+    #     mu = np.mean(all_scores, axis=0) 
+    #     std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+    #     ucb = mu + std # (n,b) 
+    #     sorted_ids = np.argsort(ucb, axis=0)[-1,:] 
+    #     return cb_indexs[sorted_ids]
+
+    def update(self, topics, items, rewards, mode = 'topic'):
+        """Update its internal model. 
+
+        Args:
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its numerical index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+
+        @TODO: they recommend `rec_batch_size` topics 
+            and each of the topics they recommend an item (`rec_batch_size` items in total). 
+            What if one item appears more than once in the list of `rec_batch_size` items? 
+        """
+        # Update the topic model 
+        # if mode == 'topic': 
+        #     for i, topic in enumerate(topics):  # h_actions are topics
+        #         assert rewards[i] in {0,1}
+        #         self.alphas[topic] += rewards[i]
+        #         self.betas[topic] += 1 - rewards[i]
+
+        # Update the user_encoder and news_encoder using `self.clicked_history`
+        if mode == 'item': 
+            self.train() 
+
+    def sample_actions(self, uid): 
+        """Choose an action given a context. 
+        Args:
+            uid: str, user id
+
+        Return: 
+            topics: (`rec_batch_size`)
+            items: (`rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
+        """
+        rec_topics = []
+        rec_items = []
+        self.active_topics = self.cb_topics.copy()
+        while len(rec_items) < self.rec_batch_size:
+            rec_topic = self.topic_rec(uid)
+            rec_topics.append(rec_topic)
+            self.active_topics.remove(rec_topic)
+            self.topic_order.remove(self.topic_order_dict[rec_topic])
+
+            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            # DEBUG
+            print('DEBUG:', rec_topic, len(cand_news))
+            rec_item = self.item_rec(uid, cand_news,m=1)[0]
             rec_items.append(rec_item)
         
         return rec_topics, rec_items
