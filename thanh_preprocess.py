@@ -170,8 +170,9 @@ def read_imprs_for_val_set_for_sim(args, path):
         his = his[-args.max_his_len:]
         labels = [1] * len(pos_imp) + [0] * len(neg_imp) 
         nns = pos_imp + neg_imp 
-        for n,l in zip(nns, labels):
-            samples.append([n, l, his, uid, tsp]) 
+        samples.append([nns, labels, his, uid, tsp])
+        # for n,l in zip(nns, labels):
+            # samples.append([n, l, his, uid, tsp]) 
 
     with open(os.path.join(out_path, "val_contexts.pkl"), "wb") as f:
         pickle.dump(samples, f)

@@ -32,7 +32,7 @@ def test_NRMS_Sim(device):
     print(rewards)
 
 def test_NRMS_Sim_train(device):
-    nrms = NRMS_Sim(device, args)
+    nrms = NRMS_Sim(device, args, pretrained_mode=False)
     nrms.train()
 
 def test_DummyTwoStageNeuralUCB(device): 
@@ -49,9 +49,9 @@ def test_DummyTwoStageNeuralUCB(device):
 
 if __name__ == '__main__': 
     # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-    device = torch.device("cuda:0,1,2,3")
+    device = torch.device("cuda:2")
     torch.cuda.set_device(device)
-    
-    # test_NRMS_Sim()
+
+    # test_NRMS_Sim(device)
     # test_DummyTwoStageNeuralUCB()
     test_NRMS_Sim_train(device)

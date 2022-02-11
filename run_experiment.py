@@ -17,7 +17,10 @@ def main():
 
     args = parse_args()
 
-    rec_batch_size = 3
+    args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
+    args.sim_threshold = 0.38414
+
+    rec_batch_size = 10
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 

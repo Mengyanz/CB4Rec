@@ -3,7 +3,11 @@
 import math, os, pickle
 import numpy as np 
 from datetime import datetime
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve
+from tqdm import tqdm
 import torch 
+from torch import nn
 import torch.optim as optim 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -11,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 from core.simulator import Simulator 
 from algorithms.nrms_model import NRMS_Sim_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, SimEvalDataset, SimEvalDataset2, SimTrainDataset, SimValDataset
-
+from utils.metrics import compute_amn
 
 class NRMS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=True, name='NRMS_Simulator'): 
@@ -25,6 +29,7 @@ class NRMS_Sim(Simulator):
         self.name = name 
         self.device = device 
         self.args = args 
+        self.threshold = args.sim_threshold
 
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
@@ -33,7 +38,8 @@ class NRMS_Sim(Simulator):
 
         # model 
         self.model = NRMS_Sim_Model(word2vec).to(self.device)
-        if self.pretrained_mode == 'pretrained':
+        if self.pretrained_mode: # == 'pretrained':
+            print('loading a pretrained model from {}'.format(args.sim_path))
             self.model.load_state_dict(torch.load(args.sim_path)) 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
@@ -60,14 +66,16 @@ class NRMS_Sim(Simulator):
         sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
         rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
-        scores = []
-        for cn in rdl:
-            score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
-            scores.append(score.detach().cpu().numpy()) 
-        scores = np.concatenate(scores)  
-        p = sigmoid(scores) 
-        rewards = np.random.binomial(size=p.shape, n=1, p=p)
-        return rewards 
+        self.model.eval()
+        with torch.no_grad():
+            scores = []
+            for cn in rdl:
+                score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
+                scores.append(torch.sigmoid(score[:,None])) 
+            scores = torch.cat(scores, dim=0) 
+            print(scores)
+            rewards = (scores >= self.threshold).float().detach().cpu().numpy()
+        return rewards.ravel()
 
     def _train_one_epoch(self, epoch_index, train_loader, writer):
         # ref: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html 
@@ -99,55 +107,127 @@ class NRMS_Sim(Simulator):
 
 
     def train(self): 
+        # TODO: distributed training 
+        #   refs: https://horovod.readthedocs.io/en/stable/pytorch.html
+        #         https://github.com/Mengyanz/CB4Rec/blob/main/Simulator/run.py 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        writer = SummaryWriter('runs/nrms_sim_{}'.format(timestamp)) # https://pytorch.org/docs/stable/tensorboard.html 
+        out_path = 'runs/nrms_sim_{}'.format(timestamp)
+        writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html 
 
-        out_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
-        with open(os.path.join(out_path, "train_contexts.pkl"), "rb") as fo:
+        data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
+        
+        with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
             train_samples = pickle.load(fo)
         train_dataset = SimTrainDataset(self.args, self.nid2index, self.nindex2vec, train_samples) 
-        train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, num_workers=2)
+        train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, num_workers=5)
 
-        with open(os.path.join(out_path, "val_contexts.pkl"), "rb") as fo:
+        with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
             val_samples = pickle.load(fo)
         val_dataset = SimValDataset(self.args, self.nid2index, self.nindex2vec, val_samples) 
-        val_loader = DataLoader(val_dataset, batch_size=self.args.batch_size, shuffle=True, num_workers=2)
-
+        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=5)
 
         epoch_number = 0 
 
-        EPOCHS = 5 
+        EPOCHS = 10
 
-        best_vloss = 1_000_000. 
+        best_vauc = 0. 
 
         for epoch in range(EPOCHS):
             print('EPOCH {}:'.format(epoch_number + 1))
 
-            self.model.train(True) # train mode 
+            self.model.train() # train mode 
             avg_loss = self._train_one_epoch(epoch_number, train_loader, writer)
 
             # report mode 
-            self.model.train(False) 
+            self.model.eval() 
 
             running_vloss = 0.0 
-            for i, vdata in enumerate(val_loader): 
-                cand_news, clicked_news, targets = vdata
-                vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device)) 
-                running_vloss += vloss 
+            # CM = 0 
+            y_scores = [] 
+            y_trues = []
+            imp_metrics = []
+            with torch.no_grad():
+                pbar = tqdm(enumerate(val_loader))
+                for i, vdata in pbar: 
+                    pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
+                    cand_news, clicked_news, targets = vdata
+                    vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device))
+                 
+                    running_vloss += vloss 
+
+                    y_true = targets.cpu().detach().numpy().ravel() 
+                    y_score = vscore.cpu().detach().numpy().ravel() 
+                    auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
+                    imp_metrics.append([auc, mrr, ndcg5, ndcg10, ctr])
+
+
+                    y_scores.append(y_score) 
+                    y_trues.append(y_true)
+
+                    # preds = (sigmoid_fn(vscore)>THRESHOLD).float()
+                    # CM += confusion_matrix(targets.cpu(), preds.cpu(),labels=[0,1])
+
             avg_vloss = running_vloss / (i+1) 
-            print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
+
+            imp_metrics = np.array(imp_metrics) 
+            y_scores = np.hstack(y_scores) 
+            y_trues = np.hstack(y_trues) 
+
+            fname = os.path.join(out_path, 'scores_labels')
+            np.savez(fname, y_scores, y_trues)
+
+            imp_metrics_mean = np.mean(imp_metrics, axis=0)
+
+            auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_trues.ravel(), y_scores.ravel())
+
+            # Select threshold 
+            fpr, tpr, thresholds = roc_curve(y_trues, y_scores)
+            gmeans = np.sqrt(tpr * (1-fpr))
+            ix = np.argmax(gmeans)
+
+            print(' LOSS train {:.3f} valid {:.3f}'.format(avg_loss, avg_vloss))
+            print(' PER-IMP METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'\
+                .format(imp_metrics_mean[0],imp_metrics_mean[1], imp_metrics_mean[2], imp_metrics_mean[3], imp_metrics_mean[4]))
+            print(' GLOBAL METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'.format(auc, mrr, ndcg5, ndcg10, ctr))
+            print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], gmeans[ix]))
+
+
             writer.add_scalars('Training vs. Val Loss',
                     {'Training': avg_loss, 'Val': avg_vloss}, 
                     epoch_number + 1)
+
+            writer.add_scalars('Per-Imp Metrics',
+                    {'auc': imp_metrics_mean[0], 'mrr': imp_metrics_mean[1], 'ndcg5': imp_metrics_mean[2], 'ndcg10': imp_metrics_mean[3], \
+                        'ctr': imp_metrics_mean[4]}, 
+                    epoch_number + 1)
+
+            writer.add_scalars('Globle Metrics',
+                    {'auc': auc, 'mrr': mrr, 'ndcg5': ndcg5, 'ndcg10': ndcg10, 'ctr': ctr, 'best-gmean': gmeans[ix]}, 
+                    epoch_number + 1)
+
+            writer.add_scalars('Threshold',
+                    {'threshold':thresholds[ix]}, epoch_number + 1)
+
             writer.flush()
 
-            # Track the best performance and save the model's state 
-            if avg_vloss < best_vloss:
-                best_vloss = avg_vloss 
-                model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+            if imp_metrics_mean[0] > best_vauc: #TODO: select by Global AUC 
+                best_vauc = imp_metrics_mean[0] 
+                model_path = os.path.join(out_path, 'model_{}'.format(epoch_number))
                 torch.save(self.model.state_dict(), model_path)
             
             epoch_number += 1 
 
 def sigmoid(u):
     return 1/(1+np.exp(-u))
+
+
+def report_metrics(CM):
+    tn = CM[0][0]
+    tp = CM[1][1]
+    fp = CM[0][1]
+    fn = CM[1][0]
+    acc = np.sum(np.diag(CM)/np.sum(CM))
+    sensitivity = tp/(tp+fn)
+    precision = tp/(tp+fp)
+    f1 = (2*sensitivity*precision)/(sensitivity+precision)
+    return acc, sensitivity, precision, f1

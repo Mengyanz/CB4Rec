@@ -12,7 +12,9 @@ def parse_args():
         "/home/thanhnt/data/MIND"
     )
     parser.add_argument("--model_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/")
-    parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
+    # parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
+    parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/runs/nrms_sim_20220209_211140/model_20220209_211140_6")
+    parser.add_argument("--sim_threshold", type=float, default=0.38414)
     # NRMS: large/large.pkl 
     # PLM: epoch-2.pt 
     parser.add_argument("--out_path", type=str, default="/home/thanhnt/projects/CB4Rec/model")
@@ -30,6 +32,8 @@ def parse_args():
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
     parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
+    parser.add_argument("--sim_npratio", type=int, default=2)
+    parser.add_argument("--sim_val_batch_size", type=int, default=1024)
 
                     
     parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
