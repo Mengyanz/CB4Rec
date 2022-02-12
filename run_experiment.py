@@ -9,6 +9,7 @@ from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, Dummy
 from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
 import logging
+import pretty_errors
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:2")
@@ -35,12 +36,12 @@ def main():
 
     # construct a list of CB learners 
     # single_neuralucb_learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    # ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     # greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
-    single_linucb = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size)
+    # single_linucb = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size)
 
-    algos = [single_linucb]
+    algos = [ts_neuralucb_learner]
     # algos = [greedylearner, single_neuralucb_learner, ts_neuralucb_learner]
     for learner in algos:
         logging.info(learner.name)

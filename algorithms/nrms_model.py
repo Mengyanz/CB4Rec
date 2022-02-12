@@ -188,3 +188,44 @@ class NRMS_Model(nn.Module):
             return loss, score
         else:
             return score
+
+class NRMS_Sim_Model(nn.Module):
+    def __init__(self, embedding_matrix):
+        super(NRMS_Sim_Model, self).__init__()
+        self.text_encoder = TextEncoder(embedding_matrix)
+        self.user_encoder = UserEncoder()
+        self.m = nn.Sigmoid()
+        
+        self.criterion = nn.BCELoss() #nn.CrossEntropyLoss()
+    
+    def forward(self, candidate_news, clicked_news, targets, compute_loss=True):
+        """
+        Args:
+            candidate_news: (batch_size, 1 + npratio, vect_dim)
+            clicked_news: (batch_size, max_his_len, vect_dim)
+            targets: (batch_size, 1 + npratio)
+        """
+        batch_size, one_plus_npratio, word_num = candidate_news.shape
+        candidate_news = candidate_news.view(-1, word_num)
+        candidate_vector = self.text_encoder(candidate_news).view(batch_size, one_plus_npratio, -1)
+        
+        batch_size, clicked_news_num, word_num = clicked_news.shape
+        clicked_news = clicked_news.view(-1, word_num)
+        clicked_news_vecs = self.text_encoder(clicked_news).view(batch_size, clicked_news_num, -1)
+        
+        user_vector = self.user_encoder(clicked_news_vecs)
+        
+        score = torch.bmm(candidate_vector, user_vector.unsqueeze(-1)).squeeze(dim=-1) # (batch_size,1 + npratio)
+
+        # print(candidate_vector.shape) 
+        # print(user_vector.shape)
+        # print(user_vector.unsqueeze(-1).shape)
+        # print(score.shape)
+        # print(batch_size, one_plus_npratio, word_num)
+        # print(batch_size, clicked_news_num, word_num)
+        
+        if compute_loss:
+            loss = self.criterion(self.m(score), targets)
+            return loss, score
+        else:
+            return score

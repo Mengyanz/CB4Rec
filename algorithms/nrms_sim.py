@@ -1,6 +1,6 @@
 """Define NRMS simulator. """
 
-import math 
+import math, os, pickle
 import numpy as np 
 from datetime import datetime
 from sklearn.metrics import confusion_matrix
@@ -10,6 +10,7 @@ import torch
 from torch import nn
 import torch.optim as optim 
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from core.simulator import Simulator 
 from algorithms.nrms_model import NRMS_Sim_Model
@@ -41,14 +42,13 @@ class NRMS_Sim(Simulator):
             print('loading a pretrained model from {}'.format(args.sim_path))
             self.model.load_state_dict(torch.load(args.sim_path)) 
 
+        self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr)        
 
     def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
-
         Args:
             uid: str, user id 
             news_indexes: a list of item index (not nID, but its integer version)
-
         Return: 
             rewards: (n,m) of 0 or 1 
         """
