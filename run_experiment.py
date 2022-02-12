@@ -27,6 +27,9 @@ def main():
 
     rec_batch_size = 5
     n_inference = 5
+    args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
+    args.sim_threshold = 0.38414
+
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 

@@ -1,5 +1,6 @@
 *.ipynb_checkpoints
 
+*.cpython-37.pyc
 *.pyc
 *.py~
 *.pkl

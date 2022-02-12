@@ -175,13 +175,41 @@ class TrainDataset(Dataset):
         return candidate_news, his, label
 
 class SimTrainDataset(Dataset):
-    def __init__(self, args, samples, nid2index, news_index):
-        self.news_index = news_index
-        self.nid2index = nid2index
-        self.samples = samples
-        self.npratio = 1
-        self.max_his_len = args.max_his_len
-        
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.npratio = args.sim_npratio 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        pos, neg, his, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        candidate_news = [pos] + neg
+        assert type(candidate_news[0]) is str 
+        candidate_news = self.nindex2vec[[self.nid2index[n] for n in candidate_news]] 
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1 
+        return candidate_news, his, torch.Tensor(label)  
+
+class SimTrainDatasetPropensity(Dataset):
+    """Add mask and inverse propensity weight to handle imbalanced class. 
+    """
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.npratio = args.sim_npratio 
+        self.max_his_len = args.max_his_len 
+
     def __len__(self):
         return len(self.samples)
     
@@ -191,20 +219,38 @@ class SimTrainDataset(Dataset):
         neg = newsample(neg, self.npratio)
         
         candidate_news = [pos] + neg
-        # print('pos: ', pos)
-        # for n in candidate_news:
-        #     print(n)
-        #     print(self.nid2index[n])
-        if type(candidate_news[0]) is str:
-            assert candidate_news[0].startswith('N') # nid
-            candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
-        else: # nindex
-            candidate_news = self.news_index[[n for n in candidate_news]]
-        his = his + [0] * (self.max_his_len - len(his))
-        his = self.news_index[his]
-        
-        label = np.array(0)
-        return candidate_news, his, label
+        assert type(candidate_news[0]) is str 
+        candidate_news = self.nindex2vec[[self.nid2index[n] for n in candidate_news]] 
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1 
+        return candidate_news, his, torch.Tensor(label)  
+
+class SimValDataset(Dataset):
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        nidx, labels, his, uid, tsp = self.samples[idx]
+        nvecs = self.nindex2vec[[self.nid2index[nid] for nid in nidx]]
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        labels = torch.Tensor(np.array(labels).astype('float32'))
+        return nvecs, his, labels  
+
 
 class SimEvalDataset(Dataset):
     def __init__(self, args, uids, nindex2vec, clicked_history): 

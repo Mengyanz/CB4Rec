@@ -177,6 +177,36 @@ def generate_random_ids_over_runs(num_trials, meta_data_path):
             indices = np.random.permutation(n_train_users)
             np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(sim_id)), indices)
 
+def read_imprs_for_val_set_for_sim(args, path):
+    """
+    Args:
+        mode: 0 (train), 1 (valid)
+    """
+    samples = []
+    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+
+    for l in tqdm(open(path, "r")):
+        imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
+
+        his = his.split()
+        tsp = t
+        # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
+        #tsp = int(t)
+        imprs = [i.split("-") for i in imprs.split(" ")]
+        neg_imp = [i[0] for i in imprs if i[1] == "0"]
+        pos_imp = [i[0] for i in imprs if i[1] == "1"]
+
+        his = his[-args.max_his_len:]
+        labels = [1] * len(pos_imp) + [0] * len(neg_imp) 
+        nns = pos_imp + neg_imp 
+        samples.append([nns, labels, his, uid, tsp])
+        # for n,l in zip(nns, labels):
+            # samples.append([n, l, his, uid, tsp]) 
+
+    with open(os.path.join(out_path, "val_contexts.pkl"), "wb") as f:
+        pickle.dump(samples, f)
+
+
 def behavior_preprocess(args):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
     tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
@@ -374,19 +404,6 @@ def split_then_select_behavior_preprocess(args):
         #    pickle.dump(cb_val, f)
 
         pretrain_cb_learner(args, cb_train_uremoved, trial)
-
-       
-
-def pretrain_cb_learner_test(args):
-    trial = 0
-    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
-    cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-    cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-    with open(cb_train_fname, 'rb') as f: 
-        cb_train = pickle.load(f) 
-    with open(cb_valid_fname, 'rb') as f: 
-        cb_valid = pickle.load(f) 
-    pretrain_cb_learner(args, cb_train, cb_valid, trial)
     
 
 def pretrain_cb_learner(args, cb_train_sam, trial):
@@ -551,4 +568,3 @@ if __name__ == "__main__":
     # generate_cb_news(args)
     # behavior_preprocess(args)
     split_then_select_behavior_preprocess(args)
-    # pretrain_cb_learner_test(args)
