@@ -9,7 +9,7 @@ import os
 import torch
 
 class ContextualBanditLearner(object):
-    def __init__(self, args, rec_batch_size = 1, pretrained_mode=True, name='ContextualBanditLearner'):
+    def __init__(self, args, rec_batch_size = 1, per_rec_score_budget = 200, pretrained_mode=True, name='ContextualBanditLearner'):
         """Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
@@ -19,6 +19,7 @@ class ContextualBanditLearner(object):
         print(name)
         self.args = args
         self.rec_batch_size = rec_batch_size
+        self.per_rec_score_budget = per_rec_score_budget
         self.pretrained_mode = pretrained_mode 
         
         self.reset()
@@ -131,6 +132,11 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
     h_items_all = [] 
     h_rewards_all = []
+
+    algos_name = ''
+    for a in algos:
+        algos_name += (a.name+'-')
+
     for e in range(args.n_trials):
 
         # reset each CB learner
@@ -219,14 +225,23 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             if t % args.update_period == 100: # Update the item model (i.e. news_encoder and user_encoder)
                 [a.update(topics, items, rewards, mode = 'item') for a in algos]
 
+            if t % 500 == 0:
+                save_results(args, algos_name, h_items, h_rewards, e)
+
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
-
-        result_path = os.path.join(args.root_proj_dir, 'results')
-        if not os.path.exists(result_path):
-            os.mkdir(result_path) 
-        np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
-
+        save_results(args, 'all-' + algos_name, h_items_all, h_rewards_all, e)
     return np.array(h_items_all), np.array(h_rewards_all)
+
+
+def save_results(args, algos_name, items, rewards, trial):
+    result_path = os.path.join(args.root_proj_dir, 'results')
+    if not os.path.exists(result_path):
+        os.mkdir(result_path) 
+    item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(algos_name, trial, args.T))
+    reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(algos_name, trial, args.T))
+    np.save(item_path, np.array(items))
+    np.save(reward_path, np.array(rewards))
+
     
 

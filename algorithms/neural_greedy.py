@@ -13,27 +13,26 @@ from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralGreedy(ContextualBanditLearner):
-    def __init__(self,device, args, rec_batch_size = 1, pretrained_mode=True, name='SingleStageNeuralGreedy'):
+    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, pretrained_mode=True, name='SingleStageNeuralGreedy'):
         """Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(SingleStageNeuralGreedy, self).__init__(args, rec_batch_size, pretrained_mode, name) 
+        super(SingleStageNeuralGreedy, self).__init__(args, rec_batch_size,per_rec_score_budget, pretrained_mode, name) 
         self.name = name 
         self.device = device 
 
         # preprocessed data 
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
+        # TODO: make utils consistent for cb and simulator?
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, 'utils_cb')
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = []
         for k,v in topic_news.items():
             cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
         cb_news = [item for sublist in cb_news for item in sublist]
         # DEBUG:
-        print('Warning: for debug, sample 1000 candidates news! Remove this line for full evaluation!')
-        cb_news = np.random.choice(cb_news, size=1000, replace=False).tolist()
         self.cb_news=cb_news
 
         # model 
@@ -108,6 +107,11 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         Return: 
             items: a list of `len(uids)`int 
         """
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+
         batch_size = min(self.args.max_batch_size, len(cand_news))
 
         # get user vect 

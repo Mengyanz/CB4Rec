@@ -14,7 +14,7 @@ from algorithms.neural_greedy import SingleStageNeuralGreedy
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageLinUCB(ContextualBanditLearner):
-    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, pretrained_mode=True, name='SingleStageLinUCB'):
+    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, gamma = 1, pretrained_mode=True, name='SingleStageLinUCB'):
         """LinUCB.
             Args:
                 rec_batch_size: int, recommendation size. 
@@ -22,7 +22,7 @@ class SingleStageLinUCB(ContextualBanditLearner):
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
         """
-        super(SingleStageLinUCB, self).__init__(args, rec_batch_size, pretrained_mode, name)
+        super(SingleStageLinUCB, self).__init__(args, rec_batch_size, per_rec_score_budget, pretrained_mode, name)
         self.name = name 
         self.device = device 
 
@@ -36,10 +36,7 @@ class SingleStageLinUCB(ContextualBanditLearner):
         cb_news = []
         for k,v in topic_news.items():
             cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
-        cb_news = [item for sublist in cb_news for item in sublist]
-        # DEBUG:
-        print('Warning: for debug, sample 1000 candidates news! Remove this line for full evaluation!')
-        self.cb_news = np.random.choice(cb_news, size=1000, replace=False).tolist()
+        self.cb_news = [item for sublist in cb_news for item in sublist]
 
         self.gamma = gamma
         self.dim = 300 # TODO: make it a parameter
@@ -88,6 +85,11 @@ class SingleStageLinUCB(ContextualBanditLearner):
         Return: 
             items: a list of `len(uids)`int 
         """
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+
         X = self._get_news_embedding(cand_news).T
         # print('Debug X shape: ', X.shape)
         

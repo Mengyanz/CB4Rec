@@ -14,7 +14,7 @@ from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
-    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
         """Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
@@ -25,7 +25,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         """
         self.n_inference = n_inference 
         self.gamma = gamma
-        super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, pretrained_mode, name)
+        super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, pretrained_mode, name)
         # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
         # # pre-generate news embeddings
@@ -92,6 +92,11 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         Return: 
             items: a list of `len(uids)`int 
         """
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+
         batch_size = min(self.args.max_batch_size, len(cand_news))
 
         # get user vect 
@@ -152,7 +157,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size.
@@ -161,7 +166,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
         """
-        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, gamma, n_inference, pretrained_mode, name)
+        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, gamma, n_inference, pretrained_mode, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -182,6 +187,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         Return
             rec_topic: one recommended topic
         """
+        # TODO: topic selection also needs score budget allocation
         ss =[] 
         for topic in self.active_topics:
             s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])

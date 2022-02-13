@@ -4,12 +4,14 @@ import logging
 def parse_args():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--algo",type=str,default="ts_neuralucb")
+
     # path
     parser.add_argument("--root_data_dir",type=str,default="/home/v-mezhang/blob/data/")
     parser.add_argument("--root_proj_dir",type=str,default="/home/v-mezhang/blob/CB4Rec/")
     # parser.add_argument("--root_proj_dir",type=str,default="./")
     parser.add_argument("--model_path", type=str, default="/home/v-mezhang/blob/model/large/large.pkl")
-    parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/large/large.pkl")
+    # parser.add_argument("--sim_path", type=str, default="/home/v-mezhang/blob/model/large/large.pkl")
 
     parser.add_argument("--dataset",type=str,default='large')
     parser.add_argument("--mode",type=str,default='train')
@@ -24,8 +26,10 @@ def parse_args():
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
     parser.add_argument("--n_trials", type=int, default=4, help = 'number of experiment runs')
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
+    parser.add_argument("--sim_npratio", type=int, default=2)
+    parser.add_argument("--sim_val_batch_size", type=int, default=1024)
 
-    parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
+    parser.add_argument("--T", type=int, default=2000, help = 'number of rounds (interactions)')
     parser.add_argument("--update_period", type=int, default=1, help = 'Update period for CB model')
 
     parser.add_argument("--num_inference", type=int, default=1)

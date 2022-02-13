@@ -83,11 +83,11 @@ def read_data(args, mode = 'train'):
 
         return nid2index, news_info, news_index, embedding_matrix, cb_users, cb_news
 
-def load_word2vec(args): 
+def load_word2vec(args, utils = 'utils'): 
     """Load word2vec and nid2index
     """
     print('loading nid2index')
-    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+    with open(os.path.join(args.root_data_dir, args.dataset,  utils, 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
 
     # print('loading news_info')
@@ -95,10 +95,10 @@ def load_word2vec(args):
     #     news_info = pickle.load(f)
 
     print('loading word2vec')
-    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'embedding.npy'))
 
     print('loading nindex2vec')
-    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
+    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'news_index.npy'))
 
     return nid2index, word2vec, news_index
 
