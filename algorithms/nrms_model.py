@@ -220,12 +220,12 @@ class TopicEncoder(torch.nn.Module):
     
     def get_topic_embeddings_byindex(self, topic_index):
         topic_indices = torch.LongTensor(topic_index)
-        topic_vector = F.dropout(self.word_embedding(topic_indices),
+        topic_vector = F.dropout(self.word_embedding(topic_indices.to(next(self.word_embedding.parameters()).device)),
                         training=True)
         final_topic_vector = self.mlp_head(topic_vector)
         return final_topic_vector # num_topic, reduction_dim
     def get_all_topic_embeddings(self):
-        topic_indices = torch.LongTensor(range(0, self.num_categories))
+        topic_indices = torch.LongTensor(range(0, self.num_categories)).to(next(self.word_embedding.parameters()).device)
         # topic_indices = torch.LongTensor(topic_order)
         topic_vector = F.dropout(self.word_embedding(topic_indices),
                                 training=True)
@@ -260,7 +260,7 @@ class NRMS_Topic_Model(torch.nn.Module):
         clicked_news_vector = self.text_encoder(clicked_news).view(batch_size, clicked_news_num, -1) # batch_size, num_clicked_news_a_user, word_embedding_dim
         
         user_vector = self.user_encoder(clicked_news_vector)
-        user_vector = self.dimmension_reduction(user_vector)
+        user_vector = self.dimmension_reduction(user_vector) # batch_size, reduction_dim
         # batch_size, 1 + K
         score = torch.bmm(candidate_news_vector, 
                                       user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
@@ -281,7 +281,7 @@ class NRMS_Topic_Model(torch.nn.Module):
             (shape) batch_size, reduction_dim
         """
         # batch_size, reduction_dim
-        return self.news_encoder(news)
+        return self.text_encoder(news)
     
     def get_topic_vector(self, index):
         """
@@ -319,12 +319,22 @@ class NRMS_Topic_Model(torch.nn.Module):
             news_vector.unsqueeze(dim=0),
             user_vector.unsqueeze(dim=0)).squeeze(dim=0)
         
-    def get_all_topic_score(self):
+    def get_all_topic_embedding(self):
         """
         Returns:
-            topic_probability: topic_num, reduction_dim
+            all_topic_vector: topic_num, reduction_dim
         """
 
         all_topic_vector = self.topic_encoder.get_all_topic_embeddings() # num_topic, reduction_dim
+
+        return all_topic_vector
+    
+    def get_topic_embeddings_byindex(self, topic_index):
+        """
+        Returns:
+            all_topic_vector: topic_num, reduction_dim
+        """
+
+        all_topic_vector = self.topic_encoder.get_topic_embeddings_byindex(topic_index) # num_topic, reduction_dim
 
         return all_topic_vector
