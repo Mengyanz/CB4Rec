@@ -14,6 +14,7 @@ def parse_args():
     parser.add_argument("--dataset",type=str,default='large')
     parser.add_argument("--mode",type=str,default='train')
     parser.add_argument("--sim_type",type=str,default='ips') # none, nrms, ips
+    parser.add_argument("--pretrain_topic",type=bool,default=True)
     parser.add_argument("--dropout_flag",type=bool,default=True)
     parser.add_argument("--finetune_flag",type=bool,default=True)
     parser.add_argument("--filter_user", # fliter CB simulation user from training data
@@ -33,7 +34,7 @@ def parse_args():
 
     
     
-    parser.add_argument("--npratio", type=int, default=4) # 4
+    parser.add_argument("--npratio", type=int, default=1) # 4
     parser.add_argument("--max_his_len", type=int, default=50)
     parser.add_argument("--min_word_cnt", type=int, default=1)
     parser.add_argument("--max_title_len", type=int, default=30)
