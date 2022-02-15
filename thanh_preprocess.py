@@ -6,11 +6,12 @@ import random
 import re
 import os
 import pickle
+import json
 from datetime import datetime 
 import time 
 date_format_str = '%m/%d/%Y %I:%M:%S %p'
 
-from algorithms.nrms_model import NRMS_Model
+from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 import torch
 from torch.utils.data import DataLoader
 from utils.data_util import TrainDataset, NewsDataset, UserDataset
@@ -18,7 +19,7 @@ from torch import nn
 import torch.optim as optim
 from metrics import evaluation_split
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
@@ -229,10 +230,11 @@ def behavior_preprocess(args):
             continue
 
 
-#         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+        meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
 
         try:
             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
+            print("len(random_ids): ", len)
         except:
             print('The meta data has not been generated.') 
             generate_random_ids_over_runs(args.n_trials, meta_data_path) 
@@ -380,8 +382,12 @@ def split_then_select_behavior_preprocess(args):
 def pretrain_cb_learner_test(args):
     trial = 0
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
-    cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-    cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+    if args.pretrain_topic:
+        cb_train_fname = os.path.join(out_path, "cb_train_topic_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        cb_valid_fname = os.path.join(out_path, "cb_valid_topic_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+    else:
+        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
     with open(cb_train_fname, 'rb') as f: 
         cb_train = pickle.load(f) 
     with open(cb_valid_fname, 'rb') as f: 
@@ -399,7 +405,10 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     """
     
     # out path
-    out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models')
+    if args.pretrain_topic:
+        out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models')
+    else:
+        out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models')
     if not os.path.exists(out_model_path):
         os.mkdir(out_model_path)
     log_path = os.path.join(args.root_proj_dir, 'logs')
@@ -407,6 +416,10 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
         os.mkdir(log_path) 
 
     # load data
+    if args.pretrain_topic:
+        with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2topicindex.pkl'), 'rb') as f:
+            nid2topicindex = pickle.load(f)
+            
     with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
     word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
@@ -418,10 +431,16 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     train_sam = [cb_train_sam[i] for i in train_idx]
     valid_sam = [cb_train_sam[i] for i in valid_idx]
 
-    train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
+    if args.pretrain_topic:
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
+    else:
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-    model = NRMS_Model(word2vec).to(device)
-
+    if args.pretrain_topic:
+        model = NRMS_Topic_Model(word2vec).to(device)
+    else:
+        model = NRMS_Model(word2vec).to(device)
+    
     # print(model)
     # from torchinfo import summary
     # output = summary(model, [(args.batch_size, 4, 30), (args.batch_size, 50, 30), (args.batch_size, 4) ], verbose = 0)
@@ -458,11 +477,15 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
             if cnt % 10 == 0:
                 train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                 train_loader.refresh() 
+            break
         
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
 
-        val_scores = eva(args, model, valid_sam, nid2index,  nindex2vec)  
+        if args.pretrain_topic:
+            val_scores = eva(args, model, valid_sam, nid2index,  nindex2vec, nid2topicindex)
+        else:
+            val_scores = eva(args, model, valid_sam, nid2index,  nindex2vec)  
         val_auc, val_mrr, val_ndcg, val_ndcg10, ctr = [np.mean(i) for i in list(zip(*val_scores))]
         print(f"[{ep}] epoch auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}, ctr: {ctr:.4f}")
 
@@ -474,7 +497,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
             with open(os.path.join(log_path, 'indices_{}.txt'.format(trial)), 'a') as f:
                 f.write(f"[{ep}] epoch save model\n")
 
-def eva(args, model, valid_sam, nid2index, news_index):
+def eva(args, model, valid_sam, nid2index, news_index, nid2topicindex=None):
     model.eval()
     news_dataset = NewsDataset(news_index)
     news_dl = DataLoader(news_dataset, batch_size=1024, shuffle=False, num_workers=args.num_workers)
@@ -490,11 +513,18 @@ def eva(args, model, valid_sam, nid2index, news_index):
     user_dl = DataLoader(user_dataset, batch_size=1024, shuffle=False, num_workers=args.num_workers)
     for his, tsp in tqdm(user_dl):
         his = his.to(device)
-        user_vec = model.user_encoder(his).detach().cpu().numpy()
+        if args.pretrain_topic:
+            user_vec = model.dimmension_reduction(model.user_encoder(his)).detach().cpu().numpy()
+        else:
+            user_vec = model.user_encoder(his).detach().cpu().numpy()
         user_vecs.append(user_vec)
     user_vecs = np.concatenate(user_vecs)
-
-    val_scores = evaluation_split(news_vecs, user_vecs, valid_sam, nid2index)
+    
+    if args.pretrain_topic:
+        topic_vecs = model.get_all_topic_embedding().detach().cpu().numpy()
+        val_scores = evaluation_split(news_vecs, user_vecs, valid_sam, nid2index, nid2topicindex=nid2topicindex, topic_vecs=topic_vecs)
+    else:
+        val_scores = evaluation_split(news_vecs, user_vecs, valid_sam, nid2index)
     
     return val_scores
 
@@ -509,7 +539,13 @@ def generate_cb_news(args):
     cat_count = {}
     subcat_count = {}
     news_dict = {}
-
+    nid2topic = {}
+    nid2topicindex = {}
+    topic_ordered_list = json.load(open(os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json"), 'r'))
+    topic2index = {}
+    for topic in topic_ordered_list:
+        topic2index[topic] = len(topic2index)
+        
     train_news_path = os.path.join(args.root_data_dir, "large/train/news.tsv") 
     valid_news_path = os.path.join(args.root_data_dir, "large/valid/news.tsv")
     news_paths = [train_news_path, valid_news_path]
@@ -519,6 +555,8 @@ def generate_cb_news(args):
             nid, vert, subvert, _, _, _, _, _ = l.strip("\n").split("\t")
             if nid not in news_dict:
                 news_dict[nid] = l
+                nid2topic[nid] = subvert
+                nid2topicindex[nid] = topic2index[subvert]
                 if vert not in cat_count:
                     cat_count[vert] = 1
                 else:
@@ -538,17 +576,24 @@ def generate_cb_news(args):
     save_path = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
     with open(save_path, "wb") as f:
         pickle.dump(cb_news, f)
-
+        
+    save_path = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
+    with open(save_path, "wb") as f:
+        pickle.dump(nid2topic, f)
+    save_path = os.path.join(args.root_data_dir, "large/utils/nid2topicindex.pkl")
+    with open(save_path, "wb") as f:
+        pickle.dump(nid2topicindex, f)
 
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
 
 
     args = parse_args()
-    # news_preprocess(args)
-    # generate_cb_news(args)
-    # behavior_preprocess(args)
+    news_preprocess(args)
+    generate_cb_news(args)
+    behavior_preprocess(args)
     split_then_select_behavior_preprocess(args)
     # pretrain_cb_learner_test(args)
