@@ -5,16 +5,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # path
-    parser.add_argument("--root_data_dir",type=str,default="/home/v-zhenyuhe/CB4Rec/data/")
-    parser.add_argument("--root_proj_dir",type=str,default="/home/v-zhenyuhe/CB4Rec/")
+    parser.add_argument("--root_data_dir",type=str,default="/home/v-zhenyuhe/CB4Rec_ready/data/")
+    parser.add_argument("--root_proj_dir",type=str,default="/home/v-zhenyuhe/CB4Re_ready/")
     # parser.add_argument("--root_proj_dir",type=str,default="./")
-    parser.add_argument("--model_path", type=str, default="/home/v-zhenyuhe/CB4Rec/model/large/large.pkl")
-    parser.add_argument("--sim_path", type=str, default="/home/v-zhenyuhe/CB4Rec/model/large/large.pkl")
+    parser.add_argument("--model_path", type=str, default="/home/v-zhenyuhe/CB4Rec_ready/model/large/large.pkl")
+    parser.add_argument("--sim_path", type=str, default="/home/v-zhenyuhe/CB4Rec_ready/model/large/large.pkl")
 
     parser.add_argument("--dataset",type=str,default='large')
     parser.add_argument("--mode",type=str,default='train')
     parser.add_argument("--sim_type",type=str,default='ips') # none, nrms, ips
-    parser.add_argument("--pretrain_topic",type=bool,default=True)
+    parser.add_argument("--pretrain_topic",type=bool,default=True) # added by zhenyu he, to indicate training topic model/ item model
     parser.add_argument("--dropout_flag",type=bool,default=True)
     parser.add_argument("--finetune_flag",type=bool,default=True)
     parser.add_argument("--filter_user", # fliter CB simulation user from training data
