@@ -246,7 +246,8 @@ class NRMS_Topic_Model(torch.nn.Module):
                                             nn.ReLU(),
                                             nn.Linear(64, 64))
         self.topic_encoder = TopicEncoder()
-        self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCELoss()
         self.all_topic_vector = None
 
     def forward(self, candidate_news_topicindex, clicked_news, targets, compute_loss=True):
@@ -265,7 +266,7 @@ class NRMS_Topic_Model(torch.nn.Module):
         score = torch.bmm(candidate_news_vector, 
                                       user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
         if compute_loss:
-            loss = self.criterion(score, targets)
+            loss = self.criterion(torch.sigmoid(score), targets)
             return loss, score
         else:
             return score

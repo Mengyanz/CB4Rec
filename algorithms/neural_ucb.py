@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
-from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset, load_behaviors, load_news_parsed
+from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
     def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
@@ -465,6 +465,7 @@ class TwoStageNeuralUCB_zhenyu(TwoStageNeuralUCB):  #@ZhenyuHe: for the sake of 
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         topic_list, nid2topic = load_cb_topic_news(args, ordered=True) # topic_list: a list of all the topic names, the order of them matters; newsid_to_topic: a dict that maps newsid to topic
         self.nid2topic = nid2topic
+        self.nid2topicindex = load_cb_nid2topicindex(args)
         self.topic_order = [i for i in range(len(topic_list))]
         cb_news = defaultdict(list)
         for k,v in topic_news.items():
@@ -508,7 +509,7 @@ class TwoStageNeuralUCB_zhenyu(TwoStageNeuralUCB):  #@ZhenyuHe: for the sake of 
         all_scores = []
         for _ in range(self.n_inference):
             user_vector = self.get_user_vector(uid) # reduction_dim
-            topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.topic_order) # get all active topic scores, num x reduction_dim
+            topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.active_topics_order) # get all active topic scores, num x reduction_dim
             score = (topic_embeddings @ user_vector.unsqueeze(-1)).squeeze(-1).cpu().numpy() # num_topic
             all_scores.append(score)
         all_scores = np.concatenate(all_scores, axis=0) # n_inference, num_topic
@@ -615,18 +616,18 @@ class TwoStageNeuralUCB_zhenyu(TwoStageNeuralUCB):  #@ZhenyuHe: for the sake of 
             else:
                 print('Skip update cb learner due to lack valid samples!')
         
-        if mode == 'item':
+        elif mode == 'topic':
             # update learner
-            optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
+            optimizer = optim.Adam(self.topic_model.parameters(), lr=self.args.lr)
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
                 print('Updating the internal model of the bandit!')
-                ft_ds = SimTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
+                ft_ds = SimTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
                 
                 # do one epoch only
                 loss = 0
-                self.model.train()
+                self.topic_model.train()
                 ft_loader = tqdm(ft_dl)
                 for cnt, batch_sample in enumerate(ft_loader):
                     candidate_news_index, his_index, label = batch_sample
@@ -677,10 +678,13 @@ class TwoStageNeuralUCB_zhenyu(TwoStageNeuralUCB):  #@ZhenyuHe: for the sake of 
         rec_topics = []
         rec_items = []
         self.active_topics = self.cb_topics.copy()
+        self.active_topics_order = self.topic_order.copy()
         while len(rec_items) < self.rec_batch_size:
             rec_topic = self.topic_rec()
             rec_topics.append(rec_topic)
+            rec_topic_order = self.active_topics.index(rec_topic)
             self.active_topics.remove(rec_topic)
+            self.active_topics_order.remove(rec_topic)
 
             cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG

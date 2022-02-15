@@ -10,7 +10,7 @@ from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
 import logging
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"
 device = torch.device("cuda:2")
 torch.cuda.set_device(device)
 

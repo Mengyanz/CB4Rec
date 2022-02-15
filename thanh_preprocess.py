@@ -14,7 +14,7 @@ date_format_str = '%m/%d/%Y %I:%M:%S %p'
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 import torch
 from torch.utils.data import DataLoader
-from utils.data_util import TrainDataset, NewsDataset, UserDataset
+from utils.data_util import SimTrainDataset, NewsDataset, UserDataset
 from torch import nn
 import torch.optim as optim
 from metrics import evaluation_split
@@ -432,9 +432,9 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     valid_sam = [cb_train_sam[i] for i in valid_idx]
 
     if args.pretrain_topic:
-        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
+        train_ds = SimTrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
     else:
-        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
+        train_ds = SimTrainDataset(args, train_sam, nid2index,  nindex2vec)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     if args.pretrain_topic:
         model = NRMS_Topic_Model(word2vec).to(device)

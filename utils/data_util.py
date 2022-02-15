@@ -136,6 +136,12 @@ def load_cb_topic_news(args):
         cb_news = pickle.load(f)
     return cb_news 
 
+def load_cb_nid2topicindex(args):
+    fname = os.path.join(args.root_data_dir, "large/utils/nid2topicindex.pkl") 
+    with open(fname, 'rb') as f: 
+        nid2topicindex = pickle.load(f)
+    return nid2topicindex
+
 def newsample(nnn, ratio):
     if ratio > len(nnn):
         return nnn + ["<unk>"] * (ratio - len(nnn))
