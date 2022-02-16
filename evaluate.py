@@ -56,14 +56,15 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         plt.xlabel('Iteration')
         plt.ylabel(name)
         plt.title(plot_title)
-        plt.savefig(os.path.join(plt_path, name + '.png'))
+        plt.savefig(os.path.join(plt_path, plot_title + '_' + name + '.png'))
 
 def main():
     # from configs.thanh_params import parse_args
     from configs.mezhang_params import parse_args
 
     args = parse_args()
-    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*-0-2000.npy"))
+    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*-3-2000.npy"))
+    print('Debug filenames: ', filenames)
     algo_names = []
     all_rewards = []
     for filename in filenames:
@@ -73,12 +74,13 @@ def main():
         h_rewards_all = np.load(filename)
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
             h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
-        all_rewards.append(h_rewards_all[:,:,:,:1000])
+        print(h_rewards_all.shape)
+        all_rewards.append(h_rewards_all[-2:,:,:,:1000])
     all_rewards = np.concatenate(all_rewards, axis = 1)
     print(all_rewards.shape)
     
     metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr'])
-    plot_metrics(args, metrics, algo_names, plot_title='Trial 0')
+    plot_metrics(args, metrics, algo_names, plot_title='Trial34')
 
 if __name__ == '__main__':
     main()

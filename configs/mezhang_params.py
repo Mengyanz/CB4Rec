@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--sim_npratio", type=int, default=4)
     parser.add_argument("--sim_val_batch_size", type=int, default=1024)
 
-    parser.add_argument("--T", type=int, default=200, help = 'number of rounds (interactions)')
+    parser.add_argument("--T", type=int, default=50, help = 'number of rounds (interactions)')
     parser.add_argument("--update_period", type=int, default=10, help = 'Update period for CB model')
 
     parser.add_argument("--num_inference", type=int, default=5)
@@ -40,7 +40,7 @@ def parse_args():
     
     parser.add_argument("--npratio", type=int, default=4) # 4
     parser.add_argument("--max_his_len", type=int, default=50)
-    parser.add_argument("--min_word_cnt", type=int, default=5) # 1
+    parser.add_argument("--min_word_cnt", type=int, default=1) # 5
     parser.add_argument("--max_title_len", type=int, default=30)
     parser.add_argument("--eva_batch_size", type=int, default=1024)
     parser.add_argument("--update_learn_size", type=int, default=128)
@@ -84,6 +84,14 @@ def parse_args():
         default=None,
         help="choose which ckpt to load and test"
     )
+
+    # cb simulation
+    parser.add_argument("--algo_prefix", type=str, default="algo",
+        help='the name of save files')
+    parser.add_argument("--uniform_init",type=bool,default=True, 
+        help="Indicates whether to init ts parameters uniformly")
+
+
     args = parser.parse_args()
 
     # logging.info(args)

@@ -8,7 +8,6 @@ from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB
 from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
-import logging
 import pretty_errors
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
@@ -20,12 +19,7 @@ def main():
     # from configs.thanh_params import parse_args
     from configs.mezhang_params import parse_args
     args = parse_args()
-
-    log_path = os.path.join(args.root_proj_dir, 'logs')
-    if not os.path.exists(log_path):
-        os.mkdir(log_path) 
-    logging.basicConfig(filename=os.path.join(log_path, '{}.log'.format(args.algo)), level=logging.INFO)
-    logging.info(args)
+    print(args)
 
     rec_batch_size = 5
     per_rec_score_budget = 1000
@@ -37,12 +31,16 @@ def main():
     simulator = NRMS_Sim(device, args)
 
     print('Debug args.algo:', args.algo)
+    if args.algo_prefix == 'algo':
+        args.algo_prefix = args.algo 
+        # + '-' + str(args.n_trials) + '-' + str(args.T) 
+    print('Debug args.algo_prefix: ', args.algo_prefix)
 
     # construct a list of CB learners 
     if args.algo == 'single_neuralucb':
         learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget)
     elif args.algo == 'ts_neuralucb':
-        learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget)
+        learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget, uniform_init = args.uniform_init)
     # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     elif args.algo == 'greedy':
         learner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
@@ -53,8 +51,6 @@ def main():
 
     algos = [learner]
     # algos = [greedylearner, single_neuralucb_learner, ts_neuralucb_learner]
-    for learner in algos:
-        logging.info(learner.name)
 
     # construct dataset
     # contexts = simulator.valid_samples 

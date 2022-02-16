@@ -146,7 +146,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True,name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True, uniform_init = False, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size.
@@ -163,13 +163,32 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
         self.cb_news = cb_news 
         self.cb_topics = list(self.cb_news.keys())
+        self.uniform_init = uniform_init 
 
         self.alphas = {}
         self.betas = {}
 
-        for topic in self.cb_topics:
-            self.alphas[topic] = 1
-            self.betas[topic] = 1
+    def set_clicked_history(self, init_clicked_history):
+        """
+        Args:
+            init_click_history: list of init clicked history nindexs
+        """
+        self.clicked_history = init_clicked_history
+        if self.uniform_init:
+            for topic in self.cb_topics:
+                self.alphas[topic] = 1
+                self.betas[topic] = 1
+        else:
+            print('Debug non uniform init for ts!')
+            clicked_nindexs = np.concatenate(list(init_clicked_history.values()))
+            ave_clicks = len(clicked_nindexs)/len(self.cb_topics)
+            print('Debug n_clicks all: ', len(clicked_nindexs))
+            print('Debug ave_clicks over topics: ', ave_clicks)
+            for topic in self.cb_topics:
+                topic_nindexs = [self.nid2index[n] for n in self.cb_news[topic]]
+                self.alphas[topic] = len([nindex for nindex in clicked_nindexs if nindex in set(topic_nindexs)]) # n_clicks of topic in clicked histories
+                # print('Debug topic {} with alpha init as {}'.format(topic, self.alphas[topic]))
+                self.betas[topic] = ave_clicks
 
     def topic_rec(self):
         """    

@@ -31,13 +31,18 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
             p.wait()
 
 
-def create_commands(args, algo='ts_neuralucb'):
+def create_commands(args, algo_group='ts_neuralucb'):
     commands = []
-    # for parameters need to be tuning
-    log_name = algo + '-' + str(args.n_trials) + '-' + str(args.T) + '.log'
-    log_path = os.path.join(args.root_proj_dir, 'logs', log_name)
-    commands.append("python run_experiment.py --algo {} > {}".format(algo, log_path))
-    # commands.append("python run_experiment.py --algo {}".format(algo))
+    if algo_group == 'ts_neuralucb':
+        for uniform_init in [True, False]:
+            algo_prefix = algo_group  + 'TSUniInit' + str(uniform_init) 
+            # + '-' + str(args.n_trials) + '-' + str(args.T) 
+            log_path = os.path.join(args.root_proj_dir, 'logs', algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --uniform_init {}> {}".format(algo_group, algo_prefix, uniform_init, log_path))
+    else:
+        algo_prefix = algo_group + '-' + str(args.n_trials) + '-' + str(args.T) 
+        log_path = os.path.join(args.root_proj_dir, 'logs', algo_prefix + '.log')
+        commands.append("python run_experiment.py --algo {} --algo_prefix {} > {}".format(algo_group, algo_prefix, log_path))
     return commands
 
 
@@ -52,5 +57,6 @@ if __name__ == '__main__':
     from configs.mezhang_params import parse_args
     args = parse_args()
 
-    algo_groups = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'single_linucb']
-    run_exps(args, algo_groups)
+    # algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'single_linucb']
+    algo_group = ['ts_neuralucb']
+    run_exps(args, algo_group)
