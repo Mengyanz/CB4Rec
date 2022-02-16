@@ -237,7 +237,8 @@ class SimTrainDataset(Dataset):
         his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
         his = self.news_index[his]
         
-        label = np.array(0)
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1 
         return candidate_news, his, label
 
 class SimEvalDataset(Dataset):
