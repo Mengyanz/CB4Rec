@@ -159,20 +159,25 @@ class TrainDataset(Dataset):
         neg = newsample(neg, self.npratio)
         
         candidate_news = [pos] + neg
-        # print('pos: ', pos)
-        # for n in candidate_news:
-        #     print(n)
-        #     print(self.nid2index[n])
-        if type(candidate_news[0]) is str:
-            assert candidate_news[0].startswith('N') # nid
-            candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
-        else: # nindex
-            candidate_news = self.news_index[[n for n in candidate_news]]
-        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
+
+        candidate_news_vecs = []
+        for n in candidate_news:
+            if type(n) is str:
+                candidate_news_vecs.append(self.news_index[self.nid2index[n]])
+            else:
+                candidate_news_vecs.append(self.news_index[n])
+            
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        if type(his[0]) is str:
+            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
+        else:
+            his = his + [0] * (self.max_his_len - len(his))
         his = self.news_index[his]
         
         label = np.array(0)
-        return candidate_news, his, label
+        return np.array(candidate_news_vecs), his, label
 
 class SimTrainDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):

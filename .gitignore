@@ -17,6 +17,7 @@ results/*
 meta_data/*
 logs/*
 ckpt/* 
+runs/*
 __pycache__
 
 

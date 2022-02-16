@@ -40,6 +40,10 @@ class ContextualBanditLearner(object):
             raise NotImplementedError()
         
     def set_clicked_history(self, init_clicked_history):
+        """
+        Args:
+            init_click_history: list of init clicked history nindexs
+        """
         self.clicked_history = init_clicked_history
 
     def update_data_buffer(self, pos, neg, uid, t): 
@@ -136,8 +140,18 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     algos_name = ''
     for a in algos:
         algos_name += (a.name+'-')
+    result_path = os.path.join(args.root_proj_dir, 'results')
+    if not os.path.exists(result_path):
+        os.mkdir(result_path) 
 
     for e in range(args.n_trials):
+
+        item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(algos_name, e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(algos_name, e, args.T))
+        if os.path.exists(reward_path):
+            # if the trail reward is already stored, pass the trail. 
+            print('{} exists.'.format(reward_path))
+            continue
 
         # reset each CB learner
         [a.reset() for a in algos] 
@@ -222,26 +236,24 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             # Update the topic model 
             [a.update(topics, items, rewards, mode = 'topic') for a in algos]
 
-            if t % args.update_period == 100: # Update the item model (i.e. news_encoder and user_encoder)
+            if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
                 [a.update(topics, items, rewards, mode = 'item') for a in algos]
 
-            if t % 500 == 0:
-                save_results(args, algos_name, h_items, h_rewards, e)
+            if t % 500 == 0 and t > 0:
+                temp_item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(algos_name, e, t))
+                temp_reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(algos_name, e, t))
+                print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
+                print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
+                np.save(temp_item_path, np.expand_dims(h_items, axis=0))
+                np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
-        save_results(args, 'all-' + algos_name, h_items_all, h_rewards_all, e)
+        print('Debug h_items shape: ', np.array(h_items_all).shape)
+        print('Debug h_rewards shape: ', np.array(h_rewards_all).shape)
+        np.save(item_path, np.array(h_items_all))
+        np.save(reward_path, np.array(h_rewards_all))
     return np.array(h_items_all), np.array(h_rewards_all)
-
-
-def save_results(args, algos_name, items, rewards, trial):
-    result_path = os.path.join(args.root_proj_dir, 'results')
-    if not os.path.exists(result_path):
-        os.mkdir(result_path) 
-    item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(algos_name, trial, args.T))
-    reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(algos_name, trial, args.T))
-    np.save(item_path, np.array(items))
-    np.save(reward_path, np.array(rewards))
 
     
 

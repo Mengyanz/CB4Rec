@@ -85,7 +85,7 @@ def news_preprocess(args):
     else:
         read_news(args, os.path.join(args.root_data_dir, "large/train/news.tsv"))
         read_news(args, os.path.join(args.root_data_dir, "large/valid/news.tsv"))
-        read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
+        # read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
 
         for w, c in tqdm(word_cnt.items()):
             if c >= args.min_word_cnt:
@@ -99,6 +99,7 @@ def news_preprocess(args):
 
         glove_path = os.path.join(args.root_data_dir, "glove/glove.6B.300d.txt")
         embedding_matrix, exist_word = load_matrix(glove_path, vocab_dict)
+        print('Debug embedding matrix shape: ', embedding_matrix.shape)
 
         
         with open(os.path.join(out_path,"nid2index.pkl"), "wb") as f:
@@ -569,6 +570,10 @@ if __name__ == "__main__":
 
     args = parse_args()
     # news_preprocess(args)
+    # read_imprs_for_val_set_for_sim(args, path)
     # generate_cb_news(args)
     # behavior_preprocess(args)
-    split_then_select_behavior_preprocess(args)
+    # split_then_select_behavior_preprocess(args)
+
+    # Get val set for sim 
+    read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))

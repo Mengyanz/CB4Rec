@@ -13,6 +13,7 @@ torch.cuda.set_device(device)
 
 print(device)
 from configs.thanh_params import parse_args
+from configs.mezhang_params import parse_args
 args = parse_args()
 
 def test_NRMS_Sim():
@@ -53,9 +54,9 @@ def test_DummyTwoStageNeuralUCB(device):
 
 if __name__ == '__main__': 
     # test_NRMS_Sim()
-    test_DummyTwoStageNeuralUCB()
+    # test_DummyTwoStageNeuralUCB()
     # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-    device = torch.device("cuda:2")
+    device = torch.device("cuda:3")
     torch.cuda.set_device(device)
 
     # test_NRMS_Sim(device)

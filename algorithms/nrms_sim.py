@@ -34,13 +34,14 @@ class NRMS_Sim(Simulator):
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
 
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, utils='utils_sim')
+        print('Debug word2vec shape: ', word2vec.shape)
 
         # model 
         self.model = NRMS_Sim_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
-            self.model.load_state_dict(torch.load(args.sim_path)) 
+            self.model.load_state_dict(torch.load(args.sim_path, map_location='cuda:0')) 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr)        
 
@@ -187,7 +188,7 @@ class NRMS_Sim(Simulator):
             print(' PER-IMP METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'\
                 .format(imp_metrics_mean[0],imp_metrics_mean[1], imp_metrics_mean[2], imp_metrics_mean[3], imp_metrics_mean[4]))
             print(' GLOBAL METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'.format(auc, mrr, ndcg5, ndcg10, ctr))
-            print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], fscore[ix]))
+            print(' Best Threshold=%f, fscore=%.3f' % (thresholds[ix], fscore[ix]))
 
 
             writer.add_scalars('Training vs. Val Loss',
@@ -200,7 +201,9 @@ class NRMS_Sim(Simulator):
                     epoch_number + 1)
 
             writer.add_scalars('Globle Metrics',
-                    {'auc': auc, 'mrr': mrr, 'ndcg5': ndcg5, 'ndcg10': ndcg10, 'ctr': ctr, 'best-gmean': gmeans[ix]}, 
+                    {'auc': auc, 'mrr': mrr, 'ndcg5': ndcg5, 'ndcg10': ndcg10, 'ctr': ctr, 
+                    'best-fscore': fscore[ix]
+                    }, 
                     epoch_number + 1)
 
             writer.add_scalars('Threshold',

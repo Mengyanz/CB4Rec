@@ -15,8 +15,10 @@ import pickle
 name = 'large'
 
 data_path = Path("/home/v-mezhang/blob/data/" + name)
-out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils")
-glove_path = Path("/home/v-mezhang/blob-plm/data/glove/glove.6B.300d.txt")
+out_path = Path("/home/v-mezhang/blob/data/" + name + "/utils_debug")
+if not os.path.exists(out_path):
+    os.mkdir(out_path)
+glove_path = Path("/home/v-mezhang/blob/data/glove/glove.6B.300d.txt")
 
 npratio = 4
 max_his_len = 50
@@ -62,23 +64,23 @@ with open(out_path / "nid2index.pkl", "wb") as f:
 with open(out_path / "news_info.pkl", "wb") as f:
     pickle.dump(news_info, f)
 
-if os.path.exists(data_path / "test" ):
-    test_news_info = {"<unk>": ""}
-    test_nid2index = {"<unk>": 0}
-    for l in tqdm(open(data_path / "test" / "news.tsv", "r", encoding='utf-8')):
-        nid, vert, subvert, title, abst, url, ten, aen = l.strip("\n").split("\t")
-        if nid in test_nid2index:
-            continue
-        title = word_tokenize(title)[:max_title_len]
-        test_nid2index[nid] = len(test_nid2index)
-        test_news_info[nid] = title
-        # word_cnt.update(title)
+# if os.path.exists(data_path / "test" ):
+#     test_news_info = {"<unk>": ""}
+#     test_nid2index = {"<unk>": 0}
+#     for l in tqdm(open(data_path / "test" / "news.tsv", "r", encoding='utf-8')):
+#         nid, vert, subvert, title, abst, url, ten, aen = l.strip("\n").split("\t")
+#         if nid in test_nid2index:
+#             continue
+#         title = word_tokenize(title)[:max_title_len]
+#         test_nid2index[nid] = len(test_nid2index)
+#         test_news_info[nid] = title
+#         # word_cnt.update(title)
 
-    with open(out_path / "test_nid2index.pkl", "wb") as f:
-        pickle.dump(test_nid2index, f)
+    # with open(out_path / "test_nid2index.pkl", "wb") as f:
+    #     pickle.dump(test_nid2index, f)
 
-    with open(out_path / "test_news_info.pkl", "wb") as f:
-        pickle.dump(test_news_info, f)
+    # with open(out_path / "test_news_info.pkl", "wb") as f:
+    #     pickle.dump(test_news_info, f)
 
 vocab_dict = {"<unk>": 0}
 
@@ -98,15 +100,15 @@ for nid in tqdm(nid2index):
 
 np.save(out_path / "news_index", news_index)
 
-if os.path.exists(data_path / "test" ):
-    test_news_index = np.zeros((len(test_news_info) + 1, max_title_len), dtype="float32")
+# if os.path.exists(data_path / "test" ):
+#     test_news_index = np.zeros((len(test_news_info) + 1, max_title_len), dtype="float32")
 
-    for nid in tqdm(test_nid2index):
-        test_news_index[test_nid2index[nid]] = [
-            vocab_dict[w] if w in vocab_dict else 0 for w in test_news_info[nid]
-        ] + [0] * (max_title_len - len(test_news_info[nid]))
+#     for nid in tqdm(test_nid2index):
+#         test_news_index[test_nid2index[nid]] = [
+#             vocab_dict[w] if w in vocab_dict else 0 for w in test_news_info[nid]
+#         ] + [0] * (max_title_len - len(test_news_info[nid]))
 
-    np.save(out_path / "test_news_index", test_news_index)
+#     np.save(out_path / "test_news_index", test_news_index)
 
 
 def load_matrix(glove_path, word_dict):
