@@ -15,6 +15,7 @@ import numpy as np
 import os
 from sklearn.metrics import roc_auc_score
 import pickle
+import json
 from datetime import datetime 
 import math
 # import uncertainty_toolbox as utc
@@ -130,11 +131,21 @@ def load_cb_valid_data(args, trial=0):
 
     return cb_valid_contexts
 
-def load_cb_topic_news(args):
-    fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
-    with open(fname, 'rb') as f: 
-        cb_news = pickle.load(f)
-    return cb_news 
+def load_cb_topic_news(args, ordered=False):
+    if ordered:
+        fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json") 
+        with open(fname, 'r') as f: 
+            topic_list = json.load(f)
+        fname = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
+        with open(fname, 'rb') as f: 
+            nid2topic = pickle.load(f)
+        return topic_list, nid2topic
+
+    else:
+        fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+        with open(fname, 'rb') as f: 
+            cb_news = pickle.load(f)
+        return cb_news 
 
 def load_cb_nid2topicindex(args):
     fname = os.path.join(args.root_data_dir, "large/utils/nid2topicindex.pkl") 
@@ -223,7 +234,7 @@ class SimTrainDataset(Dataset):
                 candidate_news = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
             else: # nindex
                 raise Exception("currently not support this kind od input")
-        his = his + [0] * (self.max_his_len - len(his))
+        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
         his = self.news_index[his]
         
         label = np.array(0)

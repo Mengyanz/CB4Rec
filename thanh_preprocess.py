@@ -477,7 +477,6 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
             if cnt % 10 == 0:
                 train_loader.set_description(f"[{cnt}]steps loss: {loss / (cnt+1):.4f} ")
                 train_loader.refresh() 
-            break
         
         if isinstance(model, torch.nn.DataParallel):
             model = model.module

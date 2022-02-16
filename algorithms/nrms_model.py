@@ -192,13 +192,13 @@ class NRMS_Model(nn.Module):
         
 
 class TopicEncoder(torch.nn.Module):
-    def __init__(self, num_categories=285, reduction_dim=64):
+    def __init__(self, num_categories=285, reduction_dim=64, dropout_rate=0.2):
         super(TopicEncoder, self).__init__()
         self.num_categories = 285
         self.word_embedding = nn.Embedding(num_categories,
                                            reduction_dim)
         self.mlp_head = nn.Sequential(nn.Linear(reduction_dim, reduction_dim),
-                                      nn.Dropout(),
+                                      nn.Dropout(p=dropout_rate),
                                       nn.ReLU(),
                                       nn.Linear(reduction_dim, reduction_dim))
     def forward(self, candidate_news_topicindex):
