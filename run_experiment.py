@@ -16,7 +16,8 @@ torch.cuda.set_device(device)
 
 def main():
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
+#     from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
 
     log_path = os.path.join(args.root_proj_dir, 'logs')

@@ -2,7 +2,7 @@
 
 from operator import itemgetter
 import numpy as np 
-import pickle, os
+import pickle, os, json
 from collections import defaultdict
 from utils.data_util import load_cb_train_data, load_cb_valid_data
 import os
@@ -128,6 +128,9 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
     with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
         cb_val_users = pickle.load(fo) 
+        
+    with open(os.path.join(args.root_data_dir, 'large/utils/subcategory_byorder.json'), 'r') as fo: 
+        topic_list = json.load(fo)      
 
     h_items_all = [] 
     h_rewards_all = []

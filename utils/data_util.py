@@ -208,6 +208,7 @@ class SimTrainDataset(Dataset):
         self.npratio = 1
         self.max_his_len = args.max_his_len
         self.nid2topicindex = nid2topicindex
+        self.index2nid = {v:k for k,v in nid2index.items()}
         
     def __len__(self):
         return len(self.samples)
@@ -222,18 +223,19 @@ class SimTrainDataset(Dataset):
         # for n in candidate_news:
         #     print(n)
         #     print(self.nid2index[n])
-        if self.nid2topicindex is None:
+        if self.nid2topicindex is None and self.nindex2topicindex is None:
             if type(candidate_news[0]) is str:
                 assert candidate_news[0].startswith('N') # nid
                 candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
             else: # nindex
                 candidate_news = self.news_index[[n for n in candidate_news]]
         else:
-            if type(candidate_news[0]) is str:
+            if type(candidate_news[0]) is str and self.nid2topicindex is not None:
                 assert candidate_news[0].startswith('N') # nid
                 candidate_news = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
             else: # nindex
-                raise Exception("currently not support this kind od input")
+                candidate_news = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
+                
         his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
         his = self.news_index[his]
         
