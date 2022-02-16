@@ -636,7 +636,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
                     candidate_news_index = candidate_news_index.to(self.device)
                     his_index = his_index.to(self.device)
                     label = label.to(self.device)
-                    bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
+                    bz_loss, y_hat = self.topic_model(candidate_news_index, his_index, label)
 
                     loss += bz_loss.detach().cpu().numpy()
                     optimizer.zero_grad()
