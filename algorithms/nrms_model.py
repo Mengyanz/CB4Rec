@@ -266,7 +266,7 @@ class NRMS_Topic_Model(torch.nn.Module):
         score = torch.bmm(candidate_news_vector, 
                                       user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
         if compute_loss:
-            loss = self.criterion(torch.sigmoid(score), targets)
+            loss = self.criterion(torch.sigmoid(score), targets.float())
             return loss, score
         else:
             return score
