@@ -513,7 +513,8 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.active_topics_order) # get all active topic scores, num x reduction_dim
             score = (topic_embeddings @ user_vector.unsqueeze(-1)).squeeze(-1).cpu().numpy() # num_topic
             all_scores.append(score)
-        all_scores = np.concatenate(all_scores, axis=0) # n_inference, num_topic
+
+        all_scores = np.array(all_scores) # n_inference, num_active_topic
         mu = np.mean(all_scores, axis=0) 
         std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
         ucb = mu + std  # num_topic
