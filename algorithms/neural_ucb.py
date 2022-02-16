@@ -15,7 +15,7 @@ from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
-    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='SingleStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True, name='SingleStageNeuralUCB'):
         """Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
@@ -23,10 +23,10 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
-        """
+        """      
+        super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, pretrained_mode, preinference_mode, name)
         self.n_inference = n_inference 
         self.gamma = gamma
-        super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, pretrained_mode, name)
         # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
         # # pre-generate news embeddings
@@ -51,37 +51,6 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
     #         cb_indexs.append(self.nid2index[nid])
     #     return np.array(cb_indexs)     
 
-    # def _get_news_vecs(self): # @TODO: takes in news ids, returns vect repr via encoder 
-    #     news_dataset = NewsDataset(self.news_index) 
-    #     news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
-    #     news_vecs = []
-    #     for news in news_dl: # @TODO: avoid for loop
-    #         news = news.to(self.device)
-    #         news_vec = self.model.text_encoder(news).detach().cpu().numpy()
-    #         news_vecs.append(news_vec)
-
-    #     return np.concatenate(news_vecs) # (130381, 400)
-
-    # def _get_user_vecs(self, news_vecs, user_samples): 
-    #     """Transform user_samples into representation vectors. 
-
-    #     Args:
-    #         user_samples: a list of (poss, negs, his, uid, tsp) 
-
-    #     Return: 
-    #         user_vecs: [None, dim]
-    #     """
-    #     user_dataset = UserDataset(self.args, user_samples, news_vecs, self.nid2index)
-    #     user_vecs = []
-    #     user_dl = DataLoader(user_dataset, batch_size=min(1024, len(user_samples)), shuffle=False, num_workers=2)
-
-    #     for his_tsp in user_dl:
-    #         his, tsp = his_tsp
-    #         his = his.to(self.device)
-    #         user_vec = self.model.user_encoder(his).detach().cpu().numpy()
-    #         user_vecs.append(user_vec)
-    #         # print(tsp)
-    #     return np.concatenate(user_vecs)
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -93,35 +62,57 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         Return: 
             items: a list of `len(uids)`int 
         """
-        batch_size = min(self.args.max_batch_size, len(cand_news))
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
 
-        # get user vect 
-     
-        h = self.clicked_history[uid]
-        h = h + [0] * (self.args.max_his_len - len(h))
-        h = self.nindex2vec[h]
+        if self.preinference_mode:
+            all_scores = []
+                
+            for i in range(self.n_inference): 
+                user_vecs = self._get_user_embs(uid, i) # (b,d)
+                scores = self.news_embs[i][cand_news] @ user_vecs.T # (n,b) 
+                all_scores.append(scores) 
+            
+            all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
+            mu = np.mean(all_scores, axis=0) 
+            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            ucb = mu + self.gamma * std # (n,) 
+            nid_argmax = np.argsort(ucb, axis = 0)[::-1][:m].tolist() # (len(uids),)
+            rec_itms = [cand_news[n] for n in nid_argmax]
+            return rec_itms 
+        else:
+        
+            batch_size = min(self.args.max_batch_size, len(cand_news))
 
-        h = torch.Tensor(h[None,:,:])
-        sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+            # get user vect 
+        
+            h = self.clicked_history[uid]
+            h = h + [0] * (self.args.max_his_len - len(h))
+            h = self.nindex2vec[h]
 
-        all_scores = []
-        for i in range(self.n_inference): # @TODO: accelerate
-            scores = []
-            for cn in rdl:
-                score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
-                scores.append(score.detach().cpu().numpy()) 
-            scores = np.concatenate(scores)
-            all_scores.append(scores) 
+            h = torch.Tensor(h[None,:,:])
+            sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
+            rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
-        all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
-        mu = np.mean(all_scores, axis=0) 
-        std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
-        ucb = mu + self.gamma * std # (n,b) 
-       
-        nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
-        rec_itms = [cand_news[n] for n in nid_argmax]
-        return rec_itms 
+            all_scores = []
+            for i in range(self.n_inference): # @TODO: accelerate
+                scores = []
+                for cn in rdl:
+                    score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
+                    scores.append(score.detach().cpu().numpy()) 
+                scores = np.concatenate(scores)
+                all_scores.append(scores) 
+
+            all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
+            mu = np.mean(all_scores, axis=0) 
+            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            ucb = mu + self.gamma * std # (n,b) 
+        
+            nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
+            rec_itms = [cand_news[n] for n in nid_argmax]
+            return rec_itms 
 
     def sample_actions(self, uids): 
         """Choose an action given a context. 
@@ -136,7 +127,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         # all_scores = []
         # self.model.eval()
         # for i in range(self.n_inference): # @TODO: accelerate
-        #     user_vecs = self._get_user_vecs(self.news_vecss[i], user_samples) # (b,d)
+        #     user_vecs = self._get_user_embs(self.news_vecss[i], user_samples) # (b,d)
         #     scores = self.news_vecss[i][self.cb_indexs] @ user_vecs.T # (n,b) 
         #     all_scores.append(scores) 
         
@@ -146,6 +137,9 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         # ucb = mu + std # (n,b) 
         # sorted_ids = np.argsort(ucb, axis=0)[-self.rec_batch_size:,:] 
         # return self.cb_indexs[sorted_ids], np.empty(0)
+        if len(self.news_embs) < 1:
+            self._get_news_embs() # init news embeddings
+
         cand_news = [self.nid2index[n] for n in self.cb_news]
         rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
 
@@ -153,7 +147,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, rec_batch_size = 1, gamma = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True,name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size.
@@ -162,7 +156,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
 
         """
-        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, gamma, n_inference, pretrained_mode, name)
+        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, gamma, n_inference, pretrained_mode, preinference_mode, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -183,6 +177,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         Return
             rec_topic: one recommended topic
         """
+        # TODO: topic selection also needs score budget allocation
         ss =[] 
         for topic in self.active_topics:
             s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
@@ -195,7 +190,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
     #     self.model.eval()
     #     cb_indexs = self._get_cb_news_index(cand_news)
     #     for i in range(self.n_inference): 
-    #         user_vecs = self._get_user_vecs(self.news_vecss[i], user_samples) # (b,d)
+    #         user_vecs = self._get_user_embs(self.news_vecss[i], user_samples) # (b,d)
     #         scores = self.news_vecss[i][cb_indexs] @ user_vecs.T # (n,b) 
     #         all_scores.append(scores) 
         
@@ -229,6 +224,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         # Update the user_encoder and news_encoder using `self.clicked_history`
         if mode == 'item': 
             self.train() 
+            self._get_news_embs()
 
     def sample_actions(self, uid): 
         """Choose an action given a context. 
@@ -239,6 +235,9 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             topics: (`rec_batch_size`)
             items: (`rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
         """
+        if len(self.news_embs) < 1:
+            self._get_news_embs() # init news embeddings
+
         rec_topics = []
         rec_items = []
         self.active_topics = self.cb_topics.copy()
@@ -595,7 +594,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
                 print('Updating the internal model of the bandit!')
-                ft_ds = SimTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
+                ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
                 
                 # do one epoch only
@@ -624,7 +623,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
                 print('Updating the internal model of the bandit!')
-                ft_ds = SimTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
+                ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
                 
                 # do one epoch only

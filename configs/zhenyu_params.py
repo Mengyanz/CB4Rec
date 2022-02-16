@@ -4,12 +4,13 @@ import logging
 def parse_args():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--algo",type=str,default="ts_neuralucb_zhenyu")
     # path
-    parser.add_argument("--root_data_dir",type=str,default="/home/v-zhenyuhe/CB4Rec_ready/data/")
-    parser.add_argument("--root_proj_dir",type=str,default="/home/v-zhenyuhe/CB4Re_ready/")
+    parser.add_argument("--root_data_dir",type=str,default="/home/v-zhenyuhe/CB4Rec_/data/")
+    parser.add_argument("--root_proj_dir",type=str,default="/home/v-zhenyuhe/CB4Rec/")
     # parser.add_argument("--root_proj_dir",type=str,default="./")
-    parser.add_argument("--model_path", type=str, default="/home/v-zhenyuhe/CB4Rec_ready/model/large/large.pkl")
-    parser.add_argument("--sim_path", type=str, default="/home/v-zhenyuhe/CB4Rec_ready/model/large/large.pkl")
+    parser.add_argument("--model_path", type=str, default="/home/v-zhenyuhe/CB4Rec/model/large/large.pkl")
+    parser.add_argument("--sim_path", type=str, default="/home/v-zhenyuhe/CB4Rec/model/large/large.pkl")
 
     parser.add_argument("--dataset",type=str,default='large')
     parser.add_argument("--mode",type=str,default='train')

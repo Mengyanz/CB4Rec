@@ -9,6 +9,7 @@ from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, Dummy
 from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
 import logging
+# import pretty_errors
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"
 device = torch.device("cuda:2")
@@ -23,22 +24,36 @@ def main():
     log_path = os.path.join(args.root_proj_dir, 'logs')
     if not os.path.exists(log_path):
         os.mkdir(log_path) 
-    logging.basicConfig(filename=os.path.join(log_path, 'mylog.log'), level=logging.INFO)
+    logging.basicConfig(filename=os.path.join(log_path, '{}.log'.format(args.algo)), level=logging.INFO)
     logging.info(args)
 
     rec_batch_size = 5
+    per_rec_score_budget = 1000
     n_inference = 5
+    args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
+    args.sim_threshold = 0.38414
+
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 
-    # construct a list of CB learners 
-    # single_neuralucb_learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    # ts_neuralucb_learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
-    # greedylearner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size)
-    single_linucb = TwoStageNeuralUCB_zhenyu(device, args, rec_batch_size = rec_batch_size)
+    print('Debug args.algo:', args.algo)
 
-    algos = [single_linucb]
+    # construct a list of CB learners 
+    if args.algo == 'single_neuralucb':
+        learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget)
+    elif args.algo == 'ts_neuralucb':
+        learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget)
+    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    elif args.algo == 'greedy':
+        learner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
+    elif args.algo == 'single_linucb':
+        learner = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
+    elif args.algo == 'ts_neuralucb_zhenyu':
+        learner = TwoStageNeuralUCB_zhenyu(device, args, rec_batch_size = rec_batch_size)
+    else:
+        raise NotImplementedError
+
+    algos = [learner]
     # algos = [greedylearner, single_neuralucb_learner, ts_neuralucb_learner]
     for learner in algos:
         logging.info(learner.name)
@@ -51,5 +66,4 @@ def main():
 
 
 if __name__ == '__main__':
-    
     main()

@@ -84,11 +84,11 @@ def read_data(args, mode = 'train'):
 
         return nid2index, news_info, news_index, embedding_matrix, cb_users, cb_news
 
-def load_word2vec(args): 
+def load_word2vec(args, utils = 'utils'): 
     """Load word2vec and nid2index
     """
     print('loading nid2index')
-    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+    with open(os.path.join(args.root_data_dir, args.dataset,  utils, 'nid2index.pkl'), 'rb') as f:
         nid2index = pickle.load(f)
 
     # print('loading news_info')
@@ -96,10 +96,10 @@ def load_word2vec(args):
     #     news_info = pickle.load(f)
 
     print('loading word2vec')
-    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'embedding.npy'))
 
     print('loading nindex2vec')
-    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
+    news_index = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'news_index.npy'))
 
     return nid2index, word2vec, news_index
 
@@ -167,47 +167,6 @@ class TrainDataset(Dataset):
         self.npratio = args.npratio 
         self.max_his_len = args.max_his_len
         self.nid2topicindex = nid2topicindex
-    def __len__(self):
-        return len(self.samples)
-    
-    def __getitem__(self, idx):
-        # pos, neg, his, neg_his
-        pos, neg, his, uid, tsp = self.samples[idx]
-        neg = newsample(neg, self.npratio)
-        
-        candidate_news = [pos] + neg
-        # print('pos: ', pos)
-        # for n in candidate_news:
-        #     print(n)
-        #     print(self.nid2index[n])
-        if self.nid2topicindex is None:
-            if type(candidate_news[0]) is str:
-                assert candidate_news[0].startswith('N') # nid
-                candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
-            else: # nindex
-                candidate_news = self.news_index[[n for n in candidate_news]]
-            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-            his = self.news_index[his]
-        else:
-            if type(candidate_news[0]) is str:
-                assert candidate_news[0].startswith('N') # nid
-                candidate_news = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
-            else: # nindex
-                raise Exception("currently not supproted this kind of input")
-            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-            his = self.news_index[his]
-        
-        label = np.array(0)
-        return candidate_news, his, label
-
-class SimTrainDataset(Dataset):
-    def __init__(self, args, samples, nid2index, news_index, nid2topicindex=None):
-        self.news_index = news_index
-        self.nid2index = nid2index
-        self.samples = samples
-        self.npratio = 1
-        self.max_his_len = args.max_his_len
-        self.nid2topicindex = nid2topicindex
         self.index2nid = {v:k for k,v in nid2index.items()}
         
     def __len__(self):
@@ -216,32 +175,91 @@ class SimTrainDataset(Dataset):
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
         pos, neg, his, uid, tsp = self.samples[idx]
-        neg = newsample(neg, self.npratio)
         
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+        if type(his[0]) is str:
+            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
+        else:
+            his = his + [0] * (self.max_his_len - len(his))
+            
+        neg = newsample(neg, self.npratio)
         candidate_news = [pos] + neg
         # print('pos: ', pos)
         # for n in candidate_news:
         #     print(n)
         #     print(self.nid2index[n])
-        if self.nid2topicindex is None and self.nindex2topicindex is None:
+            
+        if self.nid2topicindex is None:
+            candidate_news_vecs = []
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_vecs.append(self.news_index[self.nid2index[n]])
+                else:
+                    candidate_news_vecs.append(self.news_index[n])
+                
+            his = self.news_index[his]
+            label = np.array(0)
+            return np.array(candidate_news_vecs), his, label
+        else:
             if type(candidate_news[0]) is str:
                 assert candidate_news[0].startswith('N') # nid
-                candidate_news = self.news_index[[self.nid2index[n] for n in candidate_news]]
+                candidate_news_index = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
             else: # nindex
-                candidate_news = self.news_index[[n for n in candidate_news]]
-        else:
-            if type(candidate_news[0]) is str and self.nid2topicindex is not None:
-                assert candidate_news[0].startswith('N') # nid
-                candidate_news = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
-            else: # nindex
-                candidate_news = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
-                
-        his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-        his = self.news_index[his]
+                candidate_news_index = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
+            his = self.news_index[his]
+            label = np.zeros(1 + self.npratio, dtype=float)
+            label[0] = 1 
+            return candidate_news_index, his, torch.Tensor(label)
         
+class SimTrainDataset(Dataset):
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.npratio = args.sim_npratio 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        pos, neg, his, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        candidate_news = [pos] + neg
+        assert type(candidate_news[0]) is str 
+        candidate_news = self.nindex2vec[[self.nid2index[n] for n in candidate_news]] 
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
         label = np.zeros(1 + self.npratio, dtype=float)
         label[0] = 1 
-        return candidate_news, his, label
+        return candidate_news, his, torch.Tensor(label) 
+
+
+class SimValDataset(Dataset):
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        nidx, labels, his, uid, tsp = self.samples[idx]
+        nvecs = self.nindex2vec[[self.nid2index[nid] for nid in nidx]]
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        labels = torch.Tensor(np.array(labels).astype('float32'))
+        return nvecs, his, labels  
+
 
 class SimEvalDataset(Dataset):
     def __init__(self, args, uids, nindex2vec, clicked_history): 

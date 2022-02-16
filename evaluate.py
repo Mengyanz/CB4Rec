@@ -3,14 +3,15 @@
 import math, os 
 import numpy as np 
 import matplotlib.pyplot as plt
+from collections import defaultdict
+import glob 
 
 
-def cal_metric(h_rewards_all, metric_names = ['cumu_reward']):
+def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):  
     n_trials, n_algos, rec_bs, T = h_rewards_all.shape
     print('# trails: ', n_trials, ', # algos: ', n_algos, ', # rec_bs: ', rec_bs, ', T: ', T)
-
     metrics = {}
-
+    
     for metric in metric_names:
         print('Metric: ', metric)
         if metric == 'cumu_reward':
@@ -19,7 +20,7 @@ def cal_metric(h_rewards_all, metric_names = ['cumu_reward']):
             cumu_rewards_std = np.std(cumu_rewards, axis = 0) # n_algos, T
 
             for i in range(n_algos):
-                print('Algorithm # ', i)
+                print('Algorithm: ', algo_names[i])
                 print('Mean: ', cumu_rewards_mean[i][-1])
                 print('Std: ', cumu_rewards_std[i][-1])
 
@@ -31,7 +32,7 @@ def cal_metric(h_rewards_all, metric_names = ['cumu_reward']):
             ave_ctr_std = np.std(ave_ctr, axis = 0) # n_algos, T
 
             for i in range(n_algos):
-                print('Algorithm # ', i)
+                print('Algorithm: ', algo_names[i])
                 print('Mean: ', ave_ctr_mean[i][-1])
                 print('Std: ', ave_ctr_std[i][-1])
 
@@ -39,7 +40,7 @@ def cal_metric(h_rewards_all, metric_names = ['cumu_reward']):
     
     return metrics
 
-def plot_metrics(args, metrics, plot_title):
+def plot_metrics(args, metrics, algo_names, plot_title):
     plt_path = os.path.join(args.root_proj_dir, 'plots')
     if not os.path.exists(plt_path):
         os.mkdir(plt_path) 
@@ -49,7 +50,7 @@ def plot_metrics(args, metrics, plot_title):
         mean, std = value
         n_algos, T = mean.shape
         for i in range(n_algos):
-            plt.plot(range(T), mean[i], label = str(i))
+            plt.plot(range(T), mean[i], label = algo_names[i])
             plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
         plt.legend()
         plt.xlabel('Iteration')
@@ -62,12 +63,22 @@ def main():
     from configs.mezhang_params import parse_args
 
     args = parse_args()
-    result_path = os.path.join(args.root_proj_dir, "results", "rewards-0.npy")
+    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*-0-2000.npy"))
+    algo_names = []
+    all_rewards = []
+    for filename in filenames:
+        print(filename)
+        algo_name = filename.split('-')[2]
+        algo_names.append(algo_name)
+        h_rewards_all = np.load(filename)
+        if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
+            h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
+        all_rewards.append(h_rewards_all[:,:,:,:1000])
+    all_rewards = np.concatenate(all_rewards, axis = 1)
+    print(all_rewards.shape)
     
-    h_rewards_all = np.load(result_path)
-    metrics = cal_metric(h_rewards_all, ['cumu_reward', 'ctr'])
-    plot_metrics(args, metrics, plot_title=result_path)
-
+    metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr'])
+    plot_metrics(args, metrics, algo_names, plot_title='Trial 0')
 
 if __name__ == '__main__':
     main()

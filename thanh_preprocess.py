@@ -14,7 +14,7 @@ date_format_str = '%m/%d/%Y %I:%M:%S %p'
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 import torch
 from torch.utils.data import DataLoader
-from utils.data_util import SimTrainDataset, NewsDataset, UserDataset
+from utils.data_util import TrainDataset, NewsDataset, UserDataset
 from torch import nn
 import torch.optim as optim
 from metrics import evaluation_split
@@ -86,7 +86,7 @@ def news_preprocess(args):
     else:
         read_news(args, os.path.join(args.root_data_dir, "large/train/news.tsv"))
         read_news(args, os.path.join(args.root_data_dir, "large/valid/news.tsv"))
-        read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
+        # read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
 
         for w, c in tqdm(word_cnt.items()):
             if c >= args.min_word_cnt:
@@ -100,6 +100,7 @@ def news_preprocess(args):
 
         glove_path = os.path.join(args.root_data_dir, "glove/glove.6B.300d.txt")
         embedding_matrix, exist_word = load_matrix(glove_path, vocab_dict)
+        print('Debug embedding matrix shape: ', embedding_matrix.shape)
 
         
         with open(os.path.join(out_path,"nid2index.pkl"), "wb") as f:
@@ -178,6 +179,36 @@ def generate_random_ids_over_runs(num_trials, meta_data_path):
             indices = np.random.permutation(n_train_users)
             np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(sim_id)), indices)
 
+def read_imprs_for_val_set_for_sim(args, path):
+    """
+    Args:
+        mode: 0 (train), 1 (valid)
+    """
+    samples = []
+    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+
+    for l in tqdm(open(path, "r")):
+        imp_id, uid, t, his, imprs = l.strip("\n").split("\t")
+
+        his = his.split()
+        tsp = t
+        # tsp = time.mktime(time.strptime(t, "%m/%d/%Y %I:%M:%S %p"))
+        #tsp = int(t)
+        imprs = [i.split("-") for i in imprs.split(" ")]
+        neg_imp = [i[0] for i in imprs if i[1] == "0"]
+        pos_imp = [i[0] for i in imprs if i[1] == "1"]
+
+        his = his[-args.max_his_len:]
+        labels = [1] * len(pos_imp) + [0] * len(neg_imp) 
+        nns = pos_imp + neg_imp 
+        samples.append([nns, labels, his, uid, tsp])
+        # for n,l in zip(nns, labels):
+            # samples.append([n, l, his, uid, tsp]) 
+
+    with open(os.path.join(out_path, "val_contexts.pkl"), "wb") as f:
+        pickle.dump(samples, f)
+
+
 def behavior_preprocess(args):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
     tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
@@ -218,60 +249,59 @@ def behavior_preprocess(args):
     with open(os.path.join(out_path, "train_clicked_history.pkl"), "wb") as f:
         pickle.dump(clicked_history, f)
 
-    print('Preprocessing for CB learner ...') 
+#     print('Preprocessing for CB learner ...') 
 
-    for trial in range(args.n_trials): 
-        print('trial = {}'.format(trial))
+#     for trial in range(args.n_trials): 
+#         print('trial = {}'.format(trial))
 
-        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-        cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+#         cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+#         cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
 
-        if os.path.exists(cb_train_fname):
-            continue
+#         if os.path.exists(cb_train_fname):
+#             continue
 
 
-        meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+# #         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
 
-        try:
-            random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
-            print("len(random_ids): ", len)
-        except:
-            print('The meta data has not been generated.') 
-            generate_random_ids_over_runs(args.n_trials, meta_data_path) 
-            time.sleep(5)
-            random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
-            # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
+#         try:
+#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
+#         except:
+#             print('The meta data has not been generated.') 
+#             generate_random_ids_over_runs(args.n_trials, meta_data_path) 
+#             time.sleep(5)
+#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
+#             # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
 
-        print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
-        random_train_user_subset_ids = random_ids[:args.num_selected_users]
-        random_user_subset = [train_user_set[i] for i in random_train_user_subset_ids]
+#         print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
+#         random_train_user_subset_ids = random_ids[:args.num_selected_users]
+#         random_user_subset = [train_user_set[i] for i in random_train_user_subset_ids]
 
-        print('Saving the behaviour data of the selected users for the first split of the train data. ')
-        cb_train_samples = [] 
-        cb_valid_samples = []
-        split_threshold = int(len(tr_rep_sorted_samples) * args.cb_train_ratio) 
-        print('Split threshold: {}/{}'.format(split_threshold,len(tr_rep_sorted_samples)))
+#         print('Saving the behaviour data of the selected users for the first split of the train data. ')
+#         cb_train_samples = [] 
+#         cb_valid_samples = []
+#         split_threshold = int(len(tr_rep_sorted_samples) * args.cb_train_ratio) 
+#         print('Split threshold: {}/{}'.format(split_threshold,len(tr_rep_sorted_samples)))
         
-        selected_train_samples = [] 
-        for i, sample in tqdm(enumerate(tr_rep_sorted_samples)):
-            uid = sample[3] 
-            if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
-                cb_valid_samples.append(sample) 
+#         selected_train_samples = [] 
+#         for i, sample in tqdm(enumerate(tr_rep_sorted_samples)):
+#             uid = sample[3] 
+#             if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
+#                 cb_valid_samples.append(sample) 
 
-            if uid not in random_user_subset and i <= split_threshold:
-                pos_imp, neg_imp, his, uid, tsp = sample
-                for pos in pos_imp:
-                    cb_train_samples.append([pos, neg_imp, his, uid, tsp])
+#             if uid not in random_user_subset and i <= split_threshold:
+#                 pos_imp, neg_imp, his, uid, tsp = sample
+#                 for pos in pos_imp:
+#                     cb_train_samples.append([pos, neg_imp, his, uid, tsp])
 
 
-        # Shuffle the list 
-        random.shuffle(cb_train_samples)	
-        # random.shuffle(cb_valid_samples)	
+#         # Shuffle the list 
+#         random.shuffle(cb_train_samples)	
+#         # random.shuffle(cb_valid_samples)	
         
-        with open(cb_train_fname, "wb") as f:
-            pickle.dump(cb_train_samples, f)
-        with open(cb_valid_fname, "wb") as f:
-            pickle.dump(cb_valid_samples, f)
+#         with open(cb_train_fname, "wb") as f:
+#             pickle.dump(cb_train_samples, f)
+#         with open(cb_valid_fname, "wb") as f:
+#             pickle.dump(cb_valid_samples, f)
 
 
 def split_then_select_behavior_preprocess(args):
@@ -356,43 +386,30 @@ def split_then_select_behavior_preprocess(args):
         os.mkdir(meta_data_path) 
     for trial in range(args.n_trials): 
         np.random.seed(trial)
-        indices = np.random.permutation(len(cb_val_users))
-        np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)), indices)
+        indices_path = os.path.join(meta_data_path, 'indices_{}.npy'.format(trial))
+        if not os.path.exists(indices_path):
+            indices = np.random.permutation(len(cb_val_users))
+            np.save(indices_path, indices)
 
-        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-        # cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+            cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+            # cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
 
-        rand_user_set  = [cb_val_users[i] for i in indices[:args.num_selected_users] ]
-        cb_train_uremoved = []
-        for sample in cb_train: 
-            uid = sample[3] 
-            if uid not in rand_user_set: 
-                cb_train_uremoved.append(sample)
+            rand_user_set  = [cb_val_users[i] for i in indices[:args.num_selected_users] ]
+            cb_train_uremoved = []
+            for sample in cb_train: 
+                uid = sample[3] 
+                if uid not in rand_user_set: 
+                    cb_train_uremoved.append(sample)
 
-        # np.random.shuffle(cb_train_uremoved)
-        with open(cb_train_fname, "wb") as f:
-            pickle.dump(cb_train_uremoved, f)
-        # with open(cb_valid_fname, "wb") as f:
-        #    pickle.dump(cb_val, f)
+            # np.random.shuffle(cb_train_uremoved)
+            with open(cb_train_fname, "wb") as f:
+                pickle.dump(cb_train_uremoved, f)
+            # with open(cb_valid_fname, "wb") as f:
+            #    pickle.dump(cb_val, f)
 
-        pretrain_cb_learner(args, cb_train_uremoved, trial)
-
-       
-
-def pretrain_cb_learner_test(args):
-    trial = 0
-    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
-    if args.pretrain_topic:
-        cb_train_fname = os.path.join(out_path, "cb_train_topic_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-        cb_valid_fname = os.path.join(out_path, "cb_valid_topic_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-    else:
-        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-        cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-    with open(cb_train_fname, 'rb') as f: 
-        cb_train = pickle.load(f) 
-    with open(cb_valid_fname, 'rb') as f: 
-        cb_valid = pickle.load(f) 
-    pretrain_cb_learner(args, cb_train, cb_valid, trial)
+            pretrain_cb_learner(args, cb_train_uremoved, trial)
+        else:
+            print('{} exists!'.format(indices_path))
     
 
 def pretrain_cb_learner(args, cb_train_sam, trial):
@@ -432,9 +449,9 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     valid_sam = [cb_train_sam[i] for i in valid_idx]
 
     if args.pretrain_topic:
-        train_ds = SimTrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
     else:
-        train_ds = SimTrainDataset(args, train_sam, nid2index,  nindex2vec)
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     if args.pretrain_topic:
         model = NRMS_Topic_Model(word2vec).to(device)
@@ -592,7 +609,10 @@ if __name__ == "__main__":
 
     args = parse_args()
     news_preprocess(args)
+    # read_imprs_for_val_set_for_sim(args, path)
     generate_cb_news(args)
     behavior_preprocess(args)
     split_then_select_behavior_preprocess(args)
-    # pretrain_cb_learner_test(args)
+
+    # Get val set for sim 
+    read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
