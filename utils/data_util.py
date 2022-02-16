@@ -178,10 +178,10 @@ class TrainDataset(Dataset):
         
         if len(his) > self.max_his_len: 
             his = random.sample(his, self.max_his_len)
-        if type(his.keys()[0]) is str:
-            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-        else:
-            his = his + [0] * (self.max_his_len - len(his))
+        # if type(his.keys()[0]) is str: # add this would be a bug?
+        #    his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
+        # else:
+        his = his + [0] * (self.max_his_len - len(his))
             
         neg = newsample(neg, self.npratio)
         candidate_news = [pos] + neg
