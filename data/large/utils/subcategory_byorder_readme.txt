@@ -1,0 +1,1 @@
+the order of topic in subcategory_byorder.json is used as index to get topic embedding in NRMS_topic_model.
