@@ -24,7 +24,7 @@ class ContextualBanditLearner(object):
         
         self.reset()
 
-    def load_cb_learner(self, cb_learner_path = None):
+    def load_cb_learner(self, cb_learner_path = None, topic=False):
         """load pretrained 
         Args
             cb_learner_path: str, pretrained cb learner path
@@ -33,7 +33,10 @@ class ContextualBanditLearner(object):
             if not os.path.exists(cb_learner_path):
                 raise Exception("No cb learner pretrained for this trial!")
             try:
-                self.model.load_state_dict(torch.load(cb_learner_path))
+                if topic:
+                    self.topic_model.load_state_dict(torch.load(cb_learner_path))
+                else:
+                    self.model.load_state_dict(torch.load(cb_learner_path))
             except:
                 print('Current algorithm has no model. Load checkpoint failed.')
         else:
@@ -165,7 +168,10 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
         print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]
-
+        cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
+        print('Load pre-trained CB topic learner on this trial from ', cb_topic_learner_path)
+        [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
+        
         # Load the initial history for each user in each CB learner
         indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
         # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
