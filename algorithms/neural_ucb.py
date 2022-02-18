@@ -445,17 +445,17 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
     
     
 class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
-    def __init__(self,device, args, rec_batch_size=1, gamma=1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB_zhenyu'):
+    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True,name='TwoStageNeuralUCB_zhenyu'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, rec_batch_size, gamma, n_inference, pretrained_mode, name)
+        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, rec_batch_size, per_rec_score_budget, gamma, n_inference, pretrained_mode, preinference_mode, name)
         self.args = args
         self.n_inference = n_inference
-        self.pretrained_mode = pretrained_mode 
+        self.pretrained_mode = pretrained_mode
         self.name = name 
         self.device = device 
 
@@ -475,9 +475,13 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         self.topic_model = NRMS_Topic_Model(word2vec).to(self.device)
         if self.pretrained_mode == 'pretrained':
             self.topic_model.load_state_dict(torch.load(args.learner_path)) 
- 
+        print("topic_model text embeddding size: ", self.topic_model.text_encoder.word_embedding.weight.size())
+        print("topic_model topic embedding size: ", self.topic_model.topic_encoder.word_embedding.weight.size())
+            
         # self.cb_topics = list(self.cb_news.keys())
         self.cb_topics = topic_list
+
+        self.topic_news_embs = []
 
         self.alphas = {}
         self.betas = {}
@@ -486,13 +490,38 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             self.alphas[topic] = 1
             self.betas[topic] = 1
             
-            
     @torch.no_grad()
-    def get_user_vector(self, uid):
-        clicked_news = self.clicked_history[uid]
-        clicked_news = clicked_news + [0] * (self.args.max_his_len - len(clicked_news))
-        clicked_news = torch.LongTensor(self.nindex2vec[clicked_news]).to(self.device)
-        user_vector = self.topic_model.dimmension_reduction(self.topic_model.user_encoder(self.topic_model.text_encoder(clicked_news).unsqueeze(0))).squeeze(0) # 1 x reduction
+    def _get_news_embs(self, topic=False):
+        print('Inference news {} times...'.format(self.n_inference))
+        news_dataset = NewsDataset(self.nindex2vec) 
+        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
+        news_vecs = []
+        if not topic:
+            self.news_embs = []
+            for i in range(self.n_inference): 
+                for news in news_dl: # @TODO: avoid for loop
+                    news = news.to(self.device)
+                    news_vec = self.model.text_encoder(news).detach().cpu().numpy()
+                    news_vecs.append(news_vec)
+                self.news_embs.append(np.concatenate(news_vecs))
+        else:
+            self.topic_news_embs = []
+            for i in range(self.n_inference): 
+                for news in news_dl: # @TODO: avoid for loop
+                    news = news.to(self.device)
+                    news_vec = self.topic_model.text_encoder(news).detach().cpu().numpy()
+                    news_vecs.append(news_vec)
+                self.topic_news_embs.append(np.concatenate(news_vecs))
+
+    @torch.no_grad()
+    def _get_topic_user_embs(self, uid, i):
+        h = self.clicked_history[uid]
+        h = h + [0] * (self.args.max_his_len - len(h))
+        # h = torch.LongTensor(self.nindex2vec[h]).to(self.device)
+        # h = self.topic_model.text_encoder(h).unsqueeze(0)
+        h = self.topic_news_embs[i][np.array(h)]
+        h = torch.Tensor(h[None,:,:]).to(self.device)
+        user_vector = self.topic_model.dimmension_reduction(self.topic_model.user_encoder(h)).squeeze(0) # 1 x reduction
         
         return user_vector
 
@@ -507,8 +536,8 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
 
         self.topic_model.train()
         all_scores = []
-        for _ in range(self.n_inference):
-            user_vector = self.get_user_vector(uid) # reduction_dim
+        for i in range(self.args.n_inference):
+            user_vector = self._get_topic_user_embs(uid, i) # reduction_dim
             topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.active_topics_order) # get all active topic scores, num x reduction_dim
             score = (topic_embeddings @ user_vector.unsqueeze(-1)).squeeze(-1).cpu().numpy() # num_topic
             all_scores.append(score)
@@ -533,34 +562,49 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         Return: 
             item: int 
         """
-        batch_size = min(self.args.max_batch_size, len(cand_news))
 
-        # get user vect 
-     
-        h = self.clicked_history[uid]
-        h = h + [0] * (self.args.max_his_len - len(h))
-        h = self.nindex2vec[h]
+        if self.preinference_mode:
+            all_scores = []
+            for i in range(self.n_inference): 
+                user_vecs = self._get_user_embs(uid, i) # (b,d)
+                scores = self.news_embs[i][cand_news] @ user_vecs.T # (n,b) 
+                all_scores.append(scores) 
+            all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
+            mu = np.mean(all_scores, axis=0) 
+            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            ucb = mu + self.gamma * std # (n,) 
+            nid_argmax = np.argmax(ucb).tolist()
+            return cand_news[nid_argmax]
 
-        h = torch.Tensor(h[None,:,:])
-        sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-        #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
-        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
 
-        all_scores = []
-        for _ in range(self.n_inference):
-            scores = []
-            for cn in rdl:
-                score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
-                scores.append(score.detach().cpu().numpy()) 
-            scores = np.concatenate(scores) 
-            all_scores.append(scores) 
+        else:
+            batch_size = min(self.args.max_batch_size, len(cand_news))
+            # get user vect 
+        
+            h = self.clicked_history[uid]
+            h = h + [0] * (self.args.max_his_len - len(h))
+            h = self.nindex2vec[h]
 
-        all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
-        mu = np.mean(all_scores, axis=0) 
-        std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
-        ucb = mu + std # (n,b) 
-        nid_argmax = np.argmax(ucb).tolist() 
-        return cand_news[nid_argmax] 
+            h = torch.Tensor(h[None,:,:])
+            sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
+            #TODO: Use Dataset is clean and good when len(uids) is large. When len(uids) is small, is it faster to not use Dataset?
+            rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+
+            all_scores = []
+            for _ in range(self.args.n_inference):
+                scores = []
+                for cn in rdl:
+                    score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
+                    scores.append(score.detach().cpu().numpy()) 
+                scores = np.concatenate(scores) 
+                all_scores.append(scores) 
+
+            all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
+            mu = np.mean(all_scores, axis=0) 
+            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            ucb = mu + self.gamma * std # (n,b) 
+            nid_argmax = np.argmax(ucb).tolist()
+            return cand_news[nid_argmax]
 
     def construct_trainable_samples(self):
         """construct trainable samples which will be used in NRMS model training
@@ -666,6 +710,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         # Update the user_encoder and news_encoder using `self.clicked_history`
         if mode == 'item': 
             self.train() 
+            self._get_news_embs()
 
     def sample_actions(self, uid): 
         """Choose an action given a context. 
@@ -678,6 +723,10 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         """
         rec_topics = []
         rec_items = []
+        if len(self.news_embs) < 1:
+            self._get_news_embs() # init news embeddings
+        if len(self.topic_news_embs) < 1:
+            self._get_news_embs(topic=True)
         self.active_topics = self.cb_topics.copy()
         self.active_topics_order = self.topic_order.copy()
         while len(rec_items) < self.rec_batch_size:
