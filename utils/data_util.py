@@ -198,18 +198,24 @@ class TrainDataset(Dataset):
                 else:
                     candidate_news_vecs.append(self.news_index[n])
                 
-            his = self.news_index[his]
             label = np.array(0)
             return np.array(candidate_news_vecs), his, label
         else:
-            if type(candidate_news[0]) is str:
-                assert candidate_news[0].startswith('N') # nid
-                candidate_news_index = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
-            else: # nindex
-                candidate_news_index = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
-            his = self.news_index[his]
+            candidate_news_index = []
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_index.append(self.nid2topicindex[n])
+                else:
+                    candidate_news_index.append(self.nid2topicindex[self.index2nid[n]])
+            candidate_news_index = torch.LongTensor(candidate_news_index)
+            # if type(candidate_news[0]) is str:
+            #     assert candidate_news[0].startswith('N') # nid
+            #     candidate_news_index = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
+            # else: # nindex
+            #     candidate_news_index = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
+
             label = np.zeros(1 + self.npratio, dtype=float)
-            label[0] = 1 
+            label[0] = 1.0 
             return candidate_news_index, his, torch.Tensor(label)
         
 class SimTrainDataset(Dataset):
@@ -354,3 +360,4 @@ class UserDataset2(Dataset):
         # return self.news2code_fn(clk_hist)
         self.news2code_fn([0,1])
         return clk_hist
+
