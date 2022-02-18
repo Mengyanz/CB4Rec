@@ -1,4 +1,3 @@
-
 from collections import defaultdict,Counter
 from tqdm import tqdm
 import numpy as np
@@ -304,7 +303,7 @@ def behavior_preprocess(args):
 #             pickle.dump(cb_valid_samples, f)
 
 
-def split_then_select_behavior_preprocess(args):
+def split_then_select_behavior_preprocess(args, train_cb = True):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
     tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
     val_ctx_fname = os.path.join(out_path, "valid_contexts.pkl")
@@ -386,13 +385,21 @@ def split_then_select_behavior_preprocess(args):
         os.mkdir(meta_data_path) 
     for trial in range(args.n_trials): 
         np.random.seed(trial)
-        indices_path = os.path.join(meta_data_path, 'indices_{}.npy'.format(trial))
-        if not os.path.exists(indices_path):
-            indices = np.random.permutation(len(cb_val_users))
-            np.save(indices_path, indices)
 
-            cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-            # cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        # cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+        if os.path.exists(cb_train_fname):
+            print('{} exists!'.format(cb_train_fname))
+            with open(cb_train_fname, "rb") as f:
+                cb_train_uremoved = pickle.load(f)
+        else:
+            indices_path = os.path.join(meta_data_path, 'indices_{}.npy'.format(trial))
+            if not os.path.exists(indices_path):
+                generate_random_ids_over_runs(trial, meta_data_path, len(cb_val_users))
+            else:
+                print('{} exists!'.format(indices_path))
+
+            indices = np.load(indices_path)
 
             rand_user_set  = [cb_val_users[i] for i in indices[:args.num_selected_users] ]
             cb_train_uremoved = []
@@ -405,11 +412,9 @@ def split_then_select_behavior_preprocess(args):
             with open(cb_train_fname, "wb") as f:
                 pickle.dump(cb_train_uremoved, f)
             # with open(cb_valid_fname, "wb") as f:
-            #    pickle.dump(cb_val, f)
-
+            #    pickle.dump(cb_val, f)   
+        if train_cb:
             pretrain_cb_learner(args, cb_train_uremoved, trial)
-        else:
-            print('{} exists!'.format(indices_path))
     
 
 def pretrain_cb_learner(args, cb_train_sam, trial):
@@ -608,11 +613,11 @@ if __name__ == "__main__":
 
 
     args = parse_args()
-    news_preprocess(args)
+    # news_preprocess(args)
     # read_imprs_for_val_set_for_sim(args, path)
-    generate_cb_news(args)
-    behavior_preprocess(args)
-    split_then_select_behavior_preprocess(args)
+    # generate_cb_news(args)
+    # behavior_preprocess(args)
+    split_then_select_behavior_preprocess(args, train_cb = True)
 
     # Get val set for sim 
     read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
