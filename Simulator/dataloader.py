@@ -335,3 +335,4 @@ class DataLoaderTest(DataLoaderTrain):
 
 
         return user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
+
