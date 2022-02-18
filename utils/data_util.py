@@ -242,7 +242,37 @@ class SimTrainDataset(Dataset):
         his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
         label = np.zeros(1 + self.npratio, dtype=float)
         label[0] = 1 
-        return candidate_news, his, torch.Tensor(label) 
+        return candidate_news, his, torch.Tensor(label)
+    
+class SimTrainDatasetPropensity(Dataset):
+    """Add mask and inverse propensity weight to handle imbalanced class. 
+    """
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.npratio = args.sim_npratio 
+        self.max_his_len = args.max_his_len 
+
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        # pos, neg, his, neg_his
+        pos, neg, his, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        
+        candidate_news = [pos] + neg
+        assert type(candidate_news[0]) is str 
+        candidate_news = self.nindex2vec[[self.nid2index[n] for n in candidate_news]] 
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1 
+        return candidate_news, his, torch.Tensor(label)  
 
 
 class SimValDataset(Dataset):
