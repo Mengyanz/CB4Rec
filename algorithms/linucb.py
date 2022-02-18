@@ -14,15 +14,10 @@ from algorithms.neural_greedy import SingleStageNeuralGreedy
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageLinUCB(ContextualBanditLearner):
-    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, gamma = 1, pretrained_mode=True, name='SingleStageLinUCB'):
+    def __init__(self,device, args, name='SingleStageLinUCB'):
         """LinUCB.
-            Args:
-                rec_batch_size: int, recommendation size. 
-                gamma: float, parameter that balancing two terms in ucb.
-                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
-
         """
-        super(SingleStageLinUCB, self).__init__(args, rec_batch_size, per_rec_score_budget, pretrained_mode, name)
+        super(SingleStageLinUCB, self).__init__(args, name)
         self.name = name 
         self.device = device 
 
@@ -38,7 +33,7 @@ class SingleStageLinUCB(ContextualBanditLearner):
             cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
         self.cb_news = [item for sublist in cb_news for item in sublist]
 
-        self.gamma = gamma
+        self.gamma = self.args.gamma
         self.dim = 300 # TODO: make it a parameter
         self.theta = {} # key: uid, value: theta_u
         self.D = defaultdict(list) # key: uid, value: list of nindex of uid's interactions

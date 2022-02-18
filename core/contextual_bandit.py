@@ -9,7 +9,7 @@ import os
 import torch
 
 class ContextualBanditLearner(object):
-    def __init__(self, args, rec_batch_size = 1, per_rec_score_budget = 200, pretrained_mode=True, name='ContextualBanditLearner'):
+    def __init__(self, args, name='ContextualBanditLearner'):
         """Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
@@ -18,9 +18,9 @@ class ContextualBanditLearner(object):
         self.name = name 
         print(name)
         self.args = args
-        self.rec_batch_size = rec_batch_size
-        self.per_rec_score_budget = per_rec_score_budget
-        self.pretrained_mode = pretrained_mode 
+        self.rec_batch_size = self.args.rec_batch_size
+        self.per_rec_score_budget = self.args.per_rec_score_budget
+        self.pretrained_mode = self.args.pretrained_mode 
         
         self.reset()
 
@@ -108,16 +108,16 @@ class ContextualBanditLearner(object):
         pass
 
 
-def run_contextual_bandit(args, simulator, rec_batch_size, algos):
+def run_contextual_bandit(args, simulator, algos):
     """Run a contextual bandit problem on a set of algorithms.
     Args:
         contexts: A list of user samples. 
         simulator: An instance of Simulator.
-        rec_batch_size: int, number of recommendations per context.
         algos: List of algorithms (instances of `ContextualBanditLearner`) to use in the contextual bandit instance.
     Returns:
         h_actions: Matrix with actions: size (num_algorithms, rec_batch_size, num_context).
         h_rewards: Matrix with rewards: size (num_algorithms, rec_batch_size, num_context).
+            where rec_batch_size (in args): int, number of recommendations per context.
     """
 
     # contexts = contexts[:3]
@@ -146,8 +146,8 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
     for e in range(args.n_trials):
 
-        item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(args.algo_prefix, e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(args.algo_prefix, e, args.T))
+        item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
         # item_path = os.path.join(result_path, "items-{}.npy".format(args.algo_prefix))
         # reward_path = os.path.join(result_path, "rewards-{}.npy".format(args.algo_prefix))
         if os.path.exists(reward_path):
@@ -178,8 +178,8 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
 
         
         # Run the contextual bandit process
-        h_items = np.empty((len(algos), rec_batch_size,0), float)
-        h_rewards = np.empty((len(algos), rec_batch_size,0), float) # (n_algos, rec_bs, T)
+        h_items = np.empty((len(algos), args.rec_batch_size,0), float)
+        h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
         for t in range(args.T):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
@@ -196,7 +196,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
                 topic_batches.append(topics) 
                 item_batches.append(items) 
 
-            # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, rec_batch_size)
+            # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, args.rec_batch_size)
             print('  rec_topic: {}'.format(topic_batches))
 
             print('  rec_news: {}'.format(item_batches))
@@ -207,7 +207,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             print('  rewards: {}'.format(reward_batches))
 
             # main
-            # reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
+            # reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, args.rec_batch_size)
             # print('Rewards: {}'.format(reward_batches))
             # for j, a in enumerate(algos):
             #    a.update(context, topic_batches[j], action_batches[j], reward_batches[j])
@@ -242,8 +242,8 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
                 [a.update(topics, items, rewards, mode = 'item') for a in algos]
 
             if t % 500 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}{}-{}.npy".format(args.algo_prefix, e, t))
-                temp_reward_path = os.path.join(result_path, "rewards-{}{}-{}.npy".format(args.algo_prefix, e, t))
+                temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+                temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
                 # temp_item_path = os.path.join(result_path, "items-{}.npy".format(args.algo_prefix))
                 # temp_reward_path = os.path.join(result_path, "rewards-{}.npy".format(args.algo_prefix))
                 print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)

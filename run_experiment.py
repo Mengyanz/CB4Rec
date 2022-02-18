@@ -21,12 +21,6 @@ def main():
     args = parse_args()
     print(args)
 
-    rec_batch_size = 5
-    per_rec_score_budget = 1000
-    n_inference = 5
-    args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
-    args.sim_threshold = 0.38414
-
     # construct a simulator
     simulator = NRMS_Sim(device, args)
 
@@ -38,14 +32,14 @@ def main():
 
     # construct a list of CB learners 
     if args.algo == 'single_neuralucb':
-        learner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget)
+        learner = SingleStageNeuralUCB(device, args)
     elif args.algo == 'ts_neuralucb':
-        learner = TwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference, per_rec_score_budget = per_rec_score_budget, uniform_init = args.uniform_init)
+        learner = TwoStageNeuralUCB(device, args)
     # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     elif args.algo == 'greedy':
-        learner = SingleStageNeuralGreedy(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
+        learner = SingleStageNeuralGreedy(device, args)
     elif args.algo == 'single_linucb':
-        learner = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
+        learner = SingleStageLinUCB(device, args)
     else:
         raise NotImplementedError
 
@@ -56,7 +50,7 @@ def main():
     # contexts = simulator.valid_samples 
 
     # runner 
-    h_actions, h_rewards = run_contextual_bandit(args, simulator, rec_batch_size, algos)
+    h_actions, h_rewards = run_contextual_bandit(args, simulator, algos)
 
 
 if __name__ == '__main__':

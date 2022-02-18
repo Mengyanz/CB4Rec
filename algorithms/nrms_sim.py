@@ -34,7 +34,7 @@ class NRMS_Sim(Simulator):
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
 
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, utils='utils_sim')
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, utils='utils')
         print('Debug word2vec shape: ', word2vec.shape)
 
         # model 

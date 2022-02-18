@@ -63,10 +63,6 @@ def read_data(args, mode = 'train'):
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_contexts.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
 
-        if args.filter_user:
-            print('filtering')
-            train_sam, valid_sam = filter_sam(train_sam, valid_sam)
-
         return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
     elif mode == 'test':
         pass

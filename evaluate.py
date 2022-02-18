@@ -37,6 +37,18 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
                 print('Std: ', ave_ctr_std[i][-1])
 
             metrics[metric] = [ave_ctr_mean, ave_ctr_std]
+
+        if metric == 'raw_reward':
+            cumu_rewards = np.sum(h_rewards_all, axis=2)
+            cumu_rewards_mean = np.mean(cumu_rewards, axis = 0) # n_algos, T
+            cumu_rewards_std = np.std(cumu_rewards, axis = 0) # n_algos, T
+
+            for i in range(n_algos):
+                print('Algorithm: ', algo_names[i])
+                print('Mean: ', cumu_rewards_mean[i][-1])
+                print('Std: ', cumu_rewards_std[i][-1])
+
+            metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
     
     return metrics
 
@@ -50,8 +62,12 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         mean, std = value
         n_algos, T = mean.shape
         for i in range(n_algos):
-            plt.plot(range(T), mean[i], label = algo_names[i])
-            plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
+            if name == 'raw_reward':
+                # if i == 3:
+                plt.scatter(range(T), mean[i], label = algo_names[i], s = 1, alpha = 0.5)
+            else:
+                plt.plot(range(T), mean[i], label = algo_names[i])
+                plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
         plt.legend()
         plt.xlabel('Iteration')
         plt.ylabel(name)
@@ -71,16 +87,16 @@ def main():
         print(filename)
         algo_name = filename.split('-')[2]
         algo_names.append(algo_name)
-        h_rewards_all = np.load(filename)
+        h_rewards_all = np.load(filename)[0,:,:,:1000]
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
             h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
         print(h_rewards_all.shape)
-        all_rewards.append(h_rewards_all[-2:,:,:,:1000])
+        all_rewards.append(h_rewards_all)
     all_rewards = np.concatenate(all_rewards, axis = 1)
     print(all_rewards.shape)
     
-    metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr'])
-    plot_metrics(args, metrics, algo_names, plot_title='Trial34')
+    metrics = cal_metric(all_rewards, algo_names, ['raw_reward']) # , 'cumu_reward', 'ctr'
+    plot_metrics(args, metrics, algo_names, plot_title='Trial0')
 
 if __name__ == '__main__':
     main()

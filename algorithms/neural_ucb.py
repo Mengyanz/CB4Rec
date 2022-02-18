@@ -14,18 +14,12 @@ from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralUCB(SingleStageNeuralGreedy):
-    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True, name='SingleStageNeuralUCB'):
+    def __init__(self,device, args, name='SingleStageNeuralUCB'):
         """Use NRMS model. 
-            Args:
-                rec_batch_size: int, recommendation size. 
-                gamma: float, parameter that balancing two terms in ucb.
-                n_inference: int, number of Monte Carlo samples of prediction. 
-                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
-
         """      
-        super(SingleStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, pretrained_mode, preinference_mode, name)
-        self.n_inference = n_inference 
-        self.gamma = gamma
+        super(SingleStageNeuralUCB, self).__init__(device, args, name)
+        self.n_inference = self.args.n_inference 
+        self.gamma = self.args.gamma
         # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
         # # pre-generate news embeddings
@@ -146,16 +140,10 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True, uniform_init = False, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
-            Args:
-                rec_batch_size: int, recommendation size.
-                gamma: float, parameter that balancing two terms in ucb. 
-                n_inference: int, number of Monte Carlo samples of prediction. 
-                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
-
         """
-        super(TwoStageNeuralUCB, self).__init__(device, args, rec_batch_size, per_rec_score_budget, gamma, n_inference, pretrained_mode, preinference_mode, name)
+        super(TwoStageNeuralUCB, self).__init__(device, args, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -163,7 +151,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
         self.cb_news = cb_news 
         self.cb_topics = list(self.cb_news.keys())
-        self.uniform_init = uniform_init 
+        self.uniform_init = self.args.uniform_init 
 
         self.alphas = {}
         self.betas = {}
@@ -273,16 +261,12 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         return rec_topics, rec_items
       
 class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of testing my pipeline only 
-    def __init__(self,device, args, rec_batch_size = 1, n_inference=10, pretrained_mode=True, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
-            Args:
-                rec_batch_size: int, recommendation size. 
-                n_inference: int, number of Monte Carlo samples of prediction. 
-                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(DummyTwoStageNeuralUCB, self).__init__(args, rec_batch_size, name)
-        self.n_inference = n_inference 
-        self.pretrained_mode = pretrained_mode 
+        super(DummyTwoStageNeuralUCB, self).__init__(args, name)
+        self.n_inference = self.args.n_inference 
+        self.pretrained_mode = self.args.pretrained_mode 
         self.name = name 
         self.device = device 
 

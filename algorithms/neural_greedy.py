@@ -13,18 +13,14 @@ from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageNeuralGreedy(ContextualBanditLearner):
-    def __init__(self,device, args, rec_batch_size = 1, per_rec_score_budget = 200, pretrained_mode=True, preinference_mode=True, name='SingleStageNeuralGreedy'):
+    def __init__(self,device, args, name='SingleStageNeuralGreedy'):
         """Use NRMS model. 
-            Args:
-                rec_batch_size: int, recommendation size. 
-                n_inference: int, number of Monte Carlo samples of prediction. 
-                pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(SingleStageNeuralGreedy, self).__init__(args, rec_batch_size,per_rec_score_budget, pretrained_mode, name) 
+        super(SingleStageNeuralGreedy, self).__init__(args, name) 
         self.name = name 
         self.device = device 
         self.n_inference = 1
-        self.preinference_mode = preinference_mode
+        self.preinference_mode = self.args.preinference_mode
 
         # preprocessed data 
         # TODO: make utils consistent for cb and simulator?
