@@ -64,10 +64,6 @@ def read_data(args, mode = 'train'):
         with open(os.path.join(args.root_data_dir, args.dataset, 'utils/valid_contexts.pkl'), 'rb') as f:
             valid_sam = pickle.load(f)
 
-        if args.filter_user:
-            print('filtering')
-            train_sam, valid_sam = filter_sam(train_sam, valid_sam)
-
         return nid2index, news_info, news_index, embedding_matrix, train_sam, valid_sam
     elif mode == 'test':
         pass
@@ -178,11 +174,12 @@ class TrainDataset(Dataset):
         
         if len(his) > self.max_his_len: 
             his = random.sample(his, self.max_his_len)
-        if type(his[0]) is str:
-            his = [self.nid2index[n] for n in his] + [0] * (self.max_his_len - len(his))
-        else:
-            his = his + [0] * (self.max_his_len - len(his))
-        his = self.news_index[his]
+        if len(his) > 0:
+            if type(his[0]) is str:
+                his = [self.nid2index[n] for n in his] 
+            else:
+                his = his
+        his = self.news_index[his + [0] * (self.max_his_len - len(his))]
         neg = newsample(neg, self.npratio)
         candidate_news = [pos] + neg
         # print('pos: ', pos)
@@ -217,6 +214,7 @@ class TrainDataset(Dataset):
             label = np.zeros(1 + self.npratio, dtype=float)
             label[0] = 1.0 
             return candidate_news_index, his, torch.Tensor(label)
+
         
 class SimTrainDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):
