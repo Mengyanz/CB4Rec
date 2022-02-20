@@ -108,7 +108,7 @@ class TextEncoder(nn.Module):
                  embedding_matrix,
                  word_embedding_dim=300, 
                  num_attention_heads=20,
-                 query_vector_dim = 200,
+                 query_vector_dim=200,
                  dropout_rate=0.2,
                  enable_gpu=True):
         super(TextEncoder, self).__init__()
@@ -188,6 +188,157 @@ class NRMS_Model(nn.Module):
             return loss, score
         else:
             return score
+        
+        
+
+class TopicEncoder(torch.nn.Module):
+    def __init__(self, num_categories=285, reduction_dim=64, dropout_rate=0.2):
+        super(TopicEncoder, self).__init__()
+        self.num_categories = 285
+        self.word_embedding = nn.Embedding(num_categories,
+                                           reduction_dim)
+        self.mlp_head = nn.Sequential(nn.Linear(reduction_dim, reduction_dim),
+                                      nn.Dropout(p=dropout_rate),
+                                      nn.ReLU(),
+                                      nn.Linear(reduction_dim, reduction_dim))
+    def forward(self, candidate_news_topicindex):
+        """
+        Args:
+            news:
+                {
+                    "title": batch_size * num_words_title
+                }
+        Returns:
+            (shape) batch_size, word_embedding_dim
+        """
+        # batch_size, reduction_dim
+        news_vector = F.dropout(self.word_embedding(candidate_news_topicindex),
+                                training=self.training)
+        # batch_size, reduction_dim
+        final_news_vector = self.mlp_head(news_vector)
+        return final_news_vector
+    
+    def get_topic_embeddings_byindex(self, topic_index):
+        topic_indices = torch.LongTensor(topic_index)
+        topic_vector = F.dropout(self.word_embedding(topic_indices.to(next(self.word_embedding.parameters()).device)),
+                        training=True)
+        final_topic_vector = self.mlp_head(topic_vector)
+        return final_topic_vector # num_topic, reduction_dim
+    def get_all_topic_embeddings(self):
+        topic_indices = torch.LongTensor(range(0, self.num_categories)).to(next(self.word_embedding.parameters()).device)
+        # topic_indices = torch.LongTensor(topic_order)
+        topic_vector = F.dropout(self.word_embedding(topic_indices),
+                                training=True)
+        final_topic_vector = self.mlp_head(topic_vector)
+        return final_topic_vector # num_topic, reduction_dim
+
+class NRMS_Topic_Model(torch.nn.Module):
+    """
+    NRMS network.
+    Input 1 + K candidate news and a list of user clicked news, produce the click probability.
+    """
+    def __init__(self, embedding_matrix):
+        super(NRMS_Topic_Model, self).__init__()
+        self.text_encoder = TextEncoder(embedding_matrix)
+        self.user_encoder = UserEncoder()
+        self.dimmension_reduction = nn.Sequential(nn.Linear(400, 64),
+                                            nn.Dropout(),
+                                            nn.ReLU(),
+                                            nn.Linear(64, 64))
+        self.topic_encoder = TopicEncoder()
+        # self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCELoss()
+        self.all_topic_vector = None
+
+    def forward(self, candidate_news_topicindex, clicked_news, targets, compute_loss=True):
+
+        # todo: change to topic encoder
+        batch_size, npratio = candidate_news_topicindex.shape
+        candidate_news_vector = self.topic_encoder(candidate_news_topicindex).view(batch_size, npratio, -1) # batch_size, 1 + K, reduction_dim
+        
+        batch_size, clicked_news_num, word_num = clicked_news.shape
+        clicked_news = clicked_news.view(-1, word_num)
+        clicked_news_vector = self.text_encoder(clicked_news).view(batch_size, clicked_news_num, -1) # batch_size, num_clicked_news_a_user, word_embedding_dim
+        
+        user_vector = self.user_encoder(clicked_news_vector)
+        user_vector = self.dimmension_reduction(user_vector) # batch_size, reduction_dim
+        # batch_size, 1 + K
+        score = torch.bmm(candidate_news_vector, 
+                                      user_vector.unsqueeze(dim=-1)).squeeze(dim=-1)
+        if compute_loss:
+            loss = self.criterion(torch.sigmoid(score), targets.float())
+            return loss, score
+        else:
+            return score
+
+    def get_news_vector(self, news):
+        """
+        Args:
+            news:
+                {
+                    "title": batch_size * num_words_title
+                },
+        Returns:
+            (shape) batch_size, reduction_dim
+        """
+        # batch_size, reduction_dim
+        return self.text_encoder(news)
+    
+    def get_topic_vector(self, index):
+        """
+        Args:
+            news:
+                {
+                    "title": batch_size * num
+                },
+        Returns:
+            (shape) batch_size, reduction_dim
+        """
+        # batch_size, reduction_dim
+        return self.topic_encoder(index)
+
+    def get_user_vector(self, clicked_news_vector):
+        """
+        Args:
+            clicked_news_vector: batch_size, num_clicked_news_a_user, word_embedding_dim
+        Returns:
+            (shape) batch_size, reduction_dim
+        """
+        # batch_size, word_embedding_dim
+        return self.user_encoder(clicked_news_vector)
+
+    def get_prediction(self, news_vector, user_vector):
+        """
+        Args:
+            news_vector: candidate_size, reduction_dim
+            user_vector: reduction_dim
+        Returns:
+            click_probability: candidate_size
+        """
+        # candidate_size
+        return self.click_predictor(
+            news_vector.unsqueeze(dim=0),
+            user_vector.unsqueeze(dim=0)).squeeze(dim=0)
+        
+    def get_all_topic_embedding(self):
+        """
+        Returns:
+            all_topic_vector: topic_num, reduction_dim
+        """
+
+        all_topic_vector = self.topic_encoder.get_all_topic_embeddings() # num_topic, reduction_dim
+
+        return all_topic_vector
+    
+    def get_topic_embeddings_byindex(self, topic_index):
+        """
+        Returns:
+            all_topic_vector: topic_num, reduction_dim
+        """
+
+        all_topic_vector = self.topic_encoder.get_topic_embeddings_byindex(topic_index) # num_topic, reduction_dim
+
+        return all_topic_vector
 
 class NRMS_Sim_Model(nn.Module):
     def __init__(self, embedding_matrix):

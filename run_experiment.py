@@ -5,19 +5,19 @@ import numpy as np
 import torch 
 from algorithms.nrms_sim import NRMS_Sim 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
-from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB
+from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu
 from algorithms.linucb import SingleStageLinUCB
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-# device = torch.device("cuda:2")
-device = torch.device("cuda:0")
+os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"
+device = torch.device("cuda:2")
 torch.cuda.set_device(device)
 
 def main():
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
+#     from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
     print(args)
 
@@ -40,6 +40,8 @@ def main():
         learner = SingleStageNeuralGreedy(device, args)
     elif args.algo == 'single_linucb':
         learner = SingleStageLinUCB(device, args)
+    elif args.algo == 'ts_neuralucb_zhenyu':
+        learner = TwoStageNeuralUCB_zhenyu(device, args)
     else:
         raise NotImplementedError
 

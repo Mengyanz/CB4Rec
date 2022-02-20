@@ -37,7 +37,7 @@ def compute_amn(y_true, y_score):
     ctr = ctr_score(y_true, y_score)
     return auc, mrr, ndcg5, ndcg10, ctr
 
-def evaluation_split(news_vecs, user_vecs, samples, nid2index):
+def evaluation_split(news_vecs, user_vecs, samples, nid2index, nid2topicindex=None, topic_vecs=None):
     all_rslt = []
     for i in tqdm(range(len(samples))):
         poss, negs, _, _, _ = samples[i]
@@ -45,8 +45,12 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
         if type(poss) is str:
             poss = [poss]
         y_true = [1] * len(poss) + [0] * len(negs)
-        news_ids = [nid2index[i] for i in poss + negs]
-        news_vec = news_vecs[news_ids]
+        if nid2topicindex is None:
+            news_ids = [nid2index[i] for i in poss + negs]
+            news_vec = news_vecs[news_ids]
+        else:
+            news_ids = [nid2topicindex[i] for i in poss + negs]
+            news_vec = topic_vecs[news_ids]
         y_score = np.multiply(news_vec, user_vec)
         y_score = np.sum(y_score, axis=1)
         try:
