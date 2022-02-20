@@ -448,17 +448,16 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
     
     
 class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
-    def __init__(self,device, args, rec_batch_size = 1,  per_rec_score_budget = 200, gamma = 1, n_inference=10, pretrained_mode=True, preinference_mode=True,name='TwoStageNeuralUCB_zhenyu'):
+    def __init__(self,device, args, name='TwoStageNeuralUCB_zhenyu'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, rec_batch_size, per_rec_score_budget, gamma, n_inference, pretrained_mode, preinference_mode, name)
+        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, name)
         self.args = args
-        self.n_inference = n_inference
-        self.pretrained_mode = pretrained_mode
+        self.n_inference = args.n_inference
         self.name = name 
         self.device = device 
 
@@ -491,7 +490,6 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
 
         for topic in self.cb_topics:
             self.alphas[topic] = 1
-            self.betas[topic] = 1
             
     @torch.no_grad()
     def _get_news_embs(self, topic=False):
@@ -709,6 +707,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         # Update the user_encoder(topic),news_encoder(topic),topic_encoder using `self.clicked_history`
         if mode == 'topic': 
             self.train(mode='topic')
+            self._get_news_embs(topic=True)
 
         # Update the user_encoder and news_encoder using `self.clicked_history`
         if mode == 'item': 
@@ -733,14 +732,18 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         self.active_topics = self.cb_topics.copy()
         self.active_topics_order = self.topic_order.copy()
         while len(rec_items) < self.rec_batch_size:
-            rec_topic = self.topic_rec(uid)
-            rec_topics.append(rec_topic)
-            rec_topic_pos = self.active_topics.index(rec_topic)
-            self.active_topics.remove(rec_topic)
-            del self.active_topics_order[rec_topic_pos]
+            cand_news = []
+            while len(cand_news) < self.args.min_item_size:
+                rec_topic = self.topic_rec(uid)
+                rec_topics.append(rec_topic)
+                rec_topic_pos = self.active_topics.index(rec_topic)
+                self.active_topics.remove(rec_topic)
+                del self.active_topics_order[rec_topic_pos]
 
-            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
-            # DEBUG
+                cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
+                if not self.args.dynamic_aggregate_topic:
+                    break
+                # DEBUG
             print('DEBUG:', rec_topic, len(cand_news))
             rec_item = self.item_rec(uid, cand_news)
             rec_items.append(rec_item)
