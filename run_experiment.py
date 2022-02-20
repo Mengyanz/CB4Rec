@@ -39,9 +39,9 @@ def main():
     elif args.algo == 'greedy':
         learner = SingleStageNeuralGreedy(device, args)
     elif args.algo == 'single_linucb':
-        learner = SingleStageLinUCB(device, args, rec_batch_size = rec_batch_size, per_rec_score_budget = per_rec_score_budget)
+        learner = SingleStageLinUCB(device, args)
     elif args.algo == 'ts_neuralucb_zhenyu':
-        learner = TwoStageNeuralUCB_zhenyu(device, args, rec_batch_size = rec_batch_size)
+        learner = TwoStageNeuralUCB_zhenyu(device, args)
     else:
         raise NotImplementedError
 

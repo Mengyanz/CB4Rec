@@ -152,8 +152,8 @@ def run_contextual_bandit(args, simulator, algos):
 
     for e in range(args.n_trials):
 
-        item_path = os.path.join(result_path, "items-{}ninference{}-{}-{}.npy".format(algos_name,str(args.n_inference), e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}ninference{}-{}-{}.npy".format(algos_name, str(args.n_inference),e, args.T))
+        item_path = os.path.join(result_path, "items-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference), str(args.dynamic_aggregate_topic),e, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -249,8 +249,8 @@ def run_contextual_bandit(args, simulator, algos):
                 [a.update(topics, items, rewards, mode = 'item') for a in algos]
 
             if t % 500 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}ninference{}-{}-{}.npy".format(algos_name, str(args.n_inference), e, t))
-                temp_reward_path = os.path.join(result_path, "rewards-{}ninference{}-{}-{}.npy".format(algos_name, str(args.n_inference), e, t))
+                temp_item_path = os.path.join(result_path, "items-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference),str(args.dynamic_aggregate_topic), e, t))
+                temp_reward_path = os.path.join(result_path, "rewards-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference),str(args.dynamic_aggregate_topic), e, t))
                 print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
                 print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
                 np.save(temp_item_path, np.expand_dims(h_items, axis=0))

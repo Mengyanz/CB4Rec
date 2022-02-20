@@ -180,7 +180,10 @@ class TrainDataset(Dataset):
             else:
                 his = his
         his = self.news_index[his + [0] * (self.max_his_len - len(his))]
-        neg = newsample(neg, self.npratio)
+        if self.nid2topicindex is None:
+            neg = newsample(neg, self.npratio)
+        else:
+            neg = newsample(neg, 1) # train topic model with BCELoss, force balance
         candidate_news = [pos] + neg
         # print('pos: ', pos)
         # for n in candidate_news:
@@ -211,7 +214,7 @@ class TrainDataset(Dataset):
             # else: # nindex
             #     candidate_news_index = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
 
-            label = np.zeros(1 + self.npratio, dtype=float)
+            label = np.zeros(1 + 1, dtype=float)
             label[0] = 1.0 
             return candidate_news_index, his, torch.Tensor(label)
 
