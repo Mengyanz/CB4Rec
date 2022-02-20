@@ -15,6 +15,7 @@ import numpy as np
 import os
 from sklearn.metrics import roc_auc_score
 import pickle
+import json
 from datetime import datetime 
 import math
 # import uncertainty_toolbox as utc
@@ -126,11 +127,27 @@ def load_cb_valid_data(args, trial=0):
 
     return cb_valid_contexts
 
-def load_cb_topic_news(args):
-    fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+def load_cb_topic_news(args, ordered=False):
+    if ordered:
+        fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json") 
+        with open(fname, 'r') as f: 
+            topic_list = json.load(f)
+        fname = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
+        with open(fname, 'rb') as f: 
+            nid2topic = pickle.load(f)
+        return topic_list, nid2topic
+
+    else:
+        fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+        with open(fname, 'rb') as f: 
+            cb_news = pickle.load(f)
+        return cb_news 
+
+def load_cb_nid2topicindex(args):
+    fname = os.path.join(args.root_data_dir, "large/utils/nid2topicindex.pkl") 
     with open(fname, 'rb') as f: 
-        cb_news = pickle.load(f)
-    return cb_news 
+        nid2topicindex = pickle.load(f)
+    return nid2topicindex
 
 def newsample(nnn, ratio):
     if ratio > len(nnn):
@@ -139,12 +156,14 @@ def newsample(nnn, ratio):
         return random.sample(nnn, ratio)
 
 class TrainDataset(Dataset):
-    def __init__(self, args, samples, nid2index, news_index):
+    def __init__(self, args, samples, nid2index, news_index, nid2topicindex=None):
         self.news_index = news_index
         self.nid2index = nid2index
         self.samples = samples
         self.npratio = args.npratio 
         self.max_his_len = args.max_his_len
+        self.nid2topicindex = nid2topicindex
+        self.index2nid = {v:k for k,v in nid2index.items()}
         
     def __len__(self):
         return len(self.samples)
@@ -152,30 +171,54 @@ class TrainDataset(Dataset):
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
         pos, neg, his, uid, tsp = self.samples[idx]
-        neg = newsample(neg, self.npratio)
         
-        candidate_news = [pos] + neg
-
-        candidate_news_vecs = []
-        for n in candidate_news:
-            if type(n) is str:
-                candidate_news_vecs.append(self.news_index[self.nid2index[n]])
-            else:
-                candidate_news_vecs.append(self.news_index[n])
-            
         if len(his) > self.max_his_len: 
             his = random.sample(his, self.max_his_len)
-
         if len(his) > 0:
             if type(his[0]) is str:
                 his = [self.nid2index[n] for n in his] 
             else:
                 his = his
         his = self.news_index[his + [0] * (self.max_his_len - len(his))]
-        
-        label = np.array(0)
-        return np.array(candidate_news_vecs), his, label
+        if self.nid2topicindex is None:
+            neg = newsample(neg, self.npratio)
+        else:
+            neg = newsample(neg, 1) # train topic model with BCELoss, force balance
+        candidate_news = [pos] + neg
+        # print('pos: ', pos)
+        # for n in candidate_news:
+        #     print(n)
+        #     print(self.nid2index[n])
+            
+        if self.nid2topicindex is None:
+            candidate_news_vecs = []
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_vecs.append(self.news_index[self.nid2index[n]])
+                else:
+                    candidate_news_vecs.append(self.news_index[n])
+                
+            label = np.array(0)
+            return np.array(candidate_news_vecs), his, label
+        else:
+            candidate_news_index = []
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_index.append(self.nid2topicindex[n])
+                else:
+                    candidate_news_index.append(self.nid2topicindex[self.index2nid[n]])
+            candidate_news_index = torch.LongTensor(candidate_news_index)
+            # if type(candidate_news[0]) is str:
+            #     assert candidate_news[0].startswith('N') # nid
+            #     candidate_news_index = torch.LongTensor([self.nid2topicindex[n] for n in candidate_news])
+            # else: # nindex
+            #     candidate_news_index = torch.LongTensor([self.nid2topicindex[self.index2nid[n]] for n in candidate_news])
 
+            label = np.zeros(1 + 1, dtype=float)
+            label[0] = 1.0 
+            return candidate_news_index, his, torch.Tensor(label)
+
+        
 class SimTrainDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):
         self.nid2index = nid2index 
@@ -200,8 +243,8 @@ class SimTrainDataset(Dataset):
         his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
         label = np.zeros(1 + self.npratio, dtype=float)
         label[0] = 1 
-        return candidate_news, his, torch.Tensor(label)  
-
+        return candidate_news, his, torch.Tensor(label)
+    
 class SimTrainDatasetPropensity(Dataset):
     """Add mask and inverse propensity weight to handle imbalanced class. 
     """
@@ -231,6 +274,7 @@ class SimTrainDatasetPropensity(Dataset):
         label = np.zeros(1 + self.npratio, dtype=float)
         label[0] = 1 
         return candidate_news, his, torch.Tensor(label)  
+
 
 class SimValDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):
@@ -347,3 +391,4 @@ class UserDataset2(Dataset):
         # return self.news2code_fn(clk_hist)
         self.news2code_fn([0,1])
         return clk_hist
+

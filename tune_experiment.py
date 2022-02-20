@@ -55,7 +55,8 @@ def run_exps(args, algo_groups):
     multi_gpu_launcher(commands, [0,1,2,3], 1)
 
 if __name__ == '__main__':
-    from configs.mezhang_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
 
     algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'single_linucb']
