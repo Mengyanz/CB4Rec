@@ -85,7 +85,7 @@ def news_preprocess(args):
     else:
         read_news(args, os.path.join(args.root_data_dir, "large/train/news.tsv"))
         read_news(args, os.path.join(args.root_data_dir, "large/valid/news.tsv"))
-        # read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
+        read_news(args, os.path.join(args.root_data_dir, "large/test/news.tsv"))
 
         for w, c in tqdm(word_cnt.items()):
             if c >= args.min_word_cnt:
@@ -160,11 +160,9 @@ def read_imprs(args, path, mode, save=False):
     user_set = list(user_imprs)
     return user_set, samples, sorted_samples, user_indices
 
-# def generate_random_ids_over_runs( num_trials = 10):
-def generate_random_ids_over_runs(num_trials, meta_data_path):
-# >>>>>>> d58630b1cc4f37dcdcbc90e55e93d45e49308639
+def generate_random_ids_over_runs(n_trial, meta_data_path, n_users):
     # n_val_users = 255990
-    n_train_users = 711222
+    # n_train_users = 711222
     np.random.seed(2022)
     print('WARNING: This is to generate meta data for dataset generation, and should only be performed once.' 
         'Quit now if you are not sure what you are doing!!!')
@@ -173,10 +171,10 @@ def generate_random_ids_over_runs(num_trials, meta_data_path):
         if not os.path.exists(meta_data_path):
             os.mkdir(meta_data_path) 
 
-        for sim_id in range(num_trials):
-            np.random.seed(sim_id)
-            indices = np.random.permutation(n_train_users)
-            np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(sim_id)), indices)
+        # for sim_id in range(num_trials):
+        np.random.seed(n_trial)
+        indices = np.random.permutation(n_users)
+        np.save(os.path.join(meta_data_path, 'indices_{}.npy'.format(n_trial)), indices)
 
 def read_imprs_for_val_set_for_sim(args, path):
     """
@@ -206,102 +204,6 @@ def read_imprs_for_val_set_for_sim(args, path):
 
     with open(os.path.join(out_path, "val_contexts.pkl"), "wb") as f:
         pickle.dump(samples, f)
-
-
-def behavior_preprocess(args):
-    out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
-    tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
-    val_ctx_fname = os.path.join(out_path, "valid_contexts.pkl")
-
-    # read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
-
-    print('Preprocessing for Simulator ...') 
-    if os.path.exists(tr_ctx_fname):
-        print('{} is already created!'.format(tr_ctx_fname))
-    else:
-        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
-
-    if os.path.exists(val_ctx_fname):
-        print('{} is already created!'.format(val_ctx_fname))
-    else:
-        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
-
-    train_user_set, _, tr_rep_sorted_samples, _ = \
-        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 1) 
-
-    print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
-
-    # Create a click history for each user in train: 
-    # Each user in the MIND train has the same clicked history across samples
-    # @TODO: Consider updating the clicked history of each user at different times in the MIND train, to train the simulator. 
-    # so that the simulator has a larger clicked history than CB learner. Or just don't update it because the impression list is already larger? 
-    # Note that:
-    #   * To train a simulator is to train its news and user encoders - it uses both the clicked history and impression set 
-    #   * To run (or evaluate) a simulator is to run its trained news and user encoders - only clicked history is required 
-    #   * The same comments apply to a CB learner
-    clicked_history = defaultdict(list)
-    for sample in tqdm(tr_rep_sorted_samples): 
-            uid = sample[3]
-            if uid not in clicked_history: 
-                clicked_history[uid] = sample[2] 
-        
-    with open(os.path.join(out_path, "train_clicked_history.pkl"), "wb") as f:
-        pickle.dump(clicked_history, f)
-
-#     print('Preprocessing for CB learner ...') 
-
-#     for trial in range(args.n_trials): 
-#         print('trial = {}'.format(trial))
-
-#         cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-#         cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
-
-#         if os.path.exists(cb_train_fname):
-#             continue
-
-
-# #         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
-
-#         try:
-#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
-#         except:
-#             print('The meta data has not been generated.') 
-#             generate_random_ids_over_runs(args.n_trials, meta_data_path) 
-#             time.sleep(5)
-#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
-#             # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
-
-#         print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
-#         random_train_user_subset_ids = random_ids[:args.num_selected_users]
-#         random_user_subset = [train_user_set[i] for i in random_train_user_subset_ids]
-
-#         print('Saving the behaviour data of the selected users for the first split of the train data. ')
-#         cb_train_samples = [] 
-#         cb_valid_samples = []
-#         split_threshold = int(len(tr_rep_sorted_samples) * args.cb_train_ratio) 
-#         print('Split threshold: {}/{}'.format(split_threshold,len(tr_rep_sorted_samples)))
-        
-#         selected_train_samples = [] 
-#         for i, sample in tqdm(enumerate(tr_rep_sorted_samples)):
-#             uid = sample[3] 
-#             if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
-#                 cb_valid_samples.append(sample) 
-
-#             if uid not in random_user_subset and i <= split_threshold:
-#                 pos_imp, neg_imp, his, uid, tsp = sample
-#                 for pos in pos_imp:
-#                     cb_train_samples.append([pos, neg_imp, his, uid, tsp])
-
-
-#         # Shuffle the list 
-#         random.shuffle(cb_train_samples)	
-#         # random.shuffle(cb_valid_samples)	
-        
-#         with open(cb_train_fname, "wb") as f:
-#             pickle.dump(cb_train_samples, f)
-#         with open(cb_valid_fname, "wb") as f:
-#             pickle.dump(cb_valid_samples, f)
-
 
 def split_then_select_behavior_preprocess(args, train_cb = True):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
@@ -415,7 +317,6 @@ def split_then_select_behavior_preprocess(args, train_cb = True):
             #    pickle.dump(cb_val, f)   
         if train_cb:
             pretrain_cb_learner(args, cb_train_uremoved, trial)
-    
 
 def pretrain_cb_learner(args, cb_train_sam, trial):
     """pretrain cb learner based on each trial's cb_train 
@@ -616,8 +517,106 @@ if __name__ == "__main__":
     # news_preprocess(args)
     # read_imprs_for_val_set_for_sim(args, path)
     # generate_cb_news(args)
-    # behavior_preprocess(args)
     split_then_select_behavior_preprocess(args, train_cb = True)
 
     # Get val set for sim 
-    read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
+    # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
+
+
+
+# NOTE: behavior_preprocess is replaced by split_then_select_behavior_preprocess
+# The difference is behavior_preprocess select then split 
+
+# def behavior_preprocess(args):
+#     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+#     tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
+#     val_ctx_fname = os.path.join(out_path, "valid_contexts.pkl")
+
+#     # read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
+
+#     print('Preprocessing for Simulator ...') 
+#     if os.path.exists(tr_ctx_fname):
+#         print('{} is already created!'.format(tr_ctx_fname))
+#     else:
+#         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
+
+#     if os.path.exists(val_ctx_fname):
+#         print('{} is already created!'.format(val_ctx_fname))
+#     else:
+#         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
+
+#     train_user_set, _, tr_rep_sorted_samples, _ = \
+#         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 1) 
+
+#     print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
+
+#     # Create a click history for each user in train: 
+#     # Each user in the MIND train has the same clicked history across samples
+#     # @TODO: Consider updating the clicked history of each user at different times in the MIND train, to train the simulator. 
+#     # so that the simulator has a larger clicked history than CB learner. Or just don't update it because the impression list is already larger? 
+#     # Note that:
+#     #   * To train a simulator is to train its news and user encoders - it uses both the clicked history and impression set 
+#     #   * To run (or evaluate) a simulator is to run its trained news and user encoders - only clicked history is required 
+#     #   * The same comments apply to a CB learner
+#     clicked_history = defaultdict(list)
+#     for sample in tqdm(tr_rep_sorted_samples): 
+#             uid = sample[3]
+#             if uid not in clicked_history: 
+#                 clicked_history[uid] = sample[2] 
+        
+#     with open(os.path.join(out_path, "train_clicked_history.pkl"), "wb") as f:
+#         pickle.dump(clicked_history, f)
+
+#     print('Preprocessing for CB learner ...') 
+
+#     for trial in range(args.n_trials): 
+#         print('trial = {}'.format(trial))
+
+#         cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+#         cb_valid_fname = os.path.join(out_path, "cb_valid_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
+
+#         if os.path.exists(cb_train_fname):
+#             continue
+
+
+# #         meta_data_path = os.path.join(args.root_data_dir, args.dataset, 'meta_data')
+
+#         try:
+#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
+#         except:
+#             print('The meta data has not been generated.') 
+#             generate_random_ids_over_runs(args.n_trials, meta_data_path) 
+#             time.sleep(5)
+#             random_ids = np.load(os.path.join(meta_data_path, 'indices_{}.npy'.format(trial)))
+#             # raise FileNotFoundError('You should run `generate_random_user_ids_over_runs` first!')
+
+#         print('Randomly select {} users from the train set'.format(args.num_selected_users)) 
+#         random_train_user_subset_ids = random_ids[:args.num_selected_users]
+#         random_user_subset = [train_user_set[i] for i in random_train_user_subset_ids]
+
+#         print('Saving the behaviour data of the selected users for the first split of the train data. ')
+#         cb_train_samples = [] 
+#         cb_valid_samples = []
+#         split_threshold = int(len(tr_rep_sorted_samples) * args.cb_train_ratio) 
+#         print('Split threshold: {}/{}'.format(split_threshold,len(tr_rep_sorted_samples)))
+        
+#         selected_train_samples = [] 
+#         for i, sample in tqdm(enumerate(tr_rep_sorted_samples)):
+#             uid = sample[3] 
+#             if uid in random_user_subset and i > split_threshold: # user in the selected set and it's recent samples. 
+#                 cb_valid_samples.append(sample) 
+
+#             if uid not in random_user_subset and i <= split_threshold:
+#                 pos_imp, neg_imp, his, uid, tsp = sample
+#                 for pos in pos_imp:
+#                     cb_train_samples.append([pos, neg_imp, his, uid, tsp])
+
+
+#         # Shuffle the list 
+#         random.shuffle(cb_train_samples)	
+#         # random.shuffle(cb_valid_samples)	
+        
+#         with open(cb_train_fname, "wb") as f:
+#             pickle.dump(cb_train_samples, f)
+#         with open(cb_valid_fname, "wb") as f:
+#             pickle.dump(cb_valid_samples, f)
