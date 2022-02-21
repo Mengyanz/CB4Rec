@@ -12,7 +12,7 @@ from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3,4"
-device = torch.device("cuda:2")
+device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 def main():

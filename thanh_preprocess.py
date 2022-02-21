@@ -18,7 +18,7 @@ from torch import nn
 import torch.optim as optim
 from metrics import evaluation_split
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "4,5,6,7"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3,4"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
@@ -496,8 +496,9 @@ def generate_cb_news(args):
             
     # np.save("/home/v-mezhang/blob/data/large/cb_news", cb_news)
     save_path = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
-    with open(save_path, "wb") as f:
-        pickle.dump(cb_news, f)
+    if not os.path.exists(save_path):
+        with open(save_path, "wb") as f:
+            pickle.dump(cb_news, f)
         
     save_path = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
     with open(save_path, "wb") as f:
@@ -509,15 +510,15 @@ def generate_cb_news(args):
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
 
 
     args = parse_args()
     # news_preprocess(args)
     # read_imprs_for_val_set_for_sim(args, path)
-    # generate_cb_news(args)
-    split_then_select_behavior_preprocess(args, train_cb = True)
+    generate_cb_news(args)
+    # split_then_select_behavior_preprocess(args, train_cb = True)
 
     # Get val set for sim 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))

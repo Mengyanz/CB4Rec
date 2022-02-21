@@ -76,11 +76,11 @@ def plot_metrics(args, metrics, algo_names, plot_title):
 
 def main():
     # from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
 
     args = parse_args()
-    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*-3-2000.npy"))
+    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*dynamicFalse-0-1000.npy"))
     print('Debug filenames: ', filenames)
     algo_names = []
     all_rewards = []
@@ -88,7 +88,7 @@ def main():
         print(filename)
         algo_name = ''.join(filename.split('-')[2:4])
         algo_names.append(algo_name)
-        h_rewards_all = np.load(filename)[0,:,:,:1000]
+        h_rewards_all = np.load(filename)[:1,:,:,:]
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
             h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
         print(h_rewards_all.shape)
@@ -96,8 +96,8 @@ def main():
     all_rewards = np.concatenate(all_rewards, axis = 1)
     print(all_rewards.shape)
     
-    metrics = cal_metric(all_rewards, algo_names, ['raw_reward']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, metrics, algo_names, plot_title='Trial0')
+    metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr']) # , 'cumu_reward', 'ctr'
+    plot_metrics(args, metrics, algo_names, plot_title='Trial0-perrecscorebudget1000')
 
 if __name__ == '__main__':
     main()
