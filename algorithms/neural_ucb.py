@@ -141,7 +141,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, name='ThompsonSampling_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
         """
         super(TwoStageNeuralUCB, self).__init__(device, args, name)
@@ -457,7 +457,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
     
     
 class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
-    def __init__(self,device, args, name='TwoStageNeuralUCB_zhenyu'):
+    def __init__(self,device, args, name='NeuralUCB_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
