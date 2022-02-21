@@ -141,7 +141,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
 
 class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, name='TwoStageNeuralUCB'):
+    def __init__(self,device, args, name='ThompsonSampling_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
         """
         super(TwoStageNeuralUCB, self).__init__(device, args, name)
@@ -208,7 +208,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
     #     sorted_ids = np.argsort(ucb, axis=0)[-1,:] 
     #     return cb_indexs[sorted_ids]
 
-    def update(self, topics, items, rewards, mode = 'topic'):
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
         """Update its internal model. 
 
         Args:
@@ -406,7 +406,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         else:
             print('Skip update cb learner due to lack valid samples!')
 
-    def update(self, topics, items, rewards, mode = 'topic'):
+    def update(self, topics, items, rewards, mode = 'topic',uid = None):
         """Update its internal model. 
 
         Args:
@@ -457,7 +457,7 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
     
     
 class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
-    def __init__(self,device, args, name='TwoStageNeuralUCB_zhenyu'):
+    def __init__(self,device, args, name='NeuralUCB_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
@@ -647,7 +647,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
-                print('Updating the internal model of the bandit!')
+                print('Updating the internal item model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
                 
@@ -676,7 +676,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             optimizer = optim.Adam(self.topic_model.parameters(), lr=self.args.lr)
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
-                print('Updating the internal model of the bandit!')
+                print('Updating the internal topic model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
                 
@@ -700,7 +700,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             else:
                 print('Skip update cb topic learner due to lack valid samples!')
 
-    def update(self, topics, items, rewards, mode = 'topic'):
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
         """Update its internal model. 
 
         Args:

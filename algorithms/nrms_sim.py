@@ -41,7 +41,7 @@ class NRMS_Sim(Simulator):
         self.model = NRMS_Sim_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
-            self.model.load_state_dict(torch.load(args.sim_path, map_location='cuda:0')) 
+            self.model.load_state_dict(torch.load(os.path.join(args.root_proj_dir, args.sim_path), map_location='cuda:0')) 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr)        
 

@@ -132,7 +132,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         else:
             print('Skip update cb learner due to lack valid samples!')
 
-    def update(self, topics, items, rewards, mode = 'item'):
+    def update(self, topics, items, rewards, mode = 'item', uid = None):
         """Update its internal model. 
 
         Args:

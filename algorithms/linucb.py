@@ -36,8 +36,12 @@ class SingleStageLinUCB(ContextualBanditLearner):
         self.gamma = self.args.gamma
         self.dim = 300 # TODO: make it a parameter
         self.theta = {} # key: uid, value: theta_u
-        self.D = defaultdict(list) # key: uid, value: list of nindex of uid's interactions
-        self.c = defaultdict(list) # key: uid, value: list of labels of uid's interactions
+        # self.D = defaultdict(list) # key: uid, value: list of nindex of uid's interactions
+        # self.c = defaultdict(list) # key: uid, value: list of labels of uid's interactions
+
+        self.A = {}
+        self.Ainv = {}
+        self.b = {}
 
     def update_clicked_history(self, pos, uid):
         """
@@ -49,14 +53,45 @@ class SingleStageLinUCB(ContextualBanditLearner):
         pass 
 
     def update_data_buffer(self, pos, neg, uid, t): 
-        for nid in pos:
-            self.D[uid].append(nid)
-            self.c[uid].append(1)
-        for nid in neg:
-            self.D[uid].append(nid)
-            self.c[uid].append(0)
-        print('size(data_buffer): {}'.format(len(self.D)))
+        # for nid in pos:
+        #     self.D[uid].append(nid)
+        #     self.c[uid].append(1)
+        # for nid in neg:
+        #     self.D[uid].append(nid)
+        #     self.c[uid].append(0)
+        # print('size(data_buffer): {}'.format(len(self.D)))
+        pass
 
+    def getInv(self, old_Minv, nfv):
+        # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
+        # new_M=old_M+nfv*nfv'
+        # try to get the inverse of new_M
+        tmp_a=np.dot(np.outer(np.dot(old_Minv,nfv),nfv),old_Minv)
+        # tmp_a = old_Minv.dot(nfv).dot(nfv.T).dot(old_Minv)
+        tmp_b=1+np.dot(np.dot(nfv.T,old_Minv),nfv)
+        new_Minv=old_Minv-tmp_a/tmp_b
+        return new_Minv
+
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
+        """Update its internal model. 
+
+        Args:
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its integer index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+            uid: user id.
+        """
+        if mode == 'item':
+            print('Update linucb parameters for user {}!'.format(uid))
+            x = self._get_news_embedding(items).T # n_dim, n_hist
+            # Update parameters
+            self.A[uid]+=x.dot(x.T) # n_dim, n_dim
+            self.b[uid]+=x.dot(rewards) # n_dim, 
+            for i in x.T:
+                self.Ainv[uid]=self.getInv(self.Ainv[uid],i) # n_dim, n_dim
+            self.theta[uid]=np.dot(self.Ainv[uid], self.b[uid]) # n_dim,
+        
     def _get_news_embedding(self, nindexes):
         """
         Args
@@ -68,7 +103,6 @@ class SingleStageLinUCB(ContextualBanditLearner):
         # embedding = self.word_embedding(vecs.long()).view(vecs.shape[0], -1).detach().cpu().numpy() # n_item, n_word * n_word_embedding
         embedding = self.word_embedding(vecs.long()).sum(axis=1).detach().cpu().numpy() # n_item, n_word_embedding
         return embedding
-     
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -85,34 +119,39 @@ class SingleStageLinUCB(ContextualBanditLearner):
             print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
             cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
 
-        X = self._get_news_embedding(cand_news).T
+        X = self._get_news_embedding(cand_news)
         # print('Debug X shape: ', X.shape)
-        
-        if uid not in self.theta:
-            self.update_data_buffer(self.clicked_history[uid], [], uid, -1)
-            self.update(None, None, None)
+
+        if uid not in self.A:
+            self.A[uid] = np.identity(n=self.dim)
+            self.Ainv[uid] = np.linalg.inv(self.A[uid])
+            self.b[uid] = np.zeros((self.dim)) 
+            if self.pretrained_mode and len(self.clicked_history[uid]) > 0:
+                self.update(topics = None, items=self.clicked_history[uid], rewards=np.ones((len(self.clicked_history[uid]),)), mode = 'item', uid = uid)
+            else:
+                # REVIEW: alternatively, we can init theta to zeros
+                self.theta[uid] = np.random.rand(self.dim)
+                # self.theta[uid] = np.zeros(self.dim)
+                # print('No history of user {}, init theta randomly!'.format(uid))
             
 
-        D = self._get_news_embedding(self.D[uid])
-        # print('Debug D shape: ', D.shape)
-        inverse_term = np.linalg.inv(D.T.dot(D) + np.identity(D.shape[-1]))
+        # D = self._get_news_embedding(self.D[uid])
+        # # print('Debug D shape: ', D.shape)
+        # inverse_term = np.linalg.inv(D.T.dot(D) + np.identity(D.shape[-1]))
         # print('Debug inverse term shape: ', inverse_term.shape)
 
-        if len(self.clicked_history[uid]) == 0:
-            # REVIEW: alternatively, we can init theta to zeros
-            self.theta[uid] = np.random.rand(self.dim)
-            # self.theta[uid] = np.zeros(self.dim)
-            print('No history of user {}, init theta randomly!'.format(uid))
-        else:
-            self.theta[uid] = inverse_term.dot(D.T).dot(self.c[uid])
-            # print('Debug theta shape: ', self.theta[uid].shape)
+        # if len(self.clicked_history[uid]) == 0:
+        #     # REVIEW: alternatively, we can init theta to zeros
+        #     self.theta[uid] = np.random.rand(self.dim)
+        #     # self.theta[uid] = np.zeros(self.dim)
+        #     print('No history of user {}, init theta randomly!'.format(uid))
+        # else:
+        #     self.theta[uid] = inverse_term.dot(D.T).dot(self.c[uid])
+        #     # print('Debug theta shape: ', self.theta[uid].shape)
         
-        mean = self.theta[uid].T.dot(X)
-        if D.shape[0] == 0:
-            ucb = mean
-        else:
-            CI = np.array([self.gamma * np.sqrt(x.T.dot(inverse_term).dot(x)) for x in X.T])
-            ucb = mean + CI
+        mean = X.dot(self.theta[uid]) # n_cand, 
+        CI = np.array([self.gamma * np.sqrt(x.dot(self.Ainv[uid]).dot(x.T)) for x in X])
+        ucb = mean + CI # n_cand, 
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]
@@ -157,6 +196,9 @@ class SingleStageLinUCB(ContextualBanditLearner):
     def reset(self):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
-        self.D = defaultdict(list) 
-        self.c = defaultdict(list)
+        # self.D = defaultdict(list) 
+        # self.c = defaultdict(list)
         self.theta = {}
+        self.A = {}
+        self.Ainv = {}
+        self.b = {}

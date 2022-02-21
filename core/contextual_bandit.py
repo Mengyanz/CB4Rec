@@ -84,7 +84,7 @@ class ContextualBanditLearner(object):
         # * Run these two steps above for `n_inference` times to estimate score uncertainty 
         pass 
 
-    def update(self, topics, items, rewards, mode = 'topic'):
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
         """Update its internal model. 
 
         Args:
@@ -92,6 +92,7 @@ class ContextualBanditLearner(object):
             items: a list of `rec_batch_size` item index (not nIDs, but its integer index from `nid2index`) 
             rewards: a list of `rec_batch_size` {0,1}
             mode: `topic`/`item`
+            uid: user id.
         """
         # Update the topic model 
 
@@ -152,8 +153,8 @@ def run_contextual_bandit(args, simulator, algos):
 
     for e in range(args.n_trials):
 
-        item_path = os.path.join(result_path, "items-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference), str(args.dynamic_aggregate_topic),e, args.T))
+        item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -223,7 +224,7 @@ def run_contextual_bandit(args, simulator, algos):
             h_rewards = np.concatenate((h_rewards, np.array(reward_batches)[:,:,None]), axis=2)
 
 
-            # Update the data buffer and clicked history
+            # Update the data buffer and clicked history and models
             for j,a in enumerate(algos):
                 topics = topic_batches[j]
                 items = item_batches[j] 
@@ -241,16 +242,17 @@ def run_contextual_bandit(args, simulator, algos):
                 a.update_data_buffer(pos, neg, u, t) 
                 a.update_clicked_history(pos, u)
 
-            # Update the topic model 
-            if t % args.update_period == 0 and t > 0:
-                [a.update(topics, items, rewards, mode = 'topic') for a in algos]
+                # Update the topic model 
+                if t % args.topic_update_period == 0 and t > 0:
+                # Topic model update each time period
+                    a.update(topics, items, rewards, mode = 'topic') 
 
-            if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
-                [a.update(topics, items, rewards, mode = 'item') for a in algos]
+                if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
+                    a.update(topics, items, rewards, mode = 'item', uid = u)
 
-            if t % 500 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference),str(args.dynamic_aggregate_topic), e, t))
-                temp_reward_path = os.path.join(result_path, "rewards-{}ninference{}_dynamic{}-{}-{}.npy".format(algos_name, str(args.n_inference),str(args.dynamic_aggregate_topic), e, t))
+            if t % 1000 == 0 and t > 0:
+                temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+                temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
                 print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
                 print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
                 np.save(temp_item_path, np.expand_dims(h_items, axis=0))
