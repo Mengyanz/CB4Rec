@@ -192,9 +192,9 @@ class NRMS_Model(nn.Module):
         
 
 class TopicEncoder(torch.nn.Module):
-    def __init__(self, num_categories=285, reduction_dim=64, dropout_rate=0.2):
+    def __init__(self, split_large_topic, num_categories=285, reduction_dim=64, dropout_rate=0.2):
         super(TopicEncoder, self).__init__()
-        self.num_categories = 285
+        self.num_categories = 312 if split_large_topic else 285
         self.word_embedding = nn.Embedding(num_categories,
                                            reduction_dim)
         self.mlp_head = nn.Sequential(nn.Linear(reduction_dim, reduction_dim),
@@ -237,7 +237,7 @@ class NRMS_Topic_Model(torch.nn.Module):
     NRMS network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
-    def __init__(self, embedding_matrix):
+    def __init__(self, embedding_matrix, split_large_topic):
         super(NRMS_Topic_Model, self).__init__()
         self.text_encoder = TextEncoder(embedding_matrix)
         self.user_encoder = UserEncoder()
@@ -245,7 +245,7 @@ class NRMS_Topic_Model(torch.nn.Module):
                                             nn.Dropout(),
                                             nn.ReLU(),
                                             nn.Linear(64, 64))
-        self.topic_encoder = TopicEncoder()
+        self.topic_encoder = TopicEncoder(split_large_topic)
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = nn.BCELoss()
         self.all_topic_vector = None
