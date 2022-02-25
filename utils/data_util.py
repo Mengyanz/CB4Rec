@@ -200,6 +200,37 @@ class SimTrainDataset(Dataset):
         label[0] = 1 
         return candidate_news, his, torch.Tensor(label)  
 
+class SimTrainWithIPSDataset(Dataset):
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.npratio = args.sim_npratio 
+        self.max_his_len = args.max_his_len 
+        # self.compute_ips_fn = compute_ips_fn 
+
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        pos, neg, his, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        cand = [pos] + neg
+        assert type(cand[0]) is str 
+        # ips_score = self.compute_ips_fn(uid, cand)
+        # print(ips_score)
+        cand_idx = [self.nid2index[n] for n in cand]
+        # print('cand_idx', uid, cand_idx)
+        candidate_news = self.nindex2vec[cand_idx] 
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1 
+        return candidate_news, his, torch.Tensor(label), uid, cand
+
 class SimTrainDatasetPropensity(Dataset):
     """Add mask and inverse propensity weight to handle imbalanced class. 
     """
@@ -248,6 +279,30 @@ class SimValDataset(Dataset):
         his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
         labels = torch.Tensor(np.array(labels).astype('float32'))
         return nvecs, his, labels  
+
+
+class SimValWithIPSDataset(Dataset):
+    def __init__(self, args, nid2index, nindex2vec, samples):
+        self.nid2index = nid2index 
+        self.nindex2vec = nindex2vec 
+        self.samples = samples 
+        self.max_his_len = args.max_his_len 
+ 
+    def __len__(self):
+        return len(self.samples) 
+    
+    def __getitem__(self, idx):
+        nidx, labels, his, uid, tsp = self.samples[idx]
+        nvecs = self.nindex2vec[[self.nid2index[nid] for nid in nidx]]
+        # ips_score = self.compute_ips_fn(uid, nidx)
+        # print(ips_score)
+
+        if len(his) > self.max_his_len: 
+            his = random.sample(his, self.max_his_len)
+
+        his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
+        labels = torch.Tensor(np.array(labels).astype('float32'))
+        return nvecs, his, labels, uid, nidx
 
 
 class SimEvalDataset(Dataset):
@@ -343,3 +398,48 @@ class UserDataset2(Dataset):
         # return self.news2code_fn(clk_hist)
         self.news2code_fn([0,1])
         return clk_hist
+
+
+class PropensityScoreDataset(Dataset):
+    def __init__(self, args, uidset, user2vecs, item2vecs, nid2index, uid2index, user_news_obs):
+        self.nid2index = nid2index 
+        self.uid2index = uid2index
+        self.user2vecs = user2vecs # (uindex,vec)
+        self.item2vecs = item2vecs # (nindex,vec)
+        self.uidset = uidset
+        self.user_news_obs = user_news_obs
+        self.news_space = list(nid2index) 
+        self.num_pos = args.propensity_score_num_pos 
+        self.num_neg = args.propensity_score_num_neg 
+
+    def __len__(self):
+        return len(self.uidset)   
+
+    def __getitem__(self, idx): 
+        uid = self.uidset[idx] 
+        uindex = self.uid2index[uid]
+        pos_samples, pos_mask = newpossample(self.user_news_obs[uindex], self.num_pos) 
+        neg_samples, neg_mask = newnegsample(self.user_news_obs[uindex], self.news_space, self.num_neg)  
+        samples = pos_samples + neg_samples 
+        mask = pos_mask + neg_mask 
+        labels = [1] * self.num_pos + [0] * self.num_neg 
+
+        uvec = torch.flatten(torch.Tensor(self.user2vecs[uindex])) # (d1,)
+        ivec = torch.Tensor(self.item2vecs[[ self.nid2index[n] for n in samples]]) #(n,d2)
+        labels = torch.Tensor(np.array(labels).astype('float32')) #(n,)
+        mask = torch.Tensor(np.array(mask).astype('float32')) #(n,)
+        return uvec, ivec, labels, mask
+
+def newnegsample(nnn, all_n, num):
+    other_n = [n for n in all_n if n not in nnn] 
+    return newpossample(other_n, num)
+
+def newpossample(pos_news, num):
+    if num > len(pos_news):
+        samples = pos_news + ["<unk>"] * (num - len(pos_news)) 
+        mask = [1] * len(pos_news) + [0] * (num - len(pos_news))
+        return samples, mask 
+    else:
+        samples = random.sample(pos_news, num)
+        mask = [1] * num 
+        return samples, mask 

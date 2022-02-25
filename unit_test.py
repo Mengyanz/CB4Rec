@@ -4,7 +4,7 @@ import math, os
 import numpy as np 
 import torch 
 import pickle 
-from algorithms.nrms_sim import NRMS_Sim 
+from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim
 from algorithms.neural_ucb import DummyTwoStageNeuralUCB
 
 
@@ -35,6 +35,12 @@ def test_NRMS_Sim_train(device):
     nrms = NRMS_Sim(device, args, pretrained_mode=False)
     nrms.train()
 
+
+def test_NRMS_IPS_Sim_train(device):
+    nrms = NRMS_IPS_Sim(device, args, pretrained_mode=False)
+    nrms.train()
+
+
 def test_DummyTwoStageNeuralUCB(device): 
     cbln = DummyTwoStageNeuralUCB(device, args, rec_batch_size = 3)
     uid = 'U403465'
@@ -46,12 +52,21 @@ def test_DummyTwoStageNeuralUCB(device):
     print(tp)
     print(it)
 
+def test_PropensityScore(device): 
+    from algorithms.propensity_score import PropensityScore 
+    prop = PropensityScore(args, device)
+    prop.train()
+
 
 if __name__ == '__main__': 
     # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-    device = torch.device("cuda:2")
+    device = torch.device("cuda:0")
     torch.cuda.set_device(device)
 
     # test_NRMS_Sim(device)
     # test_DummyTwoStageNeuralUCB()
-    test_NRMS_Sim_train(device)
+    # test_NRMS_Sim_train(device)
+
+    # test_PropensityScore(device)
+
+    test_NRMS_IPS_Sim_train(device)
