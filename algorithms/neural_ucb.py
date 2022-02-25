@@ -483,7 +483,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         self.cb_news = cb_news 
 
         # model 
-        self.topic_model = NRMS_Topic_Model(word2vec).to(self.device)
+        self.topic_model = NRMS_Topic_Model(word2vec, split_large_topic=args.split_large_topic).to(self.device)
         if self.pretrained_mode == 'pretrained':
             self.topic_model.load_state_dict(torch.load(args.learner_path)) 
         print("topic_model text embeddding size: ", self.topic_model.text_encoder.word_embedding.weight.size())

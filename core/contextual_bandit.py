@@ -155,8 +155,8 @@ def run_contextual_bandit(args, simulator, algos):
 
     for e in range(args.n_trials):
 
-        item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -169,7 +169,11 @@ def run_contextual_bandit(args, simulator, algos):
         # independents runs to show empirical regret means, std
       
         cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
-        cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
+        if args.split_large_topic:
+            cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models_large_topic_splited', 'indices_{}.pkl'.format(e))
+        else:
+            cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
+        print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
 
@@ -259,8 +263,8 @@ def run_contextual_bandit(args, simulator, algos):
                     a.update(topics, items, rewards, mode = 'item', uid = u)
 
             if t % 1000 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
-                temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+                temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
+                temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
                 print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
                 print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
                 np.save(temp_item_path, np.expand_dims(h_items, axis=0))
