@@ -34,11 +34,13 @@ class ContextualBanditLearner(object):
                 raise Exception("No cb learner pretrained for this trial!")
             try:
                 if topic:
+                    print('Load pre-trained CB topic learner on this trial from ', cb_learner_path)
                     self.topic_model.load_state_dict(torch.load(cb_learner_path))
                 else:
+                    print('Load pre-trained CB item learner on this trial from ', cb_learner_path)
                     self.model.load_state_dict(torch.load(cb_learner_path))
             except:
-                print('Current algorithm has no model. Load checkpoint failed.')
+                print('Warning: Current algorithm has no model. Load checkpoint failed.')
         else:
             raise NotImplementedError()
         
@@ -168,12 +170,15 @@ def run_contextual_bandit(args, simulator, algos):
       
         cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
         cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
-        print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
 
+        if args.fix_user:
+            load_idx = 0
+        else:
+            load_idx = e
         # Load the initial history for each user in each CB learner
-        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
+        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(load_idx))
         # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
         random_ids = np.load(indices_path)
         user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
@@ -191,8 +196,11 @@ def run_contextual_bandit(args, simulator, algos):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
-            # Randomly sample a user 
-            u = np.random.choice(user_set) 
+            if args.fix_user:
+                u = user_set[t]
+            else:
+                # Randomly sample a user 
+                u = np.random.choice(user_set) 
             print('user: {}.'.format(u))
             
             item_batches = []

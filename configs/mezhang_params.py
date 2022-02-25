@@ -24,7 +24,7 @@ def parse_args():
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=1, help = 'number of experiment runs')
     parser.add_argument("--T", type=int, default=1000, help = 'number of rounds (interactions)')
-    parser.add_argument("--topic_update_period", type=int, default=1, help = 'Update period for CB topic model')
+    parser.add_argument("--topic_update_period", type=int, default=100, help = 'Update period for CB topic model')
     parser.add_argument("--update_period", type=int, default=100, help = 'Update period for CB item model')
     parser.add_argument("--n_inference", type=int, default=5, help='number of Monte Carlo samples of prediction. ')
     parser.add_argument("--rec_batch_size", type=int, default=5, help='recommendation size for each round.')
@@ -38,6 +38,11 @@ def parse_args():
     parser.add_argument("--uniform_init",type=bool,default=True, 
         help="For Thompson Sampling: Indicates whether to init ts parameters uniformly")
     parser.add_argument("--gamma", type=float, default=1.0, help='ucb parameter: mean + gamma * std.')
+
+    parser.add_argument("--fix_user",type=bool,default=False, 
+        help="Indicate whether to use fix set of users to run simulation. If true, then use trial 0 with given order.")
+    parser.add_argument("--sim_sampleBern", type=bool,default=False,
+        help="If True: sample from Bernoulli to get binary simulated reward; If False: use a threshold.")
 
     # nrms topic
     parser.add_argument("--dynamic_aggregate_topic", type=bool, default=False) # whether to dynamicly aggregate small topic during simulation

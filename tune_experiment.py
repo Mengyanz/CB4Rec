@@ -39,6 +39,15 @@ def create_commands(args, algo_group='ts_neuralucb'):
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(args.root_proj_dir, 'logs', algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --uniform_init {}> {}".format(algo_group, algo_prefix, uniform_init, log_path))
+    elif algo_group == 'tune_fix_user':
+        # test var of 10 repeat over fix user/random user 
+        for fix_user in [True, False]:
+            args.sim_sampleBern = True
+            args.n_trial = 10
+            algo_prefix = algo_group + '-ts_neuralucb'  + '-FixUser' + str(fix_user) + '-SimSampleBern' + str(args.sim_sampleBern) 
+            # + '-' + str(args.n_trials) + '-' + str(args.T) 
+            log_path = os.path.join(args.root_proj_dir, 'logs', algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --fix_user {} > {}".format('ts_neuralucb', algo_prefix, fix_user, log_path))
     else:
         algo_prefix = algo_group +'-perRecScoreBudget' + str(args.per_rec_score_budget) 
         # + '-' + str(args.n_trials) + '-' + str(args.T) 
@@ -59,6 +68,7 @@ if __name__ == '__main__':
     # from configs.zhenyu_params import parse_args
     args = parse_args()
 
-    algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'ts_neuralucb_zhenyu'] # 'single_linucb'
+    # algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'ts_neuralucb_zhenyu'] # 'single_linucb'
     # algo_group = ['tune_ts_neuralucb']
+    algo_group = ['tune_fix_user']
     run_exps(args, algo_group)
