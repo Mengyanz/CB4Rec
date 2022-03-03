@@ -75,7 +75,8 @@ class NRMS_Sim(Simulator):
             
             if self.args.sim_sampleBern:
                 # sample from bernoulli
-                rewards = [np.random.binomial(n=1,p=score) for score in scores]
+                scores = scores.float().detach().cpu().numpy()
+                rewards = np.array([np.random.binomial(n=1,p=score) for score in scores])
             else:
                 # use threshold
                 rewards = (scores >= self.threshold).float().detach().cpu().numpy()

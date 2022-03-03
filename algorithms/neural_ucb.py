@@ -21,6 +21,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         super(SingleStageNeuralUCB, self).__init__(device, args, name)
         self.n_inference = self.args.n_inference 
         self.gamma = self.args.gamma
+        self.topic_budget = 0 # the score budget for topic exploration
         # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
         # # pre-generate news embeddings
@@ -56,7 +57,8 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         Return: 
             items: a list of `len(uids)`int 
         """
-        score_budget = self.per_rec_score_budget * m
+        # TODO: to make full use of budget
+        score_budget = self.per_rec_score_budget * m - int(self.topic_budget /(self.rec_batch_size/m))
         if len(cand_news)>score_budget:
             print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
             cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
@@ -157,6 +159,8 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         self.alphas = {}
         self.betas = {}
 
+        self.topic_budget = len(self.cb_topics) # the score budget for topic exploration
+
     def set_clicked_history(self, init_clicked_history):
         """
         Args:
@@ -179,18 +183,23 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
                 # print('Debug topic {} with alpha init as {}'.format(topic, self.alphas[topic]))
                 self.betas[topic] = ave_clicks
 
-    def topic_rec(self):
+    def topic_rec(self, m = 1):
         """    
         Return
             rec_topic: one recommended topic
         """
-        # TODO: topic selection also needs score budget allocation
+        # ss =[] 
+        # for topic in self.active_topics:
+        #     s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
+        #     ss.append(s)
+        # rec_topic = self.active_topics[np.argmax(ss)]
+
         ss =[] 
-        for topic in self.active_topics:
+        for topic in self.cb_topics:
             s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
             ss.append(s)
-        rec_topic = self.active_topics[np.argmax(ss)]
-        return rec_topic
+        rec_topics = np.array(self.cb_topics)[np.array(np.argsort(ss)[::-1][:m])]
+        return rec_topics
 
     # def item_rec(self, user_samples, cand_news):
     #     all_scores = []
@@ -245,20 +254,149 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         if len(self.news_embs) < 1:
             self._get_news_embs() # init news embeddings
 
+        # rec_topics = []
+        # rec_items = []
+        # self.active_topics = self.cb_topics.copy()
+        # while len(rec_items) < self.rec_batch_size:
+        #     # todo: uncomment these to add dynamic_aggregate_topic 
+        #     # cand_news = []
+        #     # cand_topics = [] # collect topics for this item rec
+        #     # while len(cand_news) < self.args.min_item_size:
+        #     #     rec_topic = self.topic_rec()
+        #     #     rec_topics.append(rec_topic)
+        #     #     cand_topics.append(rec_topic)
+        #     #     self.active_topics.remove(rec_topic)
+        #     #     cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
+        #     #     if not self.args.dynamic_aggregate_topic:
+        #     #         break
+        #     rec_topic = self.topic_rec()
+        #     rec_topics.append(rec_topic)
+        #     self.active_topics.remove(rec_topic)
+
+        #     cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+        #     # DEBUG
+        #     print('DEBUG:', rec_topic, len(cand_news))
+        #     rec_item = self.item_rec(uid, cand_news,m=1)[0]
+        #     rec_items.append(rec_item)
+
+        rec_items = []
+        rec_topics = self.topic_rec(m = self.rec_batch_size)
+        for rec_topic in rec_topics:
+            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            print('DEBUG:', rec_topic, len(cand_news))
+            rec_item = self.item_rec(uid, cand_news,m=1)[0]
+            rec_items.append(rec_item)
+        
+        return rec_topics, rec_items
+
+class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
+    def __init__(self,device, args, name='SingleNerual_TwoStageUCB'):
+        """Two stage exploration. Use a single NRMS model. 
+        """
+        super(SingleNerual_TwoStageUCB, self).__init__(device, args, name)
+        
+        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
+        cb_news = defaultdict(list)
+        for k,v in topic_news.items():
+            cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
+        self.cb_news = cb_news 
+        self.cb_topics = list(self.cb_news.keys())
+        
+    def topic_rec(self, uid):
+        """  
+        Args:
+            uid: str, a user id 
+        Return
+            rec_topic: one recommended topic
+        """
+        # TODO: topic selection also needs score budget allocation
+        self.model.eval()
+        topic_list = []
+        
+        topic_embeddings = []
+        for topic in self.active_topics:
+            topic_list.append(topic)
+            topic_news = np.array([self.nid2index[n] for n in self.cb_news[topic]])
+            embeddings = []
+            for i in range(self.n_inference):
+                topic_embedding = self.news_embs[i][topic_news].mean(axis = 0)
+                # print('Debug topic embedding shape: ', topic_embedding.shape)
+                embeddings.append(topic_embedding)
+            topic_embeddings.append(embeddings)
+        topic_embeddings = np.transpose(np.array(topic_embeddings), (1,0,2))
+        # print('Debug topic embeddings shape: ', topic_embeddings.shape)
+  
+        if self.preinference_mode:
+            all_scores = []
+                
+            for i in range(self.n_inference): 
+                user_vecs = self._get_user_embs(uid, i) # (b,d)
+                scores = topic_embeddings[i] @ user_vecs.T # (n,b) 
+                all_scores.append(scores) 
+            
+            all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
+            # print('Debug all_scores shape: ', all_scores.shape)
+            mu = np.mean(all_scores, axis=0) 
+            std = np.std(all_scores, axis=0) # / math.sqrt(self.n_inference) 
+            ucb = mu + self.gamma * std # (n,) 
+            nid_argmax = np.argsort(ucb, axis = 0)[::-1][0]
+            # for i in np.argsort(ucb, axis = 0)[::-1]:
+            #     print('i {} mu {} std {} ucb {} topic {} size {}'.format(i, mu[i], std[i], ucb[i], topic_list[i], len(self.cb_news[topic_list[i]])))
+        else:
+            raise NotImplementedError 
+
+        return np.array(topic_list)[nid_argmax]
+
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
+        """Update its internal model. 
+
+        Args:
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its numerical index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+
+        @TODO: they recommend `rec_batch_size` topics 
+            and each of the topics they recommend an item (`rec_batch_size` items in total). 
+            What if one item appears more than once in the list of `rec_batch_size` items? 
+        """
+        # Update the topic model 
+        if mode == 'topic': 
+            pass
+
+        # Update the user_encoder and news_encoder using `self.clicked_history`
+        if mode == 'item': 
+            self.train() 
+            self._get_news_embs()
+
+    def sample_actions(self, uid): 
+        """Choose an action given a context. 
+        Args:
+            uid: str, user id
+
+        Return: 
+            topics: (`rec_batch_size`)
+            items: (`rec_batch_size`) @TODO: what if one topic has less than `rec_batch_size` numbers of items? 
+        """
+        if len(self.news_embs) < 1:
+            self._get_news_embs() # init news embeddings
+
         rec_topics = []
         rec_items = []
         self.active_topics = self.cb_topics.copy()
         while len(rec_items) < self.rec_batch_size:
             # todo: uncomment these to add dynamic_aggregate_topic 
             # cand_news = []
+            # cand_topics = [] # collect topics for this item rec
             # while len(cand_news) < self.args.min_item_size:
-            #     rec_topic = self.topic_rec(uid)
+            #     rec_topic = self.topic_rec()
             #     rec_topics.append(rec_topic)
+            #     cand_topics.append(rec_topic)
             #     self.active_topics.remove(rec_topic)
             #     cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
             #     if not self.args.dynamic_aggregate_topic:
             #         break
-            rec_topic = self.topic_rec()
+            rec_topic = self.topic_rec(uid)
             rec_topics.append(rec_topic)
             self.active_topics.remove(rec_topic)
 
@@ -269,7 +407,9 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
             rec_items.append(rec_item)
         
         return rec_topics, rec_items
-      
+
+
+
 class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of testing my pipeline only 
     def __init__(self,device, args, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
@@ -493,12 +633,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         self.cb_topics = topic_list
 
         self.topic_news_embs = []
-
-        self.alphas = {}
-        self.betas = {}
-
-        for topic in self.cb_topics:
-            self.alphas[topic] = 1
+        self.topic_budget = len(self.cb_topics) # the score budget for topic exploration
             
     @torch.no_grad()
     def _get_news_embs(self, topic=False):
@@ -572,6 +707,11 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
         Return: 
             item: int 
         """
+
+        score_budget = self.per_rec_score_budget - int(self.topic_budget/self.rec_batch_size)
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
 
         if self.preinference_mode:
             all_scores = []

@@ -149,14 +149,13 @@ def run_contextual_bandit(args, simulator, algos):
     algos_name = ''
     for a in algos:
         algos_name += (a.name+'-')
-    result_path = os.path.join(args.root_proj_dir, 'results')
+    result_path = os.path.join(args.root_proj_dir, 'results', args.algo_prefix.split('-')[0])
     if not os.path.exists(result_path):
         os.mkdir(result_path) 
 
     for e in range(args.n_trials):
-
-        item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
+        item_path = os.path.join(result_path,  "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -262,13 +261,19 @@ def run_contextual_bandit(args, simulator, algos):
                 if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
                     a.update(topics, items, rewards, mode = 'item', uid = u)
 
-            if t % 1000 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
-                temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic), e, args.T))
-                print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
-                print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
-                np.save(temp_item_path, np.expand_dims(h_items, axis=0))
-                np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
+                if t % args.item_linear_update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
+                    # for neural linear model only
+                    a.update(topics, items, rewards, mode = 'item-linear', uid = u)
+
+                
+
+            # if t % 1000 == 0 and t > 0:
+            #     temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+            #     temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+            #     print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
+            #     print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
+            #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
+            #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
