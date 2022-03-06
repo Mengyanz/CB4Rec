@@ -401,7 +401,7 @@ class UserDataset2(Dataset):
 
 
 class PropensityScoreDataset(Dataset):
-    def __init__(self, args, uidset, user2vecs, item2vecs, nid2index, uid2index, user_news_obs):
+    def __init__(self, args, uidset, user2vecs, item2vecs, nid2index, uid2index, user_news_obs, rand=True):
         self.nid2index = nid2index 
         self.uid2index = uid2index
         self.user2vecs = user2vecs # (uindex,vec)
@@ -411,6 +411,7 @@ class PropensityScoreDataset(Dataset):
         self.news_space = list(nid2index) 
         self.num_pos = args.propensity_score_num_pos 
         self.num_neg = args.propensity_score_num_neg 
+        self.rand = rand
 
     def __len__(self):
         return len(self.uidset)   
@@ -418,8 +419,8 @@ class PropensityScoreDataset(Dataset):
     def __getitem__(self, idx): 
         uid = self.uidset[idx] 
         uindex = self.uid2index[uid]
-        pos_samples, pos_mask = newpossample(self.user_news_obs[uindex], self.num_pos) 
-        neg_samples, neg_mask = newnegsample(self.user_news_obs[uindex], self.news_space, self.num_neg)  
+        pos_samples, pos_mask = newpossample(self.user_news_obs[uindex], self.num_pos,self.rand) 
+        neg_samples, neg_mask = newnegsample(self.user_news_obs[uindex], self.news_space, self.num_neg, self.rand)  
         samples = pos_samples + neg_samples 
         mask = pos_mask + neg_mask 
         labels = [1] * self.num_pos + [0] * self.num_neg 
@@ -430,16 +431,19 @@ class PropensityScoreDataset(Dataset):
         mask = torch.Tensor(np.array(mask).astype('float32')) #(n,)
         return uvec, ivec, labels, mask
 
-def newnegsample(nnn, all_n, num):
+def newnegsample(nnn, all_n, num, rand=True):
     other_n = [n for n in all_n if n not in nnn] 
-    return newpossample(other_n, num)
+    return newpossample(other_n, num, rand=rand)
 
-def newpossample(pos_news, num):
+def newpossample(pos_news, num, rand=True):
     if num > len(pos_news):
         samples = pos_news + ["<unk>"] * (num - len(pos_news)) 
         mask = [1] * len(pos_news) + [0] * (num - len(pos_news))
         return samples, mask 
     else:
-        samples = random.sample(pos_news, num)
+        if rand:
+            samples = random.sample(pos_news, num)
+        else:
+            samples = pos_news[:num]
         mask = [1] * num 
         return samples, mask 

@@ -238,7 +238,7 @@ class NRMS_IPS_Model(nn.Module):
         
         self.loss = nn.BCEWithLogitsLoss(reduction='none')
     
-    def forward(self, candidate_news, clicked_news, targets, ips_scores, compute_loss=True):
+    def forward(self, candidate_news, clicked_news, targets, ips_scores, compute_loss=True, normalize=True):
         """
         Args:
             candidate_news: (batch_size, 1 + npratio, vect_dim)
@@ -259,8 +259,12 @@ class NRMS_IPS_Model(nn.Module):
         score = torch.bmm(candidate_vector, user_vector.unsqueeze(-1)).squeeze(dim=-1) # (batch_size,1 + npratio)
         
         if compute_loss:
-            norm = torch.sum(1. / ips_scores, axis=1)[:,None]
-            loss = (self.loss(score, targets) / ips_scores) / norm # (batch_size, n)
-            return torch.mean(loss), score
+            if normalize:
+                norm = torch.sum(1. / ips_scores, axis=1)[:,None]
+                loss = (self.loss(score, targets) / ips_scores) / norm # (batch_size, n)
+                loss = torch.mean(loss) 
+            else:
+                loss = torch.mean(self.loss(score, targets) / ips_scores)
+            return loss, score
         else:
             return score

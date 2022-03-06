@@ -274,6 +274,9 @@ def read_imprs_for_val_set_for_sim(args, path):
     """
     Args:
         mode: 0 (train), 1 (valid)
+
+    Return: 
+        samples of format (nns, labels, his, uid, tsp)
     """
     samples = []
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
@@ -574,13 +577,16 @@ def preprocesss_for_propensity_score(args):
         his = nindex2vec[his]
         user2vecs.append(his) 
 
+    train_uid2index = uid2index.copy()
+    with open(os.path.join(out_path, "train_uid2index.pkl"), "wb") as f:
+        pickle.dump(train_uid2index, f)
+
     with open(os.path.join(out_path, "val_contexts.pkl"), "rb") as fo:
         val_samples = pickle.load(fo)
 
     val_user_news_obs = dict()
     for sample in tqdm(val_samples):
-        pos_imp, neg_imp, his, uid, tsp = sample 
-        imp = pos_imp + neg_imp 
+        imp, labels, his, uid, tsp = sample 
         if uid not in uid2index:
             assert uid not in clicked_history 
             clicked_history[uid] = his
@@ -736,4 +742,4 @@ if __name__ == "__main__":
 
     preprocesss_for_propensity_score(args)
 
-    get_nrms_vecs_for_propensity_score(args) 
+    # get_nrms_vecs_for_propensity_score(args) 

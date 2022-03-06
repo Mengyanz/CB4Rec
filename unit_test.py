@@ -63,10 +63,10 @@ if __name__ == '__main__':
     device = torch.device("cuda:0")
     torch.cuda.set_device(device)
 
-    # test_NRMS_Sim(device)
+    test_NRMS_Sim(device)
     # test_DummyTwoStageNeuralUCB()
     # test_NRMS_Sim_train(device)
 
     # test_PropensityScore(device)
 
-    test_NRMS_IPS_Sim_train(device)
+    # test_NRMS_IPS_Sim_train(device)

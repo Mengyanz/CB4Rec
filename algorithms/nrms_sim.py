@@ -19,6 +19,17 @@ from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, 
     SimTrainDataset, SimValDataset, SimValWithIPSDataset, SimTrainWithIPSDataset
 from utils.metrics import compute_amn
 
+def compute_cdf(x, dist_obj):
+    dist = dist_obj[0] 
+    params = dist_obj[1]
+    arg = params[:-2]
+    loc = params[-2]
+    scale = params[-1]
+    return dist.cdf(x, loc=loc, scale=scale, *arg)
+
+def compute_local_pdf(x, dist_obj, margin):
+    return compute_cdf(x + margin, dist_obj) - compute_cdf(x - margin, dist_obj)
+
 class NRMS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=True, name='NRMS_Simulator'): 
         """
@@ -44,10 +55,18 @@ class NRMS_Sim(Simulator):
         self.model = NRMS_Sim_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
-            self.model.load_state_dict(torch.load(args.sim_path)) 
+            self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model'))) 
+            p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
+            with open(p_dists_fname, 'rb') as fo: 
+                self.p_dists = pickle.load(fo)[0]
+
+            n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
+            with open(n_dists_fname, 'rb') as fo: 
+                self.n_dists = pickle.load(fo)[0]
+
+            self.sim_margin = args.sim_margin 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
-       
 
     def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
@@ -76,9 +95,20 @@ class NRMS_Sim(Simulator):
             for cn in rdl:
                 score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
                 scores.append(torch.sigmoid(score[:,None])) 
-            scores = torch.cat(scores, dim=0) 
-            print(scores)
-            rewards = (scores >= self.threshold).float().detach().cpu().numpy()
+            scores = torch.cat(scores, dim=0).float().detach().cpu().numpy()
+            p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
+            n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
+            
+            hard_rewards = (p_probs > n_probs).astype('float') 
+            rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
+            if self.args.reward_type == 'hard':
+                rewards = hard_rewards 
+            elif self.args.reward_type == 'soft': 
+                rewards = rand_rewards 
+            else: 
+                rewards = rand_rewards * hard_rewards 
+        for s,p,n in zip(scores, p_probs, n_probs):
+            print(s,p,n)
         return rewards.ravel()
 
     def _train_one_epoch(self, epoch_index, train_loader, writer):
@@ -301,7 +331,7 @@ class NRMS_IPS_Sim(Simulator):
             self.optimizer.zero_grad()
 
             # Make predictions
-            loss, score = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device)) 
+            loss, score = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device), normalize=self.args.ips_normalize) 
 
             # Compute gradients 
             loss.backward()
@@ -324,8 +354,9 @@ class NRMS_IPS_Sim(Simulator):
         # TODO: distributed training 
         #   refs: https://horovod.readthedocs.io/en/stable/pytorch.html
         #         https://github.com/Mengyanz/CB4Rec/blob/main/Simulator/run.py 
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        out_path = 'runs/ips-nrms_sim_{}_r{}'.format(timestamp, self.args.sim_npratio)
+        prefix = self.args.ips_path.split('/')
+        prefix = prefix[-2] + prefix[-1] + '_ipsnormalize={}'.format(self.args.ips_normalize) #datetime.now().strftime('%Y%m%d_%H%M%S')
+        out_path = 'runs/ips-nrms_sim_{}_r{}'.format(prefix, self.args.sim_npratio)
         writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html 
 
         data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
@@ -366,7 +397,7 @@ class NRMS_IPS_Sim(Simulator):
                     cand_news, clicked_news, targets, uids, cand_idxs = vdata
                     cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
                     ips_scores = self.ips_model.compute_ips(uids, cand_idxs)  
-                    vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device))
+                    vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device), normalize= self.args.ips_normalize)
                  
                     running_vloss += vloss 
                     vscore = torch.sigmoid(vscore)
@@ -387,7 +418,7 @@ class NRMS_IPS_Sim(Simulator):
             y_scores = np.hstack(y_scores) 
             y_trues = np.hstack(y_trues) 
 
-            fname = os.path.join(out_path, 'scores_labels')
+            fname = os.path.join(out_path, 'scores_labels_ep={}'.format(epoch+1))
             np.savez(fname, y_scores, y_trues)
 
             imp_metrics_mean = np.mean(imp_metrics, axis=0)
