@@ -224,6 +224,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         # Update the topic model 
         if mode == 'topic': 
             for i, topic in enumerate(topics):  # h_actions are topics
+                print("attention::", rewards[i])
                 assert rewards[i] in {0,1}
                 self.alphas[topic] += rewards[i]
                 self.betas[topic] += 1 - rewards[i]
@@ -250,19 +251,19 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         self.active_topics = self.cb_topics.copy()
         while len(rec_items) < self.rec_batch_size:
             # todo: uncomment these to add dynamic_aggregate_topic 
-            # cand_news = []
-            # while len(cand_news) < self.args.min_item_size:
-            #     rec_topic = self.topic_rec(uid)
-            #     rec_topics.append(rec_topic)
-            #     self.active_topics.remove(rec_topic)
-            #     cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
-            #     if not self.args.dynamic_aggregate_topic:
-            #         break
-            rec_topic = self.topic_rec()
-            rec_topics.append(rec_topic)
-            self.active_topics.remove(rec_topic)
+            cand_news = []
+            while len(cand_news) < self.args.min_item_size:
+                rec_topic = self.topic_rec()
+                rec_topics.append(rec_topic)
+                self.active_topics.remove(rec_topic)
+                cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
+                if not self.args.dynamic_aggregate_topic:
+                    break
+            # rec_topic = self.topic_rec()
+            # rec_topics.append(rec_topic)
+            # self.active_topics.remove(rec_topic)
 
-            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            # cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG
             print('DEBUG:', rec_topic, len(cand_news))
             rec_item = self.item_rec(uid, cand_news,m=1)[0]

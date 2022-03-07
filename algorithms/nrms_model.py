@@ -195,7 +195,8 @@ class TopicEncoder(torch.nn.Module):
     def __init__(self, split_large_topic, num_categories=285, reduction_dim=64, dropout_rate=0.2):
         super(TopicEncoder, self).__init__()
         self.num_categories = 312 if split_large_topic else 285
-        self.word_embedding = nn.Embedding(num_categories,
+        print("self.num_categories:", self.num_categories)
+        self.word_embedding = nn.Embedding(self.num_categories,
                                            reduction_dim)
         self.mlp_head = nn.Sequential(nn.Linear(reduction_dim, reduction_dim),
                                       nn.Dropout(p=dropout_rate),

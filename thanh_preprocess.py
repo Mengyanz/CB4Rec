@@ -18,7 +18,7 @@ from torch import nn
 import torch.optim as optim
 from metrics import evaluation_split
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3,4"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
@@ -285,7 +285,7 @@ def split_then_select_behavior_preprocess(args, train_cb = True):
     meta_data_path = os.path.join(args.root_proj_dir, 'meta_data')
     if not os.path.exists(meta_data_path):
         os.mkdir(meta_data_path) 
-    for trial in range(args.n_trials): 
+    for trial in range(9, args.n_trials): 
         np.random.seed(trial)
 
         cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
@@ -329,7 +329,10 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     
     # out path
     if args.pretrain_topic:
-        out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models')
+        if args.split_large_topic:
+            out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models_large_topic_splited')
+        else:
+            out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models')
     else:
         out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models')
     if not os.path.exists(out_model_path):
@@ -360,7 +363,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
         train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
     if args.pretrain_topic:
-        model = NRMS_Topic_Model(word2vec).to(device)
+        model = NRMS_Topic_Model(word2vec, split_large_topic=args.split_large_topic).to(device)
     else:
         model = NRMS_Model(word2vec).to(device)
     
@@ -378,7 +381,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     best_auc = 0
-    for ep in range(args.epochs):
+    for ep in range(2, args.epochs):
         loss = 0
         model.train()
         train_loader = tqdm(train_dl)
@@ -429,6 +432,7 @@ def eva(args, model, valid_sam, nid2index, news_index, nid2topicindex=None):
         news_vec = model.text_encoder(news).detach().cpu().numpy()
         news_vecs.append(news_vec)
     news_vecs = np.concatenate(news_vecs)
+    # np.save(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nindex2embedding.npy'), news_vecs)
 
     user_dataset = UserDataset(args, valid_sam, news_vecs, nid2index)
     user_vecs = []
@@ -463,7 +467,11 @@ def generate_cb_news(args):
     news_dict = {}
     nid2topic = {}
     nid2topicindex = {}
-    topic_ordered_list = json.load(open(os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json"), 'r'))
+    if args.split_large_topic:
+        nid2topic_large_topic_splited = json.load(open(os.path.join(args.root_data_dir, "large/utils/nid2topic_large_topic_splited.json")))
+        topic_ordered_list = json.load(open(os.path.join(args.root_data_dir, "large/utils/subcategory_byorder_large_topic_splited.json"), 'r'))
+    else:
+        topic_ordered_list = json.load(open(os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json"), 'r'))
     topic2index = {}
     for topic in topic_ordered_list:
         topic2index[topic] = len(topic2index)
@@ -471,10 +479,13 @@ def generate_cb_news(args):
     train_news_path = os.path.join(args.root_data_dir, "large/train/news.tsv") 
     valid_news_path = os.path.join(args.root_data_dir, "large/valid/news.tsv")
     news_paths = [train_news_path, valid_news_path]
+    
 
     for data_path in news_paths:
         for l in tqdm(open(data_path, "r", encoding='utf-8')):
             nid, vert, subvert, _, _, _, _, _ = l.strip("\n").split("\t")
+            if args.split_large_topic and nid in nid2topic_large_topic_splited:
+                subvert = nid2topic_large_topic_splited[nid]
             if nid not in news_dict:
                 news_dict[nid] = l
                 nid2topic[nid] = subvert
@@ -490,7 +501,7 @@ def generate_cb_news(args):
 
     cb_news = defaultdict(list)
     for nid, l in news_dict.items():
-        subvert = l.strip("\n").split("\t")[2]
+        subvert = nid2topic[nid]
         # if subcat_count[subvert] >= 200:
         cb_news[subvert].append(l)
             
@@ -510,8 +521,8 @@ def generate_cb_news(args):
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
 
 
     args = parse_args()

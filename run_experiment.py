@@ -11,14 +11,14 @@ from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3,4"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 def main():
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
     print(args)
 
@@ -43,7 +43,7 @@ def main():
     elif args.algo == 'single_linucb':
         args.update_period = 1 # update parameters each iteration
         learner = SingleStageLinUCB(device, args)
-    elif args.algo == 'ts_neuralucb_zhenyu':
+    elif args.algo == 'neuralucb_neuralucb_zhenyu':
         learner = TwoStageNeuralUCB_zhenyu(device, args)
     elif args.algo == 'uniform_random':
         args.algo_prefix = args.algo
