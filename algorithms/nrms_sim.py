@@ -72,7 +72,14 @@ class NRMS_Sim(Simulator):
                 scores.append(torch.sigmoid(score[:,None])) 
             scores = torch.cat(scores, dim=0) 
             print(scores)
-            rewards = (scores >= self.threshold).float().detach().cpu().numpy()
+            
+            if self.args.sim_sampleBern:
+                # sample from bernoulli
+                scores = scores.float().detach().cpu().numpy()
+                rewards = np.array([np.random.binomial(n=1,p=score) for score in scores])
+            else:
+                # use threshold
+                rewards = (scores >= self.threshold).float().detach().cpu().numpy()
         return rewards.ravel()
 
     def _train_one_epoch(self, epoch_index, train_loader, writer):

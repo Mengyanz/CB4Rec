@@ -7,7 +7,7 @@ from collections import defaultdict
 import glob 
 
 
-def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):  
+def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward'],):  
     n_trials, n_algos, rec_bs, T = h_rewards_all.shape
     print('# trails: ', n_trials, ', # algos: ', n_algos, ', # rec_bs: ', rec_bs, ', T: ', T)
     metrics = {}
@@ -74,13 +74,20 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         plt.title(plot_title)
         plt.savefig(os.path.join(plt_path, plot_title + '_' + name + '.png'))
 
-def main():
-    # from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
 
-    args = parse_args()
-    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards*-8-1000.npy"))
+def cal_base_ctr(args):
+    """calculate base ctr: uniform random policy 10 trails average ctr
+    """
+    filename = 'rewards-uniform_random-9-1000.npy'
+    h_rewards_all = np.array(np.load(os.path.join(args.root_proj_dir, "results", filename)))
+    print(h_rewards_all.shape)
+    all_rewards = np.concatenate([h_rewards_all], axis = 1)
+    metrics = cal_metric(all_rewards, 'uniform_random', ['cumu_reward', 'ctr'])
+    plot_metrics(args, metrics, 'uniform_random', plot_title='Uniform Random 10 trials')
+    return metrics
+
+def main(args):
+    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*dynamicFalse-0-1000.npy"))
     print('Debug filenames: ', filenames)
     algo_names = []
     all_rewards = []
@@ -97,7 +104,13 @@ def main():
     print(all_rewards.shape)
     
     metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, metrics, algo_names, plot_title='Trial8-perrecscorebudget1000')
+    plot_metrics(args, metrics, algo_names, plot_title='trail0')
 
 if __name__ == '__main__':
-    main()
+    # from configs.thanh_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
+
+    args = parse_args()
+    main(args)
+    # cal_base_ctr(args)
