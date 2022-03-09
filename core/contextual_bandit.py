@@ -130,7 +130,6 @@ def run_contextual_bandit(args, simulator, algos):
     # num_round = args.num_round
 
     np.random.seed(2022)
-
     clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
         train_clicked_history = pickle.load(fo)
@@ -209,10 +208,10 @@ def run_contextual_bandit(args, simulator, algos):
             # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, args.rec_batch_size)
             print('  rec_topic: {}'.format(topic_batches))
 
-            print('  rec_news: {}'.format(item_batches))
+            print('  rec_news: {}'.format(item_batches)) # print('  rec_news: {}'.format([item.gid for item in item_batches[0]]))
 
 
-            reward_batches = [simulator.reward(u, items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
+            reward_batches = [simulator.reward(u, items).ravel() if type(items[0]) is int else simulator.reward(u, [item.gid for item in items]).ravel() for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
 
