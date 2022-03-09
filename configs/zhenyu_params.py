@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument("--update_period", type=int, default=100, help = 'Update period for CB model')
     parser.add_argument("--n_inference", type=int, default=5, help='number of Monte Carlo samples of prediction. ')
     parser.add_argument("--rec_batch_size", type=int, default=5, help='recommendation size for each round.') # 5
-    parser.add_argument("--per_rec_score_budget", type=int, default=999, help='buget for calcuating scores, e.g. ucb, for each rec') # 1000
+    parser.add_argument("--per_rec_score_budget", type=int, default=1000, help='buget for calcuating scores, e.g. ucb, for each rec') # 1000
     parser.add_argument("--max_batch_size", type=int, default=256, help = 'Maximum batch size your GPU can fit in.') # 256
     parser.add_argument("--pretrained_mode",type=bool,default=True, 
         help="Indicates whether to load a pretrained model. True: load from a pretrained model, False: no pretrained model ")
@@ -40,6 +40,10 @@ def parse_args():
     parser.add_argument("--uniform_init",type=bool,default=True, 
         help="For Thompson Sampling: Indicates whether to init ts parameters uniformly")
     parser.add_argument("--gamma", type=float, default=1.0, help='ucb parameter: mean + gamma * std.')
+    parser.add_argument("--fix_user",type=bool,default=False, 
+        help="Indicate whether to use fix set of users to run simulation. If true, then use trial 0 with given order.")
+    parser.add_argument("--sim_sampleBern", type=bool,default=False,
+        help="If True: sample from Bernoulli to get binary simulated reward; If False: use a threshold.")
 
     
     # nrms 
@@ -47,6 +51,13 @@ def parse_args():
     parser.add_argument("--max_his_len", type=int, default=50)
     parser.add_argument("--min_word_cnt", type=int, default=1) # 5
     parser.add_argument("--max_title_len", type=int, default=30)
+    
+    
+    # for neural linear
+    parser.add_argument("--lambda_prior", type=float, default=1.0, help = 'Prior for neural linear thompson sampling covariance diagonal term')
+    parser.add_argument("--latent_dim", type=int, default=128, help = 'latent representation dim for neural linear')
+    parser.add_argument("--item_linear_update_period", type=int, default=1, help = 'Update period for CB item linear model (for neural linear model)')
+    
     # nrms topic
     parser.add_argument("--pretrain_topic", type=bool, default=True)
     parser.add_argument("--dynamic_aggregate_topic", type=bool, default=False) # whether to dynamicly aggregate small topic during simulation
@@ -60,7 +71,10 @@ def parse_args():
     
     # HCB
     parser.add_argument("--one_linucb_perlayer", type=bool, default=False)
-
+    
+    # pHCB
+    parser.add_argument("--activate_num", type=int, default=10)
+    parser.add_argument("--activate_prob", type=float, default=0.1)
 
     args = parser.parse_args()
 

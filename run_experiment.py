@@ -9,6 +9,7 @@ from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, Dummy
 from algorithms.neural_linear import NeuralLinearTS
 from algorithms.linucb import SingleStageLinUCB
 from algorithms.hcb import HCB
+from algorithms.phcb import pHCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
@@ -67,6 +68,10 @@ def main():
         args.update_period = 1
         root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
         learner = HCB(device, args, root)
+    elif args.algo == 'phcb':
+        args.update_period = 1
+        root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
+        learner = pHCB(device, args, root)
     else:
         raise NotImplementedError
 

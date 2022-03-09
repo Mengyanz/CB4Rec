@@ -206,20 +206,25 @@ def run_contextual_bandit(args, simulator, algos):
             print('user: {}.'.format(u))
             
             item_batches = []
+            item_batches_phcb = []
             topic_batches = []
             for a in algos:
                 topics, items = a.sample_actions(u) # recommend for user u using their current history 
 
                 topic_batches.append(topics) 
-                item_batches.append(items) 
+                if a.name.lower() != 'phcb':
+                    item_batches.append(items)
+                else:
+                    item_batches.append(items[0])
+                    item_batches_phcb.append(items)
 
             # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, args.rec_batch_size)
             print('  rec_topic: {}'.format(topic_batches))
 
             print('  rec_news: {}'.format(item_batches)) # print('  rec_news: {}'.format([item.gid for item in item_batches[0]]))
 
-
-            reward_batches = [simulator.reward(u, items).ravel() if type(items[0]) is int else simulator.reward(u, [item.gid for item in items]).ravel() for items in item_batches] #(num_algos, rec_batch_size)
+            # other algorithms, hcb/phcb
+            reward_batches = [simulator.reward(u, items).ravel() if type(items[0]) is int else simulator.reward(u, [item.gid for item in items]).ravel()  for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
 
@@ -237,8 +242,11 @@ def run_contextual_bandit(args, simulator, algos):
             # Update the data buffer and clicked history and models
             for j,a in enumerate(algos):
                 topics = topic_batches[j]
-                items = item_batches[j] 
-                rewards = reward_batches[j] 
+                if a.name.lower() != 'phcb':
+                    items = item_batches[j]
+                else:
+                    items = item_batches_phcb[j]
+                rewards = reward_batches[j]
                 pos = []
                 neg = []
                 for it,r in zip(items, rewards):
