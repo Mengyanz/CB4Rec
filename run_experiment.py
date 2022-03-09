@@ -5,7 +5,8 @@ import numpy as np
 import torch 
 from algorithms.nrms_sim import NRMS_Sim 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
-from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu
+from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu, SingleNerual_TwoStageUCB
+from algorithms.neural_linear import NeuralLinearTS
 from algorithms.linucb import SingleStageLinUCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
@@ -38,6 +39,10 @@ def main():
         args.topic_update_period = 1 # update topic each iteration
         learner = TwoStageNeuralUCB(device, args)
     # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    elif args.algo == 'singleneural_twostageucb':
+        learner = SingleNerual_TwoStageUCB(device, args)
+    elif args.algo == 'neural_linearts':
+        learner = NeuralLinearTS(device, args)
     elif args.algo == 'greedy':
         learner = SingleStageNeuralGreedy(device, args)
     elif args.algo == 'single_linucb':

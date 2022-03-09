@@ -34,11 +34,13 @@ class ContextualBanditLearner(object):
                 raise Exception("No cb learner pretrained for this trial!")
             try:
                 if topic:
+                    print('Load pre-trained CB topic learner on this trial from ', cb_learner_path)
                     self.topic_model.load_state_dict(torch.load(cb_learner_path))
                 else:
+                    print('Load pre-trained CB item learner on this trial from ', cb_learner_path)
                     self.model.load_state_dict(torch.load(cb_learner_path))
             except:
-                print('Current algorithm has no model. Load checkpoint failed.')
+                print('Warning: Current algorithm has no model. Load checkpoint failed.')
         else:
             raise NotImplementedError()
         
@@ -147,14 +149,13 @@ def run_contextual_bandit(args, simulator, algos):
     algos_name = ''
     for a in algos:
         algos_name += (a.name+'-')
-    result_path = os.path.join(args.root_proj_dir, 'results')
+    result_path = os.path.join(args.root_proj_dir, 'results', args.algo_prefix.split('-')[0])
     if not os.path.exists(result_path):
         os.mkdir(result_path) 
 
     for e in range(args.n_trials):
-
-        item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
+        item_path = os.path.join(result_path,  "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -175,8 +176,12 @@ def run_contextual_bandit(args, simulator, algos):
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
 
+        if args.fix_user:
+            load_idx = 0
+        else:
+            load_idx = e
         # Load the initial history for each user in each CB learner
-        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
+        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(load_idx))
         # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
         random_ids = np.load(indices_path)
         user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
@@ -194,8 +199,11 @@ def run_contextual_bandit(args, simulator, algos):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
-            # Randomly sample a user 
-            u = np.random.choice(user_set) 
+            if args.fix_user:
+                u = user_set[t]
+            else:
+                # Randomly sample a user 
+                u = np.random.choice(user_set) 
             print('user: {}.'.format(u))
             
             item_batches = []
@@ -252,6 +260,10 @@ def run_contextual_bandit(args, simulator, algos):
 
                 if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
                     a.update(topics, items, rewards, mode = 'item', uid = u)
+                    
+                if t % args.item_linear_update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
+                    # for neural linear model only
+                    a.update(topics, items, rewards, mode = 'item-linear', uid = u)
 
             if t % 1000 == 0 and t > 0:
                 temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
@@ -260,6 +272,16 @@ def run_contextual_bandit(args, simulator, algos):
                 print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
                 np.save(temp_item_path, np.expand_dims(h_items, axis=0))
                 np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
+
+                
+
+            # if t % 1000 == 0 and t > 0:
+            #     temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+            #     temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
+            #     print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
+            #     print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
+            #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
+            #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)

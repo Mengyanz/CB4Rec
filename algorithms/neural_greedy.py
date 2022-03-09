@@ -129,6 +129,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
                 bz_loss.backward()
 
                 optimizer.step()  
+            self._get_news_embs()
         else:
             print('Skip update cb learner due to lack valid samples!')
 
@@ -147,7 +148,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         """
         if mode == 'item':
             self.train() 
-            self._get_news_embs()
+            
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
