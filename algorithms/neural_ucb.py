@@ -73,7 +73,9 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
             
             all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
             mu = np.mean(all_scores, axis=0) 
-            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            std = np.std(all_scores, axis=0) # / math.sqrt(self.n_inference) 
+            # print('Debug mean: ', mu)
+            # print('Debug std: ', std)
             ucb = mu + self.gamma * std # (n,) 
             nid_argmax = np.argsort(ucb, axis = 0)[::-1][:m].tolist() # (len(uids),)
             rec_itms = [cand_news[n] for n in nid_argmax]
@@ -103,7 +105,9 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
 
             all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
             mu = np.mean(all_scores, axis=0) 
-            std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+            std = np.std(all_scores, axis=0) #/ math.sqrt(self.n_inference) 
+            # print('Debug mean: ', mu)
+            # print('Debug std: ', std)
             ucb = mu + self.gamma * std # (n,b) 
         
             nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
@@ -133,7 +137,7 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         # ucb = mu + std # (n,b) 
         # sorted_ids = np.argsort(ucb, axis=0)[-self.rec_batch_size:,:] 
         # return self.cb_indexs[sorted_ids], np.empty(0)
-        if len(self.news_embs) < 1:
+        if len(self.news_embs) < 1 and self.preinference_mode:
             self._get_news_embs() # init news embeddings
 
         cand_news = [self.nid2index[n] for n in self.cb_news]
@@ -150,10 +154,16 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
+        news_topics = {} # key: news index, value: topic
         for k,v in topic_news.items():
-            cb_news[k] = [l.strip('\n').split("\t")[0] for l in v] # get nIDs 
+            for l in v:
+                nid = l.strip('\n').split("\t")[0] # get nIDs 
+                cb_news[k].append(nid) 
+                news_topics[self.nid2index[nid]]=k
         self.cb_news = cb_news 
         self.cb_topics = list(self.cb_news.keys())
+        self.news_topics = news_topics
+
         self.uniform_init = self.args.uniform_init 
 
         self.alphas = {}
@@ -198,7 +208,24 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         for topic in self.cb_topics:
             s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
             ss.append(s)
-        rec_topics = np.array(self.cb_topics)[np.array(np.argsort(ss)[::-1][:m])]
+        
+        if self.args.dynamic_aggregate_topic:
+            sort_topics = np.array(self.cb_topics)[np.array(np.argsort(ss)[::-1])]
+            rec_topics = []
+            for topic in sort_topics:
+                while len(rec_topics) < m:
+                    rec_topic = []
+                    rec_topic_size = 0
+                    if rec_topic_size < self.args.min_item_size:
+                        rec_topic_size+= len(self.cb_news[topic])
+                        rec_topic.append(topic)
+                    else:
+                        rec_topics.append(rec_topic)
+                        rec_topic = []
+                        rec_topic_size = 0
+        else:
+            rec_topics = np.array(self.cb_topics)[np.array(np.argsort(ss)[::-1][:m])]
+
         return rec_topics
 
     # def item_rec(self, user_samples, cand_news):
@@ -239,6 +266,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
 
         # Update the user_encoder and news_encoder using `self.clicked_history`
         if mode == 'item': 
+            print('size(data_buffer): {}'.format(len(self.data_buffer)))
             self.train() 
             self._get_news_embs()
 
@@ -254,40 +282,20 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         if len(self.news_embs) < 1:
             self._get_news_embs() # init news embeddings
 
-        # rec_topics = []
-        # rec_items = []
-        # self.active_topics = self.cb_topics.copy()
-        # while len(rec_items) < self.rec_batch_size:
-        #     # todo: uncomment these to add dynamic_aggregate_topic 
-        #     # cand_news = []
-        #     # cand_topics = [] # collect topics for this item rec
-        #     # while len(cand_news) < self.args.min_item_size:
-        #     #     rec_topic = self.topic_rec()
-        #     #     rec_topics.append(rec_topic)
-        #     #     cand_topics.append(rec_topic)
-        #     #     self.active_topics.remove(rec_topic)
-        #     #     cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
-        #     #     if not self.args.dynamic_aggregate_topic:
-        #     #         break
-        #     rec_topic = self.topic_rec()
-        #     rec_topics.append(rec_topic)
-        #     self.active_topics.remove(rec_topic)
-
-        #     cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
-        #     # DEBUG
-        #     print('DEBUG:', rec_topic, len(cand_news))
-        #     rec_item = self.item_rec(uid, cand_news,m=1)[0]
-        #     rec_items.append(rec_item)
-
         rec_items = []
         rec_topics = self.topic_rec(m = self.rec_batch_size)
+        selected_topics = []
         for rec_topic in rec_topics:
-            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            if self.args.dynamic_aggregate_topic:
+                cand_news = [self.nid2index[n] for n in self.cb_news[recs] for recs in rec_topic]
+            else:
+                cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             print('DEBUG:', rec_topic, len(cand_news))
             rec_item = self.item_rec(uid, cand_news,m=1)[0]
             rec_items.append(rec_item)
+            selected_topics.append(self.news_topics[rec_item])
         
-        return rec_topics, rec_items
+        return selected_topics, rec_items
 
 class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
     def __init__(self,device, args, name='SingleNerual_TwoStageUCB'):
@@ -360,6 +368,7 @@ class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
             and each of the topics they recommend an item (`rec_batch_size` items in total). 
             What if one item appears more than once in the list of `rec_batch_size` items? 
         """
+        print('size(data_buffer): {}'.format(len(self.data_buffer)))
         # Update the topic model 
         if mode == 'topic': 
             pass
@@ -689,7 +698,8 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
 
         all_scores = np.array(all_scores) # n_inference, num_active_topic
         mu = np.mean(all_scores, axis=0) 
-        std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
+        std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference)
+        # print('Debug topic std: ', std) 
         ucb = mu + std  # num_topic
         # for topic in self.active_topics:
         #     s = np.random.beta(a= self.alphas[topic], b= self.betas[topic])
@@ -854,6 +864,8 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
             What if one item appears more than once in the list of `rec_batch_size` items? 
         """
         # Update the user_encoder(topic),news_encoder(topic),topic_encoder using `self.clicked_history`
+        print('size(data_buffer): {}'.format(len(self.data_buffer)))
+        # TODO: ALL samples in data buffer to train models for every update. It makes more sense to only use "new" samples
         if mode == 'topic': 
             self.train(mode='topic')
             self._get_news_embs(topic=True)
@@ -891,6 +903,7 @@ class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake 
 
                 cand_news.extend([self.nid2index[n] for n in self.cb_news[rec_topic]])
                 if not self.args.dynamic_aggregate_topic:
+                    print('Debug dynamic_aggregate_topic', self.args.dynamic_aggregate_topic)
                     break
                 # DEBUG
             print('DEBUG:', rec_topic, len(cand_news))

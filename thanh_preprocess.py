@@ -331,7 +331,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     if args.pretrain_topic:
         out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models')
     else:
-        out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models')
+        out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models_dim64')
     if not os.path.exists(out_model_path):
         os.mkdir(out_model_path)
     log_path = os.path.join(args.root_proj_dir, 'logs')
@@ -507,6 +507,25 @@ def generate_cb_news(args):
     with open(save_path, "wb") as f:
         pickle.dump(nid2topicindex, f)
 
+def run_eva(args):
+    """evaluate cb trained models on valid data.
+    """
+    for e in range(10):
+        with open(os.path.join(args.root_data_dir, args.dataset, 'utils', "valid_contexts.pkl"), "rb") as f:
+            valid_sam = pickle.load(f)
+        with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+            nid2index = pickle.load(f)
+        nindex2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
+        word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+        cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models_dim64', 'indices_{}.pkl'.format(e))
+        model = NRMS_Model(word2vec).to(device)
+        model.eval()
+        model.load_state_dict(torch.load(cb_learner_path))
+        val_scores = eva(args, model, valid_sam, nid2index, nindex2vec)
+        val_auc, val_mrr, val_ndcg, val_ndcg10, ctr = [np.mean(i) for i in list(zip(*val_scores))]
+        print(f"[{e}] trial auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}, ctr: {ctr:.4f}")
+
+
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.thanh_params import parse_args
@@ -517,11 +536,12 @@ if __name__ == "__main__":
     args = parse_args()
     # news_preprocess(args)
     # read_imprs_for_val_set_for_sim(args, path)
-    generate_cb_news(args)
+    # generate_cb_news(args)
     # split_then_select_behavior_preprocess(args, train_cb = True)
 
     # Get val set for sim 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
+    run_eva(args)
 
 
 
