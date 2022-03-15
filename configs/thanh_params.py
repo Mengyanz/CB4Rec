@@ -44,6 +44,7 @@ def parse_args():
     # parser.add_argument("--pretrained_nrms_path", type=str, default="/home/thanhnt/projects/CB4Rec/pretrained_models/sim_nrms_bce_r14_ep6_thres038414")
     parser.add_argument("--ips_path", type=str, default="/home/thanhnt/projects/CB4Rec/runs/prop_pn=2-8_20220222_163423/model_best_4")
     parser.add_argument("--ips_normalize", type=bool, default=True)
+    parser.add_argument("--empirical_ips", type=bool, default=True)
     parser.add_argument("--sim_margin", type=float, default=0.001)
     parser.add_argument("--reward_type", type=str, default='soft', help='soft/hard/hybrid')
 

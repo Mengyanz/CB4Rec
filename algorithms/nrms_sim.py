@@ -138,6 +138,53 @@ class NRMS_Sim(Simulator):
                 running_loss = 0 
         return last_loss 
 
+    def evaluate(self):
+        data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
+        with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
+            val_samples = pickle.load(fo)
+        val_dataset = SimValDataset(self.args, self.nid2index, self.nindex2vec, val_samples) 
+        val_loader = DataLoader(val_dataset, shuffle=False) 
+
+        self.model.eval() 
+        y_scores = [] 
+        y_trues = []
+        imp_metrics = []
+        imp_metrics_prev = []
+        with torch.no_grad():
+            pbar = tqdm(enumerate(val_loader))
+            for i, vdata in pbar: 
+                pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
+                cand_news, clicked_news, targets = vdata
+                vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device))
+                
+                vscore = torch.sigmoid(vscore)
+
+                y_true = targets.cpu().detach().numpy().ravel() 
+                y_score = vscore.cpu().detach().numpy().ravel() 
+
+
+                auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
+                imp_metrics_prev.append([auc, mrr, ndcg5, ndcg10, ctr])
+
+                p_probs = compute_local_pdf(y_score, self.p_dists, self.sim_margin) 
+                n_probs = compute_local_pdf(y_score, self.n_dists, self.sim_margin) 
+                y_score = p_probs / (p_probs + n_probs)
+                auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
+                imp_metrics.append([auc, mrr, ndcg5, ndcg10, ctr])
+
+                y_scores.append(y_score) 
+                y_trues.append(y_true)
+
+
+        imp_metrics = np.array(imp_metrics) 
+        imp_metrics_prev = np.array(imp_metrics_prev) 
+
+        np.save(os.path.join(self.args.sim_path, 'perimp_metrics'), imp_metrics)
+        np.save(os.path.join(self.args.sim_path, 'preds'), y_scores, allow_pickle=True)
+        np.save(os.path.join(self.args.sim_path, 'trues'), y_trues, allow_pickle=True)
+
+        print('AUC: transformed {} original {}'.format(np.mean(imp_metrics, axis=0)[0],np.mean(imp_metrics_prev, axis=0)[0]))
+
 
     def train(self): 
         # TODO: distributed training 
@@ -252,6 +299,53 @@ class NRMS_Sim(Simulator):
             epoch_number += 1 
 
 
+class EmpiricalIPSModel(object):
+    def __init__(self, data_path, uid2index):
+        self.uid2index = uid2index
+        with open(os.path.join(data_path, 'train_pair_count.pkl'), 'rb') as fo: 
+            self.train_pair_count = pickle.load(fo)
+        self.train_user_count = np.load(os.path.join(data_path, 'train_user_count.npy'))
+
+        with open(os.path.join(data_path, 'val_pair_count.pkl'), 'rb') as fo: 
+            self.val_pair_count = pickle.load(fo)
+        self.val_user_count = np.load(os.path.join(data_path, 'val_user_count.npy'))
+
+    def compute_ips(self, uids, cand_idxs, train=True): 
+        """
+        Args:
+            uids: (b,) 
+            cand_idexs: (n,b)
+
+        Return:
+            scores: (b,n)
+        """
+        b = len(uids)
+        n = len(cand_idxs)
+        scores = [] 
+        # print('uid', len(uids)) 
+        # print('cand_idexs', len(cand_idxs)) 
+        # for n in cand_idxs:
+        #     print(len(n))
+        for j in range(b):
+            uindex = self.uid2index[uids[j]]
+            sub_scores = []
+            nids = [cand_idxs[i][j] for i in range(n)]
+            for i in nids:
+                sub_scores.append(self._compute_ips(uindex,i,train))
+            scores.append(sub_scores)
+        return torch.Tensor(np.array(scores))
+
+    def _compute_ips(self, uindex, i, train=True):
+        if train:
+            assert i in self.train_pair_count[uindex]
+            nominator = self.train_pair_count[uindex] 
+            nominator = 0 if i not in nominator else nominator[i]
+            return nominator * 1.0 / self.train_user_count[uindex]
+        else:
+            assert i in self.val_pair_count[uindex]
+            nominator = self.val_pair_count[uindex] 
+            nominator = 0 if i not in nominator else nominator[i]
+            return nominator * 1.0 / self.val_user_count[uindex]
 
 class NRMS_IPS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=False, name='NRMS_IPS_Sim'): 
@@ -282,7 +376,13 @@ class NRMS_IPS_Sim(Simulator):
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
 
-        self.ips_model = PropensityScore(args, device, pretrained_mode=True)
+        if self.args.empirical_ips:
+            data_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+            with open(os.path.join(data_path, "uid2index.pkl"), "rb") as f:
+                uid2index = pickle.load(f)
+            self.ips_model = EmpiricalIPSModel(data_path, uid2index)
+        else:
+            self.ips_model = PropensityScore(args, device, pretrained_mode=True)
        
 
     def reward(self, uid, news_indexes): 
@@ -323,15 +423,14 @@ class NRMS_IPS_Sim(Simulator):
         last_loss = 0
         for i, batch in enumerate(train_loader): 
             cand_news, clicked_news, targets, uids, cand_idxs = batch # @TODO: use all news in the impression list
-            cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
-            ips_scores = self.ips_model.compute_ips(uids, cand_idxs)  
-            # print(ips_score)
+            if not self.args.empirical_ips:
+                cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
+            ips_scores = self.ips_model.compute_ips(uids, cand_idxs,train=True)  
             # Zero gradients for every batch 
             self.optimizer.zero_grad()
 
             # Make predictions
             loss, score = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device), normalize=self.args.ips_normalize) 
-
             # Compute gradients 
             loss.backward()
 
@@ -353,9 +452,13 @@ class NRMS_IPS_Sim(Simulator):
         # TODO: distributed training 
         #   refs: https://horovod.readthedocs.io/en/stable/pytorch.html
         #         https://github.com/Mengyanz/CB4Rec/blob/main/Simulator/run.py 
-        prefix = self.args.ips_path.split('/')
-        prefix = prefix[-2] + prefix[-1] + '_ipsnormalize={}'.format(self.args.ips_normalize) #datetime.now().strftime('%Y%m%d_%H%M%S')
-        out_path = 'runs/ips-nrms_sim_{}_r{}'.format(prefix, self.args.sim_npratio)
+        if self.args.empirical_ips:
+            prefix = 'PROP__empirical_normalize={}'.format(self.args.ips_normalize)
+        else:
+            prefix = self.args.ips_path.split('/')
+            prefix = prefix[-2] + prefix[-1] + '_ipsnormalize={}'.format(self.args.ips_normalize) #datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        out_path = 'runs/ipsnrms_{}_R__{}'.format(prefix, self.args.sim_npratio)
         writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html 
 
         data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
@@ -363,7 +466,7 @@ class NRMS_IPS_Sim(Simulator):
         with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
             train_samples = pickle.load(fo)
         train_dataset = SimTrainWithIPSDataset(self.args, self.nid2index, self.nindex2vec, train_samples) 
-        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=1)
+        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=1)
 
         with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
             val_samples = pickle.load(fo)
@@ -394,8 +497,9 @@ class NRMS_IPS_Sim(Simulator):
                 for i, vdata in pbar: 
                     pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
                     cand_news, clicked_news, targets, uids, cand_idxs = vdata
-                    cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
-                    ips_scores = self.ips_model.compute_ips(uids, cand_idxs)  
+                    if not self.args.empirical_ips:
+                        cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
+                    ips_scores = self.ips_model.compute_ips(uids, cand_idxs, train=False)  
                     vloss, vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), ips_scores.to(self.device), normalize= self.args.ips_normalize)
                  
                     running_vloss += vloss 

@@ -10,7 +10,7 @@ from torch import nn
 import torch.optim as optim 
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from utils.data_util import PropensityScoreDataset, load_word2vec, NewsDataset
+from utils.data_util import PropensityScoreDatasetWithRealLabels, load_word2vec, NewsDataset
 from utils.metrics import batch_roc_auc_score
 
 class PropensityScoreModel(nn.Module):
@@ -78,7 +78,15 @@ class PropensityScore(object):
             print('loading a pretrained IPS model from {}'.format(args.ips_path))
             self.model.load_state_dict(torch.load(args.ips_path)) 
 
-    def compute_ips(self, uid, cand_idx):
+        with open(os.path.join(self.data_path, 'train_pair_count.pkl'), 'rb') as fo: 
+            self.train_pair_count = pickle.load(fo)
+        self.train_user_count = np.load(os.path.join(self.data_path, 'train_user_count.npy'))
+
+        with open(os.path.join(self.data_path, 'val_pair_count.pkl'), 'rb') as fo: 
+            self.val_pair_count = pickle.load(fo)
+        self.val_user_count = np.load(os.path.join(self.data_path, 'val_user_count.npy'))
+
+    def compute_ips(self, uid, cand_idx, train=True):
         self.model.eval() 
         with torch.no_grad():
             uvec = torch.Tensor(self.user_embs[[self.uid2index[u] for u in uid]])# (u,d1)
@@ -92,6 +100,7 @@ class PropensityScore(object):
         last_loss = 0
         for i, batch_x in tqdm(enumerate(train_loader)): 
             uvec, ivec, labels, mask = batch_x 
+            # print(labels)
             self.optimizer.zero_grad()
             loss, score = self.model(uvec.to(self.device), ivec.to(self.device), labels.to(self.device), mask.to(self.device))
             loss.backward()
@@ -108,7 +117,7 @@ class PropensityScore(object):
 
     def train_with_resume(self, epoch_number= 0, best_vauc=0, EPOCHS=10, eval=False): 
         # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        out_path = 'runs/prop_pn={}-{}'.format(self.args.propensity_score_num_pos, self.args.propensity_score_num_neg)
+        out_path = 'runs/propmodel_pn={}-{}'.format(self.args.propensity_score_num_pos, self.args.propensity_score_num_neg)
         writer = SummaryWriter(out_path) 
 
         if eval:
@@ -123,7 +132,8 @@ class PropensityScore(object):
                 user_news_obs = pickle.load(fo)
             for u,v in user_news_obs.items():
                 user_news_obs[u] = list(set(v))
-            train_dataset = PropensityScoreDataset(self.args, train_uidset, self.user_embs, self.news_embs, self.nid2index, self.uid2index, user_news_obs)
+            train_dataset = PropensityScoreDatasetWithRealLabels(self.args, train_uidset, \
+                self.user_embs, self.news_embs, self.nid2index, self.uid2index, user_news_obs, self.train_user_count, self.train_pair_count)
             train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=5) 
 
         print('Loading val_user_news_obs.pkl')
@@ -133,8 +143,8 @@ class PropensityScore(object):
             val_user_news_obs[u] = list(set(v))
 
         num_val_users = 10000
-        val_dataset = PropensityScoreDataset(self.args, uidset[-num_val_users:], self.user_embs, \
-            self.news_embs, self.nid2index, self.uid2index, val_user_news_obs, rand=False)
+        val_dataset = PropensityScoreDatasetWithRealLabels(self.args, uidset[-num_val_users:], self.user_embs, \
+            self.news_embs, self.nid2index, self.uid2index, val_user_news_obs, self.val_user_count, self.val_pair_count, rand=False)
         val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False) 
         # print(list(self.nid2index))
 
@@ -160,41 +170,41 @@ class PropensityScore(object):
             y_trues = [] 
             auc_all = [] 
             running_vloss = 0
-            with torch.no_grad():
-                pbar = tqdm(enumerate(val_loader))
-                for i, vdata in pbar: 
-                    pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
-                    v_uvec, v_ivec, v_labels, v_mask = vdata
-                    vloss, vscore = self.model(v_uvec.to(self.device), v_ivec.to(self.device), v_labels.to(self.device), v_mask.to(self.device))
+            # with torch.no_grad():
+            #     pbar = tqdm(enumerate(val_loader))
+            #     for i, vdata in pbar: 
+            #         pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
+            #         v_uvec, v_ivec, v_labels, v_mask = vdata
+            #         vloss, vscore = self.model(v_uvec.to(self.device), v_ivec.to(self.device), v_labels.to(self.device), v_mask.to(self.device))
                  
-                    running_vloss += vloss 
+            #         running_vloss += vloss 
 
-                    y_true = v_labels.cpu().detach().numpy() # (batch_size, num_news)
-                    y_score = vscore.cpu().detach().numpy() # (batch_size, num_news)
+            #         y_true = v_labels.cpu().detach().numpy() # (batch_size, num_news)
+            #         y_score = vscore.cpu().detach().numpy() # (batch_size, num_news)
 
-                    print(y_true.shape, y_score.shape)
-                    auc = batch_roc_auc_score(y_true, y_score)
-                    auc_all += auc
-
-
-                    y_scores.append(y_score) 
-                    y_trues.append(y_true)
+            #         print(y_true, y_score)
+            #         auc = batch_roc_auc_score(y_true, y_score)
+            #         auc_all += auc
 
 
-            avg_vloss = running_vloss / (i+1) 
+            #         y_scores.append(y_score) 
+            #         y_trues.append(y_true)
 
-            auc_all = np.array(auc_all) 
-            y_scores = np.concatenate(y_scores) 
-            y_trues = np.concatenate(y_trues) 
-            print(y_trues.shape,y_scores.shape)
 
-            auc_mean = np.mean(auc_all)
+            avg_vloss = 0 # running_vloss / (i+1) 
 
-            fname = os.path.join(out_path, 'scores_labels_ep={}'.format(epoch+1))
-            np.savez(fname, y_scores, y_trues)
+            # auc_all = np.array(auc_all) 
+            # y_scores = np.concatenate(y_scores) 
+            # y_trues = np.concatenate(y_trues) 
+            # print(y_trues.shape,y_scores.shape)
+
+            # auc_mean = np.mean(auc_all)
+
+            # fname = os.path.join(out_path, 'scores_labels_ep={}'.format(epoch+1))
+            # np.savez(fname, y_scores, y_trues)
 
             print(' LOSS train {:.3f} valid {:.3f}'.format(avg_loss, avg_vloss))
-            print(' AUC {:.3f}'.format(auc_mean))
+            # print(' AUC {:.3f}'.format(auc_mean))
 
 
             writer.add_scalars('Training vs. Val Loss',
@@ -204,7 +214,7 @@ class PropensityScore(object):
             writer.flush()
             epoch_number += 1 
 
-            if auc_mean > best_vauc: #TODO: select by per-imp AUC 
-                best_vauc = auc_mean 
-                model_path = os.path.join(out_path, 'model_best_{}'.format(epoch_number))
-                torch.save(self.model.state_dict(), model_path)
+            # if auc_mean > best_vauc: #TODO: select by per-imp AUC 
+            #     best_vauc = auc_mean 
+            #     model_path = os.path.join(out_path, 'model_best_{}'.format(epoch_number))
+            #     torch.save(self.model.state_dict(), model_path)
