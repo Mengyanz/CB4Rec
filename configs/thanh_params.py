@@ -14,8 +14,9 @@ def parse_args():
     parser.add_argument("--root_proj_dir",type=str,default="/home/thanhnt/projects/CB4Rec/")
     parser.add_argument("--model_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/")
     # parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
-    parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/runs/nrms_sim_20220209_211140/model_20220209_211140_6")
+    parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/pretrained_models/sim_nrms_bce_r14_ep6")
     parser.add_argument("--sim_threshold", type=float, default=0.38414)
+
     # NRMS: large/large.pkl 
     # PLM: epoch-2.pt 
     parser.add_argument("--out_path", type=str, default="/home/thanhnt/projects/CB4Rec/model")
@@ -33,8 +34,18 @@ def parse_args():
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
     parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
-    parser.add_argument("--sim_npratio", type=int, default=2)
+    parser.add_argument("--sim_npratio", type=int, default=4)
     parser.add_argument("--sim_val_batch_size", type=int, default=1024)
+
+
+    parser.add_argument("--propensity_score_num_pos", type=int, default=2)
+    parser.add_argument("--propensity_score_num_neg", type=int, default=10)
+    parser.add_argument("--pretrained_nrms_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
+    # parser.add_argument("--pretrained_nrms_path", type=str, default="/home/thanhnt/projects/CB4Rec/pretrained_models/sim_nrms_bce_r14_ep6_thres038414")
+    parser.add_argument("--ips_path", type=str, default="/home/thanhnt/projects/CB4Rec/runs/prop_pn=2-8_20220222_163423/model_best_4")
+    parser.add_argument("--ips_normalize", type=bool, default=True)
+    parser.add_argument("--sim_margin", type=float, default=0.001)
+    parser.add_argument("--reward_type", type=str, default='soft', help='soft/hard/hybrid')
 
                     
     parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')

@@ -23,7 +23,6 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         self.preinference_mode = self.args.preinference_mode
 
         # preprocessed data 
-        # TODO: make utils consistent for cb and simulator?
         self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, 'utils')
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = []
@@ -45,16 +44,17 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         print('Inference news {} times...'.format(self.n_inference))
         news_dataset = NewsDataset(self.nindex2vec) 
         news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
-        news_vecs = []
-
+        
         self.news_embs = []
         for i in range(self.n_inference): 
+            news_vecs = []
             for news in news_dl: # @TODO: avoid for loop
                 news = news.to(self.device)
                 news_vec = self.model.text_encoder(news).detach().cpu().numpy()
                 news_vecs.append(news_vec)
             self.news_embs.append(np.concatenate(news_vecs))
 
+            # print('Debug news embedding of # {} : {}'.format(i,np.concatenate(news_vecs)[0][:20]))
         # return np.concatenate(self.news_embs) # (n_inference, 130381, 400)
 
     # def _get_news_embs(self, news_vecs, user_samples): 
@@ -130,6 +130,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
 
                 optimizer.step()  
             self._get_news_embs()
+            self.data_buffer = [] # reset data buffer
         else:
             print('Skip update cb learner due to lack valid samples!')
 
@@ -146,6 +147,7 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
             and each of the topics they recommend an item (`rec_batch_size` items in total). 
             What if one item appears more than once in the list of `rec_batch_size` items? 
         """
+        print('size(data_buffer): {}'.format(len(self.data_buffer)))
         if mode == 'item':
             self.train() 
             

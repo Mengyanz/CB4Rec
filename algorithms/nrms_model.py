@@ -58,7 +58,9 @@ class MultiHeadAttention(nn.Module):
     def forward(self, Q, K, V, attn_mask=None):
         #       Q, K, V: [bz, seq_len, 300] -> W -> [bz, seq_len, 400]-> q_s: [bz, 20, seq_len, 20]
         batch_size, seq_len, _ = Q.shape
-        
+
+        # print('Q shape: ', Q.shape)
+        # print('d_model {}, d_k * n_heads {}'.format(self.d_model, self.d_k * self.n_heads))
         q_s = self.W_Q(Q).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
         k_s = self.W_K(K).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
         v_s = self.W_V(V).view(batch_size, -1, self.n_heads, self.d_v).transpose(1,2)
@@ -108,6 +110,7 @@ class TextEncoder(nn.Module):
                  embedding_matrix,
                  word_embedding_dim=300, 
                  num_attention_heads=20,
+                 attention_dim = 20,
                  query_vector_dim=200,
                  dropout_rate=0.2,
                  enable_gpu=True):
@@ -119,41 +122,47 @@ class TextEncoder(nn.Module):
             pretrained_news_word_embedding, freeze=False)
         
         self.multihead_attention = MultiHeadAttention(word_embedding_dim,
-                                              num_attention_heads, 20, 20)
-        self.additive_attention = AdditiveAttention(num_attention_heads*20,
-                                                    query_vector_dim)
+                                              num_attention_heads, attention_dim, attention_dim)
+        self.additive_attention = AdditiveAttention(             
+                                num_attention_heads*attention_dim,
+                                query_vector_dim)
     def forward(self, text):
         # REVIEW: remove training=self.training to enable dropout during testing 
         text_vector = F.dropout(self.word_embedding(text.long()),
                                 p=self.dropout_rate,
-                                # training=self.training
+                                training=True
                                 )
         multihead_text_vector = self.multihead_attention(
             text_vector, text_vector, text_vector)
         multihead_text_vector = F.dropout(multihead_text_vector,
                                           p=self.dropout_rate,
                                         #   training=self.training
+                                        training=True
                                           )
         # batch_size, word_embedding_dim
         text_vector = self.additive_attention(multihead_text_vector)
+        self.debug_text_vector = text_vector
         return text_vector
 
 class UserEncoder(nn.Module):
     def __init__(self,
                  news_embedding_dim=400,
                  num_attention_heads=20,
+                 attention_dim = 20, 
                  query_vector_dim=200
                 ):
         super(UserEncoder, self).__init__()
         self.multihead_attention = MultiHeadAttention(news_embedding_dim,
-                                              num_attention_heads, 20, 20)
-        self.additive_attention = AdditiveAttention(num_attention_heads*20,
-                                                    query_vector_dim)
+                                              num_attention_heads, attention_dim, attention_dim)
+        self.additive_attention = AdditiveAttention(
+                                    num_attention_heads*attention_dim,
+                                    query_vector_dim)
         
         self.neg_multihead_attention = MultiHeadAttention(news_embedding_dim,
-                                                         num_attention_heads, 20, 20)
+                                                         num_attention_heads, attention_dim, attention_dim)
         
     def forward(self, clicked_news_vecs):
+        # print('Debug in user encoder clicked news vecs shape: ', clicked_news_vecs.shape)
         multi_clicked_vectors = self.multihead_attention(
             clicked_news_vecs, clicked_news_vecs, clicked_news_vecs
         )
@@ -378,6 +387,45 @@ class NRMS_Sim_Model(nn.Module):
         
         if compute_loss:
             loss = self.criterion(self.m(score), targets)
+            return loss, score
+        else:
+            return score
+
+class NRMS_IPS_Model(nn.Module):
+    def __init__(self, embedding_matrix):
+        super(NRMS_IPS_Model, self).__init__()
+        self.text_encoder = TextEncoder(embedding_matrix)
+        self.user_encoder = UserEncoder()
+        
+        self.loss = nn.BCEWithLogitsLoss(reduction='none')
+    
+    def forward(self, candidate_news, clicked_news, targets, ips_scores, compute_loss=True, normalize=True):
+        """
+        Args:
+            candidate_news: (batch_size, 1 + npratio, vect_dim)
+            clicked_news: (batch_size, max_his_len, vect_dim)
+            targets: (batch_size, 1 + npratio) 
+            ips_score: (batch_size, 1 + npratio)
+        """
+        batch_size, one_plus_npratio, word_num = candidate_news.shape
+        candidate_news = candidate_news.view(-1, word_num)
+        candidate_vector = self.text_encoder(candidate_news).view(batch_size, one_plus_npratio, -1)
+        
+        batch_size, clicked_news_num, word_num = clicked_news.shape
+        clicked_news = clicked_news.view(-1, word_num)
+        clicked_news_vecs = self.text_encoder(clicked_news).view(batch_size, clicked_news_num, -1)
+        
+        user_vector = self.user_encoder(clicked_news_vecs)
+        
+        score = torch.bmm(candidate_vector, user_vector.unsqueeze(-1)).squeeze(dim=-1) # (batch_size,1 + npratio)
+        
+        if compute_loss:
+            if normalize:
+                norm = torch.sum(1. / ips_scores, axis=1)[:,None]
+                loss = (self.loss(score, targets) / ips_scores) / norm # (batch_size, n)
+                loss = torch.mean(loss) 
+            else:
+                loss = torch.mean(self.loss(score, targets) / ips_scores)
             return loss, score
         else:
             return score

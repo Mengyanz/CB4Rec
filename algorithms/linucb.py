@@ -52,16 +52,6 @@ class SingleStageLinUCB(ContextualBanditLearner):
         # DO NOT UPDATE CLICKED HISTORY
         pass 
 
-    def update_data_buffer(self, pos, neg, uid, t): 
-        # for nid in pos:
-        #     self.D[uid].append(nid)
-        #     self.c[uid].append(1)
-        # for nid in neg:
-        #     self.D[uid].append(nid)
-        #     self.c[uid].append(0)
-        # print('size(data_buffer): {}'.format(len(self.D)))
-        pass
-
     def getInv(self, old_Minv, nfv):
         # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
         # new_M=old_M+nfv*nfv'
@@ -93,7 +83,7 @@ class SingleStageLinUCB(ContextualBanditLearner):
             self.theta[uid]=np.dot(self.Ainv[uid], self.b[uid]) # n_dim,
         
     def _get_news_embedding(self, nindexes):
-        """
+        """word2vec embedding.
         Args
             nindexes: list of nindexes
         Return
@@ -196,9 +186,155 @@ class SingleStageLinUCB(ContextualBanditLearner):
     def reset(self):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = [] 
         # self.D = defaultdict(list) 
         # self.c = defaultdict(list)
         self.theta = {}
         self.A = {}
         self.Ainv = {}
         self.b = {}
+
+class LogisticRegression(torch.nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LogisticRegression, self).__init__()
+        self.linear = torch.nn.Linear(input_dim, output_dim)
+        
+    def forward(self, x):
+        outputs = torch.sigmoid(self.linear(x))
+        return outputs
+
+class GLMUCB(SingleStageLinUCB):
+    """Single stage Generalised linear model UCB
+    We only consider Logistic Regression here.
+    """
+
+    def __init__(self,device, args, name='GLMUCB'):
+        """GLMUCB.
+        """
+        super(GLMUCB, self).__init__(device, args, name)
+        self.name = name 
+        self.device = device 
+
+        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
+
+        word2vec = torch.from_numpy(word2vec).float()
+        self.word_embedding = nn.Embedding.from_pretrained(word2vec, freeze=True).to(self.device)
+
+
+        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
+        cb_news = []
+        for k,v in topic_news.items():
+            cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
+        self.cb_news = [item for sublist in cb_news for item in sublist]
+
+        self.dim = 300 # TODO: make it a parameter
+        self.lr_models = {} # key: user, value: LogisticRegression(self.dim, 1)
+        self.criterion = torch.nn.BCELoss()
+
+        self.gamma = self.args.gamma
+        self.A = {}
+        self.Ainv = {}
+        self.b = {}
+
+    def construct_trainable_samples(self, tr_uid):
+        """construct trainable samples which will be used in NRMS model training
+        from self.h_contexts, self.h_actions, self.h_rewards
+        """
+        tr_samples = []
+        tr_rewards = []
+        # print('Debug self.data_buffer: ', self.data_buffer)
+
+        for i, l in enumerate(self.data_buffer):
+            poss, negs, his, uid, tsp = l
+            if uid == tr_uid and len(poss) > 0:
+                tr_samples.extend(poss)
+                tr_rewards.extend([1] * len(poss))
+                tr_neg_len = int(min(1.5 * len(poss), len(negs)))
+                tr_samples.extend(np.random.choice(negs, size = tr_neg_len, replace=False))
+                tr_rewards.extend([0] * tr_neg_len)
+            # tr_samples.extend(poss)
+            # tr_rewards.extend([1]*len(poss))
+            # tr_samples.extend(negs)
+            # tr_rewards.extend([0]*len(negs))
+
+            self.data_buffer.remove(l)
+        # print('Debug tr_samples: ', tr_samples)
+        # print('Debug tr_rewards: ', tr_rewards)
+        # print('Debug self.data_buffer: ', self.data_buffer)
+        return np.array(tr_samples), np.array(tr_rewards)
+
+    def train(self, uid):
+        optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.lr)
+        ft_sam, ft_labels = self.construct_trainable_samples(uid)
+        x = self._get_news_embedding(ft_sam) # n_tr, n_dim
+        if len(ft_sam) > 0:
+            self.lr_models[uid].train()
+            for epoch in range(self.args.epochs):
+                preds = self.lr_models[uid](torch.Tensor(x))
+                # print('Debug preds: ', preds)
+                # print('Debug labels: ', rewards)
+                loss = self.criterion(preds, torch.Tensor(ft_labels))
+                
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+
+    def update(self, topics, items, rewards, mode = 'topic', uid = None):
+        """Update its internal model. 
+
+        Args:
+            topics: list of `rec_batch_size` str
+            items: a list of `rec_batch_size` item index (not nIDs, but its integer index from `nid2index`) 
+            rewards: a list of `rec_batch_size` {0,1}
+            mode: `topic`/`item`
+            uid: user id.
+        """
+        if mode == 'item':
+            print('Update linucb parameters for user {}!'.format(uid))
+            x = self._get_news_embedding(items).T # n_dim, n_hist
+            # Update parameters
+            self.A[uid]+=x.dot(x.T) # n_dim, n_dim
+            self.b[uid]+=x.dot(rewards) # n_dim, 
+            for i in x.T:
+                self.Ainv[uid]=self.getInv(self.Ainv[uid],i) # n_dim, n_dim
+            self.train(uid)
+            
+    def item_rec(self, uid, cand_news, m = 1): 
+        """
+        Args:
+            uid: str, a user id 
+            cand_news: a list of int (not nIDs but their index version from `nid2index`) 
+            m: int, number of items to rec 
+
+        Return: 
+            items: a list of `len(uids)`int 
+        """
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+
+        X = self._get_news_embedding(cand_news)
+
+        if uid not in self.lr_models:
+            self.A[uid] = np.identity(n=self.dim)
+            self.Ainv[uid] = np.linalg.inv(self.A[uid])
+            self.b[uid] = np.zeros((self.dim)) 
+            self.lr_models[uid] = LogisticRegression(self.dim, 1)
+            if self.pretrained_mode and len(self.clicked_history[uid]) > 0:
+                self.update(topics = None, items=self.clicked_history[uid], rewards=np.ones((len(self.clicked_history[uid]),)), mode = 'item', uid = uid)
+        
+        self.lr_models[uid].eval()
+        mean = self.lr_models[uid].forward(torch.Tensor(X)).detach().numpy().reshape(X.shape[0],) # n_cand, 
+        CI = np.array([self.gamma * np.sqrt(x.dot(self.Ainv[uid]).dot(x.T)) for x in X])
+        ucb = mean + CI # n_cand, 
+
+        nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
+        # print('Debug nid_argmax: ', nid_argmax)
+        print('Debug mean: ', mean[nid_argmax])
+        print('Debug CI: ', CI[nid_argmax])
+        print('Debug ucb: ', ucb[nid_argmax])
+
+        rec_itms = [cand_news[n] for n in nid_argmax]
+        return rec_itms 
