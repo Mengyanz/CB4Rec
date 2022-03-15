@@ -389,3 +389,42 @@ class NRMS_Sim_Model(nn.Module):
             return loss, score
         else:
             return score
+
+class NRMS_IPS_Model(nn.Module):
+    def __init__(self, embedding_matrix):
+        super(NRMS_IPS_Model, self).__init__()
+        self.text_encoder = TextEncoder(embedding_matrix)
+        self.user_encoder = UserEncoder()
+        
+        self.loss = nn.BCEWithLogitsLoss(reduction='none')
+    
+    def forward(self, candidate_news, clicked_news, targets, ips_scores, compute_loss=True, normalize=True):
+        """
+        Args:
+            candidate_news: (batch_size, 1 + npratio, vect_dim)
+            clicked_news: (batch_size, max_his_len, vect_dim)
+            targets: (batch_size, 1 + npratio) 
+            ips_score: (batch_size, 1 + npratio)
+        """
+        batch_size, one_plus_npratio, word_num = candidate_news.shape
+        candidate_news = candidate_news.view(-1, word_num)
+        candidate_vector = self.text_encoder(candidate_news).view(batch_size, one_plus_npratio, -1)
+        
+        batch_size, clicked_news_num, word_num = clicked_news.shape
+        clicked_news = clicked_news.view(-1, word_num)
+        clicked_news_vecs = self.text_encoder(clicked_news).view(batch_size, clicked_news_num, -1)
+        
+        user_vector = self.user_encoder(clicked_news_vecs)
+        
+        score = torch.bmm(candidate_vector, user_vector.unsqueeze(-1)).squeeze(dim=-1) # (batch_size,1 + npratio)
+        
+        if compute_loss:
+            if normalize:
+                norm = torch.sum(1. / ips_scores, axis=1)[:,None]
+                loss = (self.loss(score, targets) / ips_scores) / norm # (batch_size, n)
+                loss = torch.mean(loss) 
+            else:
+                loss = torch.mean(self.loss(score, targets) / ips_scores)
+            return loss, score
+        else:
+            return score
