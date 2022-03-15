@@ -6,20 +6,31 @@ import torch
 from algorithms.nrms_sim import NRMS_Sim 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu, SingleNerual_TwoStageUCB
+from algorithms.hcb import HCB
+from algorithms.phcb import pHCB
 from algorithms.neural_linear import NeuralLinearTS, NeuralLinearUCB_UserDisjoint, NeuralGLMUCB_UserItemHybrid, NeuralBilinUCB_Hybrid
 from algorithms.linucb import SingleStageLinUCB, GLMUCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
+import pickle
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "1,2,3,4"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
+class Tree():
+    def __init__(self):
+        self.emb         = None
+        self.size        = 0
+        self.gids        = []
+        self.children    = None
+        self.is_leaf     = False
+
 def main():
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
     print(args)
 
@@ -76,6 +87,14 @@ def main():
     elif args.algo == 'uniform_random':
         args.algo_prefix = args.algo
         learner = UniformRandom(device,args)
+    elif args.algo == 'hcb':
+        args.update_period = 1
+        root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
+        learner = HCB(device, args, root)
+    elif args.algo == 'phcb':
+        args.update_period = 1
+        root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
+        learner = pHCB(device, args, root)
     else:
         raise NotImplementedError
 

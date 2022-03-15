@@ -260,6 +260,7 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         # Update the topic model 
         if mode == 'topic': 
             for i, topic in enumerate(topics):  # h_actions are topics
+                print("attention::", rewards[i])
                 assert rewards[i] in {0,1}
                 self.alphas[topic] += rewards[i]
                 self.betas[topic] += 1 - rewards[i]
@@ -409,7 +410,7 @@ class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
             rec_topics.append(rec_topic)
             self.active_topics.remove(rec_topic)
 
-            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            # cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
             # DEBUG
             print('DEBUG:', rec_topic, len(cand_news))
             rec_item = self.item_rec(uid, cand_news,m=1)[0]

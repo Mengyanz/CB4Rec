@@ -153,6 +153,7 @@ def main(args):
     all_rewards = []
     for filename in filenames:
         print(filename)
+
         if 'greedy' in filename:
             algo_name = 'neural_greedy'
         elif 'neuralglmucb_uihybrid'in filename:
@@ -175,6 +176,7 @@ def main(args):
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
             h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
         h_rewards_all = h_rewards_all[0,:,:,:]
+
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
             h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
         print(h_rewards_all.shape)

@@ -131,7 +131,6 @@ def run_contextual_bandit(args, simulator, algos):
     # num_round = args.num_round
 
     np.random.seed(2022)
-
     clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
         train_clicked_history = pickle.load(fo)
@@ -210,20 +209,25 @@ def run_contextual_bandit(args, simulator, algos):
             print('user: {}.'.format(u))
             
             item_batches = []
+            item_batches_phcb = []
             topic_batches = []
             for a in algos:
                 topics, items = a.sample_actions(u) # recommend for user u using their current history 
 
                 topic_batches.append(topics) 
-                item_batches.append(items) 
+                if a.name.lower() != 'phcb':
+                    item_batches.append(items)
+                else:
+                    item_batches.append(items[0])
+                    item_batches_phcb.append(items)
 
             # action_batches = [a.sample_actions([context]).ravel() for a in algos] #(num_algos, args.rec_batch_size)
             print('  rec_topic: {}'.format(topic_batches))
 
-            print('  rec_news: {}'.format(item_batches))
+            print('  rec_news: {}'.format(item_batches)) # print('  rec_news: {}'.format([item.gid for item in item_batches[0]]))
 
-
-            reward_batches = [simulator.reward(u, items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
+            # other algorithms, hcb/phcb
+            reward_batches = [simulator.reward(u, items).ravel() if type(items[0]) is int else simulator.reward(u, [item.gid for item in items]).ravel()  for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
 
@@ -241,8 +245,11 @@ def run_contextual_bandit(args, simulator, algos):
             # Update the data buffer and clicked history and models
             for j,a in enumerate(algos):
                 topics = topic_batches[j]
-                items = item_batches[j] 
-                rewards = reward_batches[j] 
+                if a.name.lower() != 'phcb':
+                    items = item_batches[j]
+                else:
+                    items = item_batches_phcb[j]
+                rewards = reward_batches[j]
                 pos = []
                 neg = []
                 for it,r in zip(items, rewards):
@@ -263,10 +270,18 @@ def run_contextual_bandit(args, simulator, algos):
 
                 if t % args.update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
                     a.update(topics, items, rewards, mode = 'item', uid = u)
-
+                    
                 if t % args.item_linear_update_period == 0 and t > 0: # Update the item model (i.e. news_encoder and user_encoder)
                     # for neural linear model only
                     a.update(topics, items, rewards, mode = 'item-linear', uid = u)
+
+            if t % 1000 == 0 and t > 0:
+                temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
+                temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
+                print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
+                print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
+                np.save(temp_item_path, np.expand_dims(h_items, axis=0))
+                np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
                 
 

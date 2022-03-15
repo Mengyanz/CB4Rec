@@ -22,6 +22,7 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
                 new_proc = subprocess.Popen(
                     f'CUDA_VISIBLE_DEVICES={gpu_idx} {cmd}', shell=True)
                 procs[i] = new_proc
+                print("runnning ", cmd)
                 break
         time.sleep(1)
 
@@ -91,7 +92,7 @@ def create_commands(args, algo_group, result_path):
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} > {}".format(algo, algo_prefix, result_path,  log_path))
 
     else:
-        algo_prefix = algo_group +'-perRecScoreBudget' + str(args.per_rec_score_budget) 
+        algo_prefix = algo_group +'-ninference' + str(args.n_inference) + '-dynamic' + str(args.dynamic_aggregate_topic)+'-splitlarge' + str(args.split_large_topic) +'-perRecScoreBudget' + str(args.per_rec_score_budget) 
         # + '-' + str(args.n_trials) + '-' + str(args.T) 
         log_path = os.path.join(result_path, algo_prefix + '.log')
         commands.append("python run_experiment.py --algo {} --algo_prefix {} > {}".format(algo_group, algo_prefix, result_path,  log_path))
@@ -106,8 +107,8 @@ def run_exps(args, algo_groups, result_path):
     multi_gpu_launcher(commands, [1,2,3,4,5,6,7], 1)
 
 if __name__ == '__main__':
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    # from configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
     args = parse_args()
 
     # algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'neuralucb_neuralucb'] # 'single_linucb'

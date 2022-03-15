@@ -129,7 +129,10 @@ def load_cb_valid_data(args, trial=0):
 
 def load_cb_topic_news(args, ordered=False):
     if ordered:
-        fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json") 
+        if args.split_large_topic:
+            fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder_large_topic_splited.json") 
+        else:
+            fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json") 
         with open(fname, 'r') as f: 
             topic_list = json.load(f)
         fname = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
