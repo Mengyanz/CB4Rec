@@ -370,10 +370,23 @@ class NRMS_IPS_Sim(Simulator):
         print('word2vec', word2vec.shape)
 
         # model 
+        # model 
         self.model = NRMS_IPS_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
-            self.model.load_state_dict(torch.load(args.sim_path)) 
+            try:
+                self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model'))) 
+            except:
+                self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model_fix'))) 
+            p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
+            with open(p_dists_fname, 'rb') as fo: 
+                self.p_dists = pickle.load(fo)[0]
+
+            n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
+            with open(n_dists_fname, 'rb') as fo: 
+                self.n_dists = pickle.load(fo)[0]
+
+            self.sim_margin = args.sim_margin 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
 
@@ -385,6 +398,38 @@ class NRMS_IPS_Sim(Simulator):
         else:
             self.ips_model = PropensityScore(args, device, pretrained_mode=True)
        
+
+    # def reward(self, uid, news_indexes): 
+    #     """Returns a simulated reward. 
+
+    #     Args:
+    #         uid: str, user id 
+    #         news_indexes: a list of item index (not nID, but its integer version)
+
+    #     Return: 
+    #         rewards: (n,m) of 0 or 1 
+    #     """
+    #     batch_size = min(self.args.max_batch_size, len(news_indexes))
+
+    #     h = self.clicked_history[uid]
+    #     h = h + [0] * (self.args.max_his_len - len(h))
+    #     h = self.nindex2vec[h]
+
+    #     h = torch.Tensor(h[None,:,:])
+
+    #     sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
+    #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+
+    #     self.model.eval()
+    #     with torch.no_grad():
+    #         scores = []
+    #         for cn in rdl:
+    #             score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None, compute_loss=False)
+    #             scores.append(torch.sigmoid(score[:,None])) 
+    #         scores = torch.cat(scores, dim=0) 
+    #         print(scores)
+    #         rewards = (scores >= self.threshold).float().detach().cpu().numpy()
+    #     return rewards.ravel()
 
     def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
@@ -411,12 +456,24 @@ class NRMS_IPS_Sim(Simulator):
         with torch.no_grad():
             scores = []
             for cn in rdl:
-                score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None, compute_loss=False)
+                score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None,compute_loss=False)
                 scores.append(torch.sigmoid(score[:,None])) 
-            scores = torch.cat(scores, dim=0) 
-            print(scores)
-            rewards = (scores >= self.threshold).float().detach().cpu().numpy()
+            scores = torch.cat(scores, dim=0).float().detach().cpu().numpy()
+            p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
+            n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
+            
+            hard_rewards = (p_probs > n_probs).astype('float') 
+            rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
+            if self.args.reward_type == 'hard':
+                rewards = hard_rewards 
+            elif self.args.reward_type == 'soft': 
+                rewards = rand_rewards 
+            else: 
+                rewards = rand_rewards * hard_rewards 
+        for s,p,n in zip(scores, p_probs, n_probs):
+            print(s,p,n)
         return rewards.ravel()
+
 
     def _train_one_epoch(self, epoch_index, train_loader, writer):
         # ref: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html 

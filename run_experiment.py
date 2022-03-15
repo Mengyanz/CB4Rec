@@ -3,12 +3,12 @@
 import math, os 
 import numpy as np 
 import torch 
-from algorithms.nrms_sim import NRMS_Sim 
+from algorithms.nrms_sim import NRMS_IPS_Sim 
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB
 from core.contextual_bandit import run_contextual_bandit
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-device = torch.device("cuda:2")
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
+device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 def main():
@@ -25,7 +25,7 @@ def main():
     # args.sim_threshold = 0.38414
     rec_batch_size = 10
     # construct a simulator
-    simulator = NRMS_Sim(device, args)
+    simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True)
 
     # construct a list of CB learners 
     # ucblearner = SingleStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=10)
