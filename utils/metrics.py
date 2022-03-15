@@ -61,6 +61,7 @@ def batch_roc_auc_score(y_trues, y_scores):
     assert n2 == m2 
     res = []
     for y_true, y_score in zip(y_trues, y_scores):
+        # print(y_true, y_score)
         assert len(y_true) == n2 
         res.append(roc_auc_score(y_true,y_score))
     return res

@@ -138,7 +138,7 @@ def load_cb_topic_news(args):
 
 def newsample(nnn, ratio):
     if ratio > len(nnn):
-        return nnn + ["<unk>"] * (ratio - len(nnn))
+        return nnn + np.random.choice(nnn, ratio-len(nnn)).tolist() # ["<unk>"] * (ratio - len(nnn))
     else:
         return random.sample(nnn, ratio)
 
@@ -447,3 +447,40 @@ def newpossample(pos_news, num, rand=True):
             samples = pos_news[:num]
         mask = [1] * num 
         return samples, mask 
+
+
+class PropensityScoreDatasetWithRealLabels(Dataset):
+    def __init__(self, args, uidset, user2vecs, item2vecs, nid2index, uid2index, user_news_obs, user_count, pair_count, rand=True):
+        self.nid2index = nid2index 
+        self.uid2index = uid2index
+        self.user2vecs = user2vecs # (uindex,vec)
+        self.item2vecs = item2vecs # (nindex,vec)
+        self.uidset = uidset
+        self.user_news_obs = user_news_obs
+        self.news_space = list(nid2index) 
+        self.num_pos = args.propensity_score_num_pos 
+        self.num_neg = args.propensity_score_num_neg 
+        self.rand = rand
+        self.user_count = user_count 
+        self.pair_count = pair_count 
+
+    def __len__(self):
+        return len(self.uidset)   
+
+    def __getitem__(self, idx): 
+        uid = self.uidset[idx] 
+        uindex = self.uid2index[uid]
+        pos_samples, pos_mask = newpossample(self.user_news_obs[uindex], self.num_pos,self.rand) 
+        neg_samples, neg_mask = newnegsample(self.user_news_obs[uindex], self.news_space, self.num_neg, self.rand)  
+        samples = pos_samples + neg_samples 
+        mask = pos_mask + neg_mask 
+        labels = []
+        for i in samples:
+            nominator = self.pair_count[uindex] 
+            nominator = 0 if i not in nominator else nominator[i]
+            labels.append(nominator * 1.0 / self.user_count[uindex])
+        uvec = torch.flatten(torch.Tensor(self.user2vecs[uindex])) # (d1,)
+        ivec = torch.Tensor(self.item2vecs[[ self.nid2index[n] for n in samples]]) #(n,d2)
+        labels = torch.Tensor(np.array(labels).astype('float32')) #(n,)
+        mask = torch.Tensor(np.array(mask).astype('float32')) #(n,)
+        return uvec, ivec, labels, mask

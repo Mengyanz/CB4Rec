@@ -321,10 +321,13 @@ def behavior_preprocess(args):
     # else:
     read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
 
-    train_user_set, _, tr_rep_sorted_samples, _ = \
+    train_user_set, samples, tr_rep_sorted_samples, _ = \
         read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 1) 
 
     print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
+
+    with open(os.path.join(out_path, "train_multisample_contexts.pkl"), "wb") as f:
+        pickle.dump(samples, f)
 
     # Create a click history for each user in train: 
     # Each user in the MIND train has the same clicked history across samples
@@ -722,6 +725,76 @@ def get_nrms_vecs_for_propensity_score(args):
         print(user_embs.shape)
         np.save(os.path.join(out_path, 'user_embs'), user_embs) #TODO: include val users too
 
+def compute_empirical_ips(args): 
+    from utils.data_util import load_word2vec
+    nid2index, word2vec, nindex2vec = load_word2vec(args)
+    data_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+
+    with open(os.path.join(data_path, "uid2index.pkl"), "rb") as f:
+        uid2index = pickle.load(f)
+
+    n_users = len(uid2index) 
+    n_items = len(nid2index) 
+    print('#users {} #items {}'.format(n_users, n_items)) 
+    train_user_count = np.zeros((n_users,))
+    # pair_count = np.zeros((n_users, n_items))
+    train_pair_count = dict([(key, dict()) for key in range(n_users)])
+
+     
+    print('open train_multisample_contexts.pkl')
+    with open(os.path.join(data_path, "train_multisample_contexts.pkl"), "rb") as fo:
+        samples = pickle.load(fo)
+
+    for sample in tqdm(samples): 
+        pos_imp, neg_imp, his, uid, tsp = sample 
+        imp = pos_imp + neg_imp 
+        train_user_count[uid2index[uid]] +=1 
+        sub_d = train_pair_count[uid2index[uid]]
+        for i in imp:
+            # pair_count[train_uid2index[uid], nid2index[i]] +=1
+            if i in sub_d:
+                sub_d[i] += 1 
+            else:
+                sub_d[i] = 1 
+        train_pair_count[uid2index[uid]] = sub_d 
+
+    # assertion 
+    with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
+        samples = pickle.load(fo)
+    for sample in tqdm(samples):
+        pos_imp, neg_imp, his, uid, tsp = sample 
+        imp = [pos_imp] + neg_imp 
+        for i in imp: 
+            assert i in train_pair_count[uid2index[uid]]
+    
+    np.save(os.path.join(data_path, 'train_user_count'), train_user_count)
+    with open(os.path.join(data_path, 'train_pair_count.pkl'), 'wb') as fo: 
+        pickle.dump(train_pair_count, fo)
+
+    val_pair_count = train_pair_count 
+    val_user_count = train_user_count
+    with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
+        val_samples = pickle.load(fo)
+
+    for sample in tqdm(val_samples):
+        imp, labels, his, uid, tsp = sample 
+        val_user_count[uid2index[uid]] +=1 
+        sub_d = val_pair_count[uid2index[uid]]
+        for i in imp:
+            # pair_count[train_uid2index[uid], nid2index[i]] +=1
+            if i in sub_d:
+                sub_d[i] += 1 
+            else:
+                sub_d[i] = 1 
+        val_pair_count[uid2index[uid]] = sub_d 
+        
+    np.save(os.path.join(data_path, 'val_user_count'), val_user_count)
+    with open(os.path.join(data_path, 'val_pair_count.pkl'), 'wb') as fo: 
+        pickle.dump(val_pair_count, fo)
+
+
+
+
 if __name__ == "__main__":
     # from parameters import parse_args
     from configs.thanh_params import parse_args
@@ -740,6 +813,7 @@ if __name__ == "__main__":
 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
 
-    preprocesss_for_propensity_score(args)
+    # preprocesss_for_propensity_score(args)
 
     # get_nrms_vecs_for_propensity_score(args) 
+    compute_empirical_ips(args)
