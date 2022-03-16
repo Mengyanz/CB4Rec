@@ -3,7 +3,7 @@
 import math, os 
 import numpy as np 
 import torch 
-from algorithms.nrms_sim import NRMS_Sim 
+from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu, SingleNerual_TwoStageUCB
 from algorithms.hcb import HCB
@@ -15,7 +15,7 @@ from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 import pickle
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
@@ -42,7 +42,7 @@ def main():
     # args.sim_threshold = 0.38414
     rec_batch_size = 10
     # construct a simulator
-    simulator = NRMS_Sim(device, args)
+    simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True)
 
     print('Debug args.algo:', args.algo)
     if args.algo_prefix == 'algo':
