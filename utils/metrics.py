@@ -52,3 +52,15 @@ def evaluation_split(news_vecs, user_vecs, samples, nid2index):
         except Exception as e:
             print(e)
     return np.array(all_rslt)
+
+
+def batch_roc_auc_score(y_trues, y_scores):
+    n1,n2 = y_trues.shape 
+    m1,m2 = y_scores.shape 
+    assert n1 == m1 
+    assert n2 == m2 
+    res = []
+    for y_true, y_score in zip(y_trues, y_scores):
+        assert len(y_true) == n2 
+        res.append(roc_auc_score(y_true,y_score))
+    return res

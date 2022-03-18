@@ -16,7 +16,6 @@ class ContextualBanditLearner(object):
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
         self.name = name 
-        print(name)
         self.args = args
         self.rec_batch_size = self.args.rec_batch_size
         self.per_rec_score_budget = self.args.per_rec_score_budget
@@ -148,13 +147,17 @@ def run_contextual_bandit(args, simulator, algos):
     algos_name = ''
     for a in algos:
         algos_name += (a.name+'-')
-    result_path = os.path.join(args.root_proj_dir, 'results', args.algo_prefix.split('-')[0])
-    if not os.path.exists(result_path):
-        os.mkdir(result_path) 
+
+    # runs_path = os.path.join(args.result_path, 'runs') # store running results
+    trial_path = os.path.join(args.result_path, 'trial') # store final results
+    # if not os.path.exists(trial_path):
+    #         os.mkdir(trial_path) 
+    # all_path = os.path.join(args.result_path, 'all') # store all results
 
     for e in range(args.n_trials):
-        item_path = os.path.join(result_path,  "items-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
-        reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, args.T))
+        # store each trial results
+        item_path = os.path.join(trial_path,  "{}-items-{}-{}.npy".format(e, args.algo_prefix, args.T))
+        reward_path = os.path.join(trial_path, "{}-rewards-{}-{}.npy".format(e, args.algo_prefix, args.T))
         if os.path.exists(reward_path):
             # if the trail reward is already stored, pass the trail. 
             print('{} exists.'.format(reward_path))
@@ -290,13 +293,18 @@ def run_contextual_bandit(args, simulator, algos):
             #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
             #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
-        h_items_all.append(h_items)
-        h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
-        print('Debug h_items shape: ', np.array(h_items_all).shape)
-        print('Debug h_rewards shape: ', np.array(h_rewards_all).shape)
-        np.save(item_path, np.array(h_items_all))
-        np.save(reward_path, np.array(h_rewards_all))
-    return np.array(h_items_all), np.array(h_rewards_all)
+        np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
+        np.save(reward_path, np.array(h_rewards))
+        print('Debug h_items shape: ', np.array(h_items).shape)
+        print('Debug h_rewards shape: ', np.array(h_rewards).shape)
+
+    #     h_items_all.append(h_items)
+    #     h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
+    #     print('Debug h_items_all shape: ', np.array(h_items_all).shape)
+    #     print('Debug h_rewards_all shape: ', np.array(h_rewards_all).shape)
+        
+        
+    # return np.array(h_items_all), np.array(h_rewards_all)
 
     
 
