@@ -128,7 +128,8 @@ class pHCB(ContextualBanditLearner):
         arms_emb = np.array([user.arms[index].arm.emb for index in aids])
         depths = np.array([user.arms[index].depth for index in aids])
         ucb = user.getProb(arms_emb) * depths
-        aid_argmax = np.argsort(ucb)[::-1][:1].tolist()[0]
+        index_argmax = np.argsort(ucb)[::-1][:1].tolist()[0]
+        aid_argmax = aids[index_argmax]
         arm_picker= user.arms[aid_argmax]
         # for index in aids:
         #     arm = user.arms[index]
@@ -138,10 +139,10 @@ class pHCB(ContextualBanditLearner):
         #         aid = index
         #         max_r = reward
         # arm_picker = user.arms[aid]
-        if len(arm_picker.gids)<=self.args.per_rec_score_budget:
+        if len(arm_picker.gids)<=score_budget:
             arms = [self.items[gid] for gid in arm_picker.gids]
         else:
-            arms = [self.items[gid] for gid in np.random.choice(arm_picker.gids,self.args.per_rec_score_budget,replace=False).tolist()]
+            arms = [self.items[gid] for gid in np.random.choice(arm_picker.gids,score_budget,replace=False).tolist()]
         
         items = self.users[user.uid].linucb.decide(user.uid,arms, self.rec_batch_size)
         return np.empty(0), (items, arm_picker, aid_argmax)
@@ -197,3 +198,4 @@ class pHCB(ContextualBanditLearner):
         # self.D = defaultdict(list) 
         # self.c = defaultdict(list)
         self.users = {}
+        self.user_pretrain_flag = []

@@ -5,7 +5,40 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import glob 
+from tqdm import tqdm
 
+def sigmoid(x):
+    return 1/(1 + np.exp(-x))
+
+def cal_item_metric(rec_items_all, algo_names):
+    nindex2embedding = np.load("./data/large/utils/nindex2embedding.npy")
+    n_trials, n_algos, rec_bs, T = rec_items_all.shape
+    print('# trails: ', n_trials, ', # algos: ', n_algos, ', # rec_bs: ', rec_bs, ', T: ', T)
+    rec_items_all = rec_items_all.transpose(1, 0, 3, 2) # n_algos, n_trials, T, rec_bs
+    metrics = {}
+    means = []
+    stds = []
+    for algo_i in tqdm(range(rec_items_all.shape[0]), total=rec_items_all.shape[0]):
+        scores = []
+        for trial_i in range(rec_items_all.shape[1]):
+            rec_items = rec_items_all[algo_i][trial_i]
+            all_embedding = []
+            for batch in rec_items.T:
+                batch = list(map(int, batch))
+                all_embedding.append(nindex2embedding[batch])
+            all_embedding = np.concatenate(all_embedding, axis=0)
+            
+            for i in tqdm(range(all_embedding.shape[0])):
+                for j in range(all_embedding.shape[1]):
+                    if i == j:
+                        continue
+                    scores.append(1.0/2 - sigmoid(all_embedding[i] @ all_embedding[j])/2)
+        
+        metrics[algo_names[algo_i]] = [np.mean(scores), np.std(scores)]
+    return metrics
+        
+    
+        
 
 def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward'],):  
     n_trials, n_algos, rec_bs, T = h_rewards_all.shape
@@ -52,6 +85,25 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward'],):
     
     return metrics
 
+def plot_item_metrics(args, metrics, algo_names, plot_title):
+    plt_path = os.path.join(args.root_proj_dir, 'plots')
+    if not os.path.exists(plt_path):
+        os.mkdir(plt_path) 
+    plt.figure()
+    i = 0
+    for name, value in metrics.items():
+        mean, std = value
+        # n_algos, T = mean.shape
+        # for i in range(n_algos):
+        plt.bar(i, mean, label = algo_names[i][:15])
+        # plt.fill_between(i, mean+std, mean - std, alpha = 0.2)
+        plt.legend()
+        i += 1
+    plt.xlabel('algorithms')
+    plt.ylabel('diversity score')
+    plt.title(plot_title)
+    plt.savefig(os.path.join(plt_path, plot_title + '.png'))
+
 def plot_metrics(args, metrics, algo_names, plot_title):
     plt_path = os.path.join(args.root_proj_dir, 'plots')
     if not os.path.exists(plt_path):
@@ -78,16 +130,16 @@ def plot_metrics(args, metrics, algo_names, plot_title):
 def cal_base_ctr(args):
     """calculate base ctr: uniform random policy 10 trails average ctr
     """
-    filename = 'rewards-uniform_random-9-1000.npy'
+    filename = 'rewards-uniform_random-0-1000.npy'
     h_rewards_all = np.array(np.load(os.path.join(args.root_proj_dir, "results", filename)))
     print(h_rewards_all.shape)
     all_rewards = np.concatenate([h_rewards_all], axis = 1)
     metrics = cal_metric(all_rewards, 'uniform_random', ['cumu_reward', 'ctr'])
-    plot_metrics(args, metrics, 'uniform_random', plot_title='Uniform Random 10 trials')
+    plot_metrics(args, metrics, 'uniform_random', plot_title='Uniform Random 0 trials')
     return metrics
 
 def main(args):
-    filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "rewards-*dynamicFalse-0-1000.npy"))
+    filenames = glob.glob(os.path.join(args.root_proj_dir, "results","hcb", "rewards-*dynamicFalse*50-0-1000.npy")) + glob.glob(os.path.join(args.root_proj_dir, "results","phcb", "rewards-*dynamicFalse*50-0-1000.npy"))
     print('Debug filenames: ', filenames)
     algo_names = []
     all_rewards = []
@@ -105,11 +157,31 @@ def main(args):
     
     metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr']) # , 'cumu_reward', 'ctr'
     plot_metrics(args, metrics, algo_names, plot_title='trail0')
-
+    
+    
+    item_filenames = glob.glob(os.path.join(args.root_proj_dir, "results", "items-*dynamicFalse*-0-1000.npy"))
+    print('Debug item_filenames: ', item_filenames)
+    algo_names = []
+    all_rewards = []
+    for filename in item_filenames:
+        print(filename)
+        algo_name = '-'.join(filename.split('-')[1:6])
+        algo_names.append(algo_name)
+        h_rewards_all = np.load(filename)[:,:,:,:]
+        if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
+            h_rewards_all = np.expand_dims(h_rewards_all, axis = 0)
+        print(h_rewards_all.shape)
+        all_rewards.append(h_rewards_all)
+    all_rewards = np.concatenate(all_rewards, axis = 1)
+    print(all_rewards.shape)
+    
+    metrics = cal_item_metric(all_rewards, algo_names) # , 'cumu_reward', 'ctr'
+    plot_item_metrics(args, metrics, algo_names, plot_title='trail0_item')
+    
 if __name__ == '__main__':
     # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    #f rom configs.mezhang_params import parse_args
+    from configs.zhenyu_params import parse_args
 
     args = parse_args()
     main(args)
