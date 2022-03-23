@@ -13,8 +13,11 @@ class ContextualBanditLearner(object):
         print(name)
         self.args = args
         self.rec_batch_size = rec_batch_size
+
+        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = []
         
-        self.reset()
+        # self.reset()
         
     def set_clicked_history(self, init_clicked_history):
         self.clicked_history = init_clicked_history
@@ -112,10 +115,16 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
     with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
         cb_val_users = pickle.load(fo) 
 
-    for e in range(args.n_trials):
-        h_items_all = [] 
-        h_rewards_all = []
+    prefix = ''
+    for a in algos:
+        prefix += a.name + '_'
+    prefix = prefix + 'reward-{}'.format(args.reward_type) + '_topicdisabled-{}'.format(args.topic_update_disabled) \
+        + '_cbpretrained-{}'.format(args.pretrained_cb)
+    result_path = './results_new'
 
+    h_items_all = [] 
+    h_rewards_all = []
+    for e in range(args.n_trials):
         # reset each CB learner
         [a.reset() for a in algos] 
 
@@ -163,6 +172,7 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
             reward_batches = [simulator.reward(u, items).ravel() for items in item_batches] #(num_algos, rec_batch_size)
             #@TODO: simulator has a complete history of each user, and it uses that complete history to simulate reward. 
             print('  rewards: {}'.format(reward_batches))
+            print(' CTR: {}'.format(np.mean(np.array(reward_batches))))
 
             # main
             # reward_batches = [simulator.reward([context], action_batch).ravel() for action_batch in action_batches] #(num_algos, rec_batch_size)
@@ -202,11 +212,10 @@ def run_contextual_bandit(args, simulator, rec_batch_size, algos):
         h_items_all.append(h_items)
         h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
 
-
-    result_path = './results'
-    if not os.path.exists(result_path):
-        os.mkdir(result_path) 
-    np.save(os.path.join(result_path, "rewards-{}.npy".format(e)), np.array(h_rewards_all))
+    
+        if not os.path.exists(result_path):
+            os.mkdir(result_path) 
+        np.save(os.path.join(result_path, "rewards-{}.npy".format(prefix)), np.array(h_rewards_all))
 
     # TODO: records all results for different exper and round
     return np.array(h_items_all), np.array(h_rewards_all)

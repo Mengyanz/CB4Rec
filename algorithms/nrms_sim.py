@@ -458,7 +458,7 @@ class NRMS_IPS_Sim(Simulator):
             for cn in rdl:
                 score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None,compute_loss=False)
                 scores.append(torch.sigmoid(score[:,None])) 
-            scores = torch.cat(scores, dim=0).float().detach().cpu().numpy()
+            scores = torch.cat(scores, dim=0).float().detach().cpu().numpy().ravel()
             p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
             n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
             
@@ -468,8 +468,21 @@ class NRMS_IPS_Sim(Simulator):
                 rewards = hard_rewards 
             elif self.args.reward_type == 'soft': 
                 rewards = rand_rewards 
-            else: 
+            elif self.args.reward_type == 'hybrid':
                 rewards = rand_rewards * hard_rewards 
+            elif self.args.reward_type == 'bern':
+                rewards = np.random.binomial(n=1, p=scores)
+            elif self.args.reward_type == 'threshold_eps':
+                rewards = (scores > self.args.sim_threshold).astype('float') 
+                EPS = 0.1
+                mask = np.random.binomial(n=1, p = np.array([EPS] * rewards.shape[0]))
+                print(mask.shape, rewards.shape)
+                assert mask.shape == rewards.shape
+                rewards = rewards * (1 - mask) + (1 - rewards) * mask
+            elif self.args.reward_type == 'threshold':
+                rewards = (scores > self.args.sim_threshold).astype('float')
+            else:
+                raise NotImplementedError
         for s,p,n in zip(scores, p_probs, n_probs):
             print(s,p,n)
         return rewards.ravel()

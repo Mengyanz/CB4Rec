@@ -302,17 +302,33 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
 
         # model 
         self.model = NRMS_Model(word2vec).to(self.device)
-        if self.pretrained_mode == 'pretrained':
+        if self.pretrained_mode:
+            print('{} loads from {}'.format(name, args.learner_path))
             self.model.load_state_dict(torch.load(args.learner_path)) 
+        else:
+            print('{} from init'.format(name))
  
         self.cb_topics = list(self.cb_news.keys())
-
+        
         self.alphas = {}
         self.betas = {}
-
         for topic in self.cb_topics:
             self.alphas[topic] = 1
             self.betas[topic] = 1
+
+
+
+    def reset(self): 
+        # super(DummyTwoStageNeuralUCB, self).reset() 
+        # self.cb_topics = list(self.cb_news.keys())
+        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = [] 
+        self.alphas = {}
+        self.betas = {}
+        for topic in self.cb_topics:
+            self.alphas[topic] = 1
+            self.betas[topic] = 1
+
 
     def topic_rec(self):
         """    
@@ -379,10 +395,13 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         """
         # Update the topic model 
         if mode == 'topic': 
-            for i, topic in enumerate(topics):  # h_actions are topics
-                assert rewards[i] in {0,1}
-                self.alphas[topic] += rewards[i]
-                self.betas[topic] += 1 - rewards[i]
+            if self.args.topic_update_disabled: 
+                pass 
+            else: 
+                for i, topic in enumerate(topics):  # h_actions are topics
+                    assert rewards[i] in {0,1}
+                    self.alphas[topic] += rewards[i]
+                    self.betas[topic] += 1 - rewards[i]
 
         # Update the user_encoder and news_encoder using `self.clicked_history`
         if mode == 'item': 

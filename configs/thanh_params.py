@@ -1,5 +1,6 @@
 import argparse
 import logging
+from distutils import util
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -15,6 +16,8 @@ def parse_args():
     # parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
     parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/pretrained_models/sim_nrms_bce_r14_ep6")
     parser.add_argument("--sim_threshold", type=float, default=0.38414)
+    parser.add_argument("--learner_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
+
 
     # NRMS: large/large.pkl 
     # PLM: epoch-2.pt 
@@ -46,6 +49,8 @@ def parse_args():
     parser.add_argument("--empirical_ips", type=bool, default=True)
     parser.add_argument("--sim_margin", type=float, default=0.001)
     parser.add_argument("--reward_type", type=str, default='soft', help='soft/hard/hybrid')
+    parser.add_argument("--topic_update_disabled", default=False, type=util.strtobool)
+    parser.add_argument("--pretrained_cb", type=util.strtobool, default=False)
 
                     
     parser.add_argument("--T", type=int, default=10, help = 'number of rounds (interactions)')
@@ -101,11 +106,12 @@ def parse_args():
         default=None,
         help="choose which ckpt to load and test"
     )
-    args = parser.parse_args(args=[])
+    return parser 
+    # args = parser.parse_args(args=[])
 
-    logging.info(args)
-    return args
+    # logging.info(args)
+    # return args
 
 
-if __name__ == "__main__":
-    args = parse_args()
+# if __name__ == "__main__":
+#     args = parse_args()
