@@ -34,28 +34,52 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
 
 def create_commands(args, algo_group, result_path):
     commands = []
-    if algo_group == 'test':
-        for algo in ['glmucb']:
-            num_selected_users = 10
+    num_selected_users = 10
+    if algo_group == 'tune_pretrainedMode_rewardType':
+        for pretrained_mode in [True, False]:
+            for reward_type in ['threshold']: # 'soft', 'hybrid', 'hard', 
+                algo = 'greedy'
+                algo_prefix = algo + '-pretrained' + str(pretrained_mode) + '-reward' + str(reward_type) 
+                # + '-' + str(args.n_trials) + '-' + str(args.T) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --pretrained_mode {} --reward_type {} > {}".format(algo, algo_prefix, result_path, pretrained_mode, reward_type, log_path))
+    elif algo_group == 'tune_pretrainedMode_nuser':
+        for pretrained_mode in [True, False]:
+            for num_selected_users in [10, 100, 1000]:
+                reward_type = 'threshold-eps'
+                algo = 'greedy'
+                algo_prefix = algo + '-pretrained' + str(pretrained_mode) + '-num_selected_users' + str(num_selected_users)
+                # + '-' + str(args.n_trials) + '-' + str(args.T) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --num_selected_users {} --result_path {} --pretrained_mode {} --reward_type {} > {}".format(algo, algo_prefix, num_selected_users, result_path, pretrained_mode, reward_type, log_path))
+
+    elif algo_group == 'test':
+        for algo in ['glmucb']:       
             # algo_prefix = algo + '-num_selected_users' + str(num_selected_users)
-            for epochs in [1, 5, 10]:
-                for lr in [0.1, 0.01]:
+            for epochs in [1, 5]:
+                for lr in [0.1, 0.01, 0.001]:
                     algo_prefix = algo + '-num_selected_users' + str(num_selected_users) + '-epochs' + str(epochs) + '-lr' + str(lr)
                     # + '-' + str(args.n_trials) + '-' + str(args.T) 
                     log_path = os.path.join(result_path, algo_prefix + '.log')
                     commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --epochs {} --lr {} > {}".format(algo, algo_prefix, result_path, num_selected_users, epochs, lr, log_path))
             # commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {}".format(algo, algo_prefix, result_path, num_selected_users))
+        for algo in ['single_neuralucb']: # , 'greedy', 'single_linucb'
+            algo_prefix =  algo + '-num_selected_users' + str(num_selected_users)
+            print('Debug algo_prefix: ', algo_prefix)
+            # + '-' + str(args.n_trials) + '-' + str(args.T) 
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
     elif algo_group == 'tune_neural_linear':
-        for algo in ['neuralbilinucb_hybrid']: # 'neural_linearts', 'neuralglmucb_uihybrid'
-            for gamma in [0, 0.1, 0.5, 1]:
-                algo_prefix = algo + '-gamma' + str(gamma)
+        for algo in ['neuralbilinucb_hybrid', 'neuralglmucb_uihybrid']: # 'neural_linearts', 'neuralglmucb_uihybrid'
+            for gamma in [0, 0.1]:
+                algo_prefix = algo  + '-gamma' + str(gamma) + '-num_selected_users' + str(num_selected_users)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
-                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --gamma {} > {}".format(algo, algo_prefix, result_path, gamma, log_path))
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --gamma {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, gamma, num_selected_users, log_path))
                 # commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {}".format(algo, algo_prefix, result_path))
     elif algo_group == 'tune_ts_neuralucb':
         for uniform_init in [True, False]:
-            algo_prefix = algo_group  + '-TSUniInit' + str(uniform_init) 
+            algo_prefix = 'TSUniInit' + str(uniform_init) 
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --uniform_init {}> {}".format(algo_group, algo_prefix, result_path, uniform_init, log_path))
@@ -71,21 +95,25 @@ def create_commands(args, algo_group, result_path):
         for fix_user in [True, False]:
             sim_sampleBern = True
             n_trials = 10
-            algo_prefix = algo_group + '-ts_neuralucb'  + '-FixUser' + str(fix_user) + '-SimSampleBern' + str(sim_sampleBern) 
+            algo_prefix =  'ts_neuralucb'  + '-FixUser' + str(fix_user) + '-SimSampleBern' + str(sim_sampleBern) 
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --fix_user {} --sim_sampleBern {} --n_trials {}> {}".format('ts_neuralucb', algo_prefix, result_path,  fix_user, sim_sampleBern, n_trials, log_path))
     elif algo_group == 'tune_topic_update_period':
-        for topic_update_period in [1,10]:
-            algo = 'neuralucb_neuralucb'
-            algo_prefix = algo_group + '-' + algo + '-topicUpdate' + str(topic_update_period) 
-            print('Debug algo_prefix: ', algo_prefix)
-            # + '-' + str(args.n_trials) + '-' + str(args.T) 
-            log_path = os.path.join(result_path, algo_prefix + '.log')
-            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --topic_update_period {} > {}".format(algo, algo_prefix, result_path,  topic_update_period, log_path))
-    elif algo_group == 'baselines':
-        for algo in ['single_neuralucb']: # , 'greedy', 'single_linucb'
-            algo_prefix = algo_group + '-' + algo 
+        for algo in ['neuralucb_neuralucb', 'ts_neuralucb']:
+            if algo == 'ts_neuralucb':
+                updates = [1]
+            else:
+                updates = [10,50,100]
+            for topic_update_period in updates:
+                algo_prefix = algo + '-topicUpdate' + str(topic_update_period) + '-num_selected_users' + str(num_selected_users)
+                print('Debug algo_prefix: ', algo_prefix)
+                # + '-' + str(args.n_trials) + '-' + str(args.T) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --topic_update_period {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path,  topic_update_period, num_selected_users, log_path))
+    elif algo_group == 'single_stage':
+        for algo in ['single_neuralucb', 'greedy', 'single_linucb', 'glmucb']: # , 'greedy', 'single_linucb'
+            algo_prefix = algo 
             print('Debug algo_prefix: ', algo_prefix)
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
@@ -95,7 +123,7 @@ def create_commands(args, algo_group, result_path):
         algo_prefix = algo_group +'-ninference' + str(args.n_inference) + '-dynamic' + str(args.dynamic_aggregate_topic)+'-splitlarge' + str(args.split_large_topic) +'-perRecScoreBudget' + str(args.per_rec_score_budget) 
         # + '-' + str(args.n_trials) + '-' + str(args.T) 
         log_path = os.path.join(result_path, algo_prefix + '.log')
-        commands.append("python run_experiment.py --algo {} --algo_prefix {} > {}".format(algo_group, algo_prefix, result_path,  log_path))
+        commands.append("python run_experiment.py --algo {} --algo_prefix {} --result_path {} > {}".format(algo_group, algo_prefix, result_path,  log_path))
     return commands
 
 
@@ -107,13 +135,15 @@ def run_exps(args, algo_groups, result_path):
     multi_gpu_launcher(commands, [1,2,3,4,5,6,7], 1)
 
 if __name__ == '__main__':
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
     args = parse_args()
 
     # algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'neuralucb_neuralucb'] # 'single_linucb'
     # algo_group = ['tune_ts_neuralucb']
-    algo_groups = ['tune_neural_linear'] # tune_dynamicTopic
+    algo_groups =  ['tune_pretrainedMode_nuser'] # tune_dynamicTopic, tune_neural_linear, tune_topic_update_period, test, tune_pretrainedMode_rewardType
+    
+    print("============================algo groups: {} ==============================".format(algo_groups))
     timestr = time.strftime("%Y%m%d-%H%M")
     for algo_group in algo_groups:
         result_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr)

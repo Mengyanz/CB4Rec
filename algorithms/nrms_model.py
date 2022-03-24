@@ -113,6 +113,7 @@ class TextEncoder(nn.Module):
                  attention_dim = 20,
                  query_vector_dim=200,
                  dropout_rate=0.2,
+                 news_embedding_dim = 400,
                  enable_gpu=True):
         super(TextEncoder, self).__init__()
         self.dropout_rate = dropout_rate
@@ -126,6 +127,13 @@ class TextEncoder(nn.Module):
         self.additive_attention = AdditiveAttention(             
                                 num_attention_heads*attention_dim,
                                 query_vector_dim)
+        if news_embedding_dim != num_attention_heads * attention_dim:
+            self.reduce_dim = True
+            self.reduce_dim_linear = nn.Linear(num_attention_heads * attention_dim,
+                                           news_embedding_dim)
+        else:
+            self.reduce_dim = False
+
     def forward(self, text):
         # REVIEW: remove training=self.training to enable dropout during testing 
         text_vector = F.dropout(self.word_embedding(text.long()),
@@ -141,7 +149,8 @@ class TextEncoder(nn.Module):
                                           )
         # batch_size, word_embedding_dim
         text_vector = self.additive_attention(multihead_text_vector)
-        self.debug_text_vector = text_vector
+        if self.reduce_dim:
+            text_vector = self.reduce_dim_linear(text_vector)
         return text_vector
 
 class UserEncoder(nn.Module):
@@ -160,6 +169,13 @@ class UserEncoder(nn.Module):
         
         self.neg_multihead_attention = MultiHeadAttention(news_embedding_dim,
                                                          num_attention_heads, attention_dim, attention_dim)
+
+        if news_embedding_dim != num_attention_heads * attention_dim:
+            self.reduce_dim = True
+            self.reduce_dim_linear = nn.Linear(num_attention_heads * attention_dim,
+                                           news_embedding_dim)
+        else:
+            self.reduce_dim = False
         
     def forward(self, clicked_news_vecs):
         # print('Debug in user encoder clicked news vecs shape: ', clicked_news_vecs.shape)
@@ -169,13 +185,15 @@ class UserEncoder(nn.Module):
         pos_user_vector = self.additive_attention(multi_clicked_vectors)
         
         user_vector = pos_user_vector
+        if self.reduce_dim:
+            user_vector = self.reduce_dim_linear(user_vector)
         return user_vector
 
 class NRMS_Model(nn.Module):
-    def __init__(self, embedding_matrix):
+    def __init__(self, embedding_matrix, news_embedding_dim =400):
         super(NRMS_Model, self).__init__()
-        self.text_encoder = TextEncoder(embedding_matrix)
-        self.user_encoder = UserEncoder()
+        self.text_encoder = TextEncoder(embedding_matrix, news_embedding_dim = news_embedding_dim)
+        self.user_encoder = UserEncoder(news_embedding_dim=news_embedding_dim)
         
         self.criterion = nn.CrossEntropyLoss()
     
@@ -199,7 +217,6 @@ class NRMS_Model(nn.Module):
             return score
         
         
-
 class TopicEncoder(torch.nn.Module):
     def __init__(self, split_large_topic, num_categories=285, reduction_dim=64, dropout_rate=0.2):
         super(TopicEncoder, self).__init__()

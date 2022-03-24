@@ -16,14 +16,15 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
     def __init__(self,device, args, name='SingleStageNeuralGreedy'):
         """Use NRMS model. 
         """
+        # preprocessed data 
+        self.nid2index, self.word2vec, self.nindex2vec = load_word2vec(args, 'utils')
+        self.device = device 
         super(SingleStageNeuralGreedy, self).__init__(args, name) 
         self.name = name 
-        self.device = device 
+        
         self.n_inference = 1
         self.preinference_mode = self.args.preinference_mode
 
-        # preprocessed data 
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args, 'utils')
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = []
         for k,v in topic_news.items():
@@ -32,12 +33,29 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         self.cb_news=cb_news
         
         # model 
-        self.model = NRMS_Model(word2vec).to(self.device)
+        self.model = NRMS_Model(self.word2vec).to(self.device)
         self.model.eval()
 
         # if preinference_mode: # pre-generate news embeddings
         #     self.news_embs = self._get_news_embs()
         self.news_embs = []
+
+    def run_eva(self):
+        """Evaluate model on valid data
+        """
+        import os
+        import sys
+        module_path = os.path.abspath(os.path.join('..'))
+        if module_path not in sys.path:
+            sys.path.append(module_path)
+        from thanh_preprocess import eva
+        import pickle
+
+        with open(os.path.join(self.args.root_data_dir, self.args.dataset, 'utils', "valid_contexts.pkl"), "rb") as f:
+            valid_sam = pickle.load(f)
+        val_scores = eva(self.args, self.model, valid_sam, self.nid2index, self.nindex2vec)
+        val_auc, val_mrr, val_ndcg, val_ndcg10, ctr = [np.mean(i) for i in list(zip(*val_scores))]
+        print(f"Debug: Evaluate model on valid data -- auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}, ctr: {ctr:.4f}")
            
 
     def _get_news_embs(self):
@@ -214,3 +232,9 @@ class SingleStageNeuralGreedy(ContextualBanditLearner):
         
         return np.empty(0), rec_items
     
+    def reset(self):
+        """Reset the CB learner to its initial state (do this for each experiment). """
+        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+        #TODO: reset the internal model here for each instance of `ContextualBanditLearner`
+        self.model = NRMS_Model(self.word2vec).to(self.device)

@@ -15,7 +15,7 @@ from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, l
 
 class UniformRandom(ContextualBanditLearner):
     def __init__(self,device, args, name='UniformRandom'):
-        """LinUCB.
+        """Uniform random recommend news to user.
         """
         super(UniformRandom, self).__init__(args, name)
         self.name = name 
@@ -39,11 +39,7 @@ class UniformRandom(ContextualBanditLearner):
         Return: 
             items: a list of `len(uids)`int 
         """
-        score_budget = self.per_rec_score_budget * m
-        if len(cand_news)>score_budget:
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
-            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
-
+        cand_news = self.create_cand_set(cand_news,m)
         rec_items = np.random.choice(cand_news, size=m, replace=False).tolist()
         return rec_items 
 

@@ -428,7 +428,7 @@ def behavior_preprocess(args):
             pickle.dump(cb_valid_samples, f)
 
 
-def split_then_select_behavior_preprocess(args):
+def split_then_select_behavior_preprocess(args, train_cb = True):
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
     tr_ctx_fname = os.path.join(out_path, "train_contexts.pkl")
     val_ctx_fname = os.path.join(out_path, "valid_contexts.pkl")
@@ -436,15 +436,15 @@ def split_then_select_behavior_preprocess(args):
     # read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
 
     print('Preprocessing for Simulator ...') 
-    # if os.path.exists(tr_ctx_fname):
-    #     print('{} is already created!'.format(tr_ctx_fname))
-    # else:
-    read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
+    if os.path.exists(tr_ctx_fname):
+        print('{} is already created!'.format(tr_ctx_fname))
+    else:
+        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0, save=True)
 
-    # if os.path.exists(val_ctx_fname):
-    #     print('{} is already created!'.format(val_ctx_fname))
-    # else:
-    read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
+    if os.path.exists(val_ctx_fname):
+        print('{} is already created!'.format(val_ctx_fname))
+    else:
+        read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"), 1, save=True)
 
     # train_user_set, _, tr_rep_sorted_samples, _ = \
     #     read_imprs(args, os.path.join(args.root_data_dir, args.dataset, "train/behaviors.tsv"), 0) 
@@ -508,7 +508,7 @@ def split_then_select_behavior_preprocess(args):
     meta_data_path = os.path.join(args.root_proj_dir, 'meta_data')
     if not os.path.exists(meta_data_path):
         os.mkdir(meta_data_path) 
-    for trial in range(9, args.n_trials): 
+    for trial in range(args.n_trials): 
         np.random.seed(trial)
 
         cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, trial))
@@ -588,7 +588,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
     if args.pretrain_topic:
         model = NRMS_Topic_Model(word2vec, split_large_topic=args.split_large_topic).to(device)
     else:
-        model = NRMS_Model(word2vec).to(device)
+        model = NRMS_Model(word2vec, news_embedding_dim = 64).to(device)
     
     # print(model)
     # from torchinfo import summary
@@ -752,7 +752,7 @@ def run_eva(args):
         nindex2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
         word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
         cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models_dim64', 'indices_{}.pkl'.format(e))
-        model = NRMS_Model(word2vec).to(device)
+        model = NRMS_Model(word2vec, news_embedding_dim=64).to(device)
         model.eval()
         model.load_state_dict(torch.load(cb_learner_path))
         val_scores = eva(args, model, valid_sam, nid2index, nindex2vec)
@@ -1007,8 +1007,8 @@ def compute_empirical_ips(args):
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
 
 
     args = parse_args()
@@ -1020,10 +1020,11 @@ if __name__ == "__main__":
 
     # Get val set for sim 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
-    # run_eva(args)
+    run_eva(args)
     # preprocesss_for_propensity_score(args)
     # get_nrms_vecs_for_propensity_score(args) 
-    compute_empirical_ips(args)
+    # behavior_preprocess(args)
+    # compute_empirical_ips(args)
 
 
 

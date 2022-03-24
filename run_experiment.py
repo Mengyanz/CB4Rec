@@ -8,7 +8,8 @@ from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.neural_ucb import SingleStageNeuralUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu, SingleNerual_TwoStageUCB
 from algorithms.hcb import HCB
 from algorithms.phcb import pHCB
-from algorithms.neural_linear import NeuralLinearTS, NeuralLinearUCB_UserDisjoint, NeuralGLMUCB_UserItemHybrid, NeuralBilinUCB_Hybrid
+from algorithms.neural_linear import NeuralLinearTS, NeuralLinearUCB_UserDisjoint, NeuralGLMUCB_UserItemHybrid
+from algorithms.neural_bilinear import NeuralBilinUCB_Hybrid
 from algorithms.linucb import SingleStageLinUCB, GLMUCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
@@ -29,18 +30,16 @@ class Tree():
 
 def main():
     # from configs.thanh_params import parse_args
-    # from configs.mezhang_params import parse_args
-    from configs.zhenyu_params import parse_args
+    from configs.mezhang_params import parse_args
+    # from configs.zhenyu_params import parse_args
     args = parse_args()
-    print(args)
-
+    
     # args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
     # args.sim_path = 'model/large/large.pkl'
     # args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414_copy'
-    args.sim_path = '/home/thanhnt/projects/CB4Rec/pretrained_models/sim_emp_ips_nrms_normalized_r14_ep5'
-    args.reward_type = 'soft' # Use comparison instead of Bernoulli
+    # args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_r14_ep5'
     # args.sim_threshold = 0.38414
-    rec_batch_size = 10
+    
     # construct a simulator
     simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True)
 
@@ -49,7 +48,9 @@ def main():
         args.algo_prefix = args.algo + '-topicUpdate' + str(args.topic_update_period) + '-ninfernece' + str(args.n_inference) + '-dynamic' + str(args.dynamic_aggregate_topic)
         # + '-' + str(args.n_trials) + '-' + str(args.T) 
     print('Debug args.algo_prefix: ', args.algo_prefix)
-    print('Debug dynamic_aggregate_topic: ', args.dynamic_aggregate_topic)
+
+     # rec_batch_size = 10
+    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
 
     # construct a list of CB learners 
     if args.algo == 'single_neuralucb':
@@ -57,7 +58,6 @@ def main():
     elif args.algo == 'ts_neuralucb':
         args.topic_update_period = 1 # update topic each iteration
         learner = TwoStageNeuralUCB(device, args)
-    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
     elif args.algo == 'singleneural_twostageucb':
         learner = SingleNerual_TwoStageUCB(device, args)
     elif args.algo == 'neural_linearts':
@@ -107,6 +107,7 @@ def main():
 
     # runner 
     # h_actions, h_rewards = run_contextual_bandit(args, simulator, algos)
+    print(args)
     run_contextual_bandit(args, simulator, algos)
 
 

@@ -75,7 +75,7 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         mean, std = value
         n_algos, T = mean.shape
         for i in range(n_algos):
-            if name == 'raw_reward' or 'ave_ctr':
+            if name == 'raw_reward' or name == 'ave_ctr':
                 # if i == 3:
                 plt.scatter(range(T), mean[i], label = algo_names[i], s = 1, alpha = 0.5)
             else:
@@ -84,7 +84,7 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         
         if name == 'ctr' or name == 'ave_ctr':
             plt.ylim(0,1)
-            plt.plot([0, 1999], [0.075, 0.075], label = 'uniform_random', color = 'grey', linestyle='--')
+            plt.plot([0, 4999], [0.075, 0.075], label = 'uniform_random', color = 'grey', linestyle='--')
         plt.legend(bbox_to_anchor=(1.04,0.5), loc='center left')
         plt.xlabel('Iteration')
         plt.ylabel(name)
@@ -103,7 +103,7 @@ def cal_base_ctr(args):
     plot_metrics(args, metrics, 'uniform_random', plot_title='Uniform Random 10 trials')
     return metrics
 
-def collect_rewards(args, algo_group, timestr, algo_prefixes, all_rewards, trials = '[0-9]', T =2000):
+def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_rewards, trials = '[0-9]', T =2000):
     """collect rewards 
     the rewards files are saved in the results/algo_group/timestr/trial-algo_prefix-round.npy
     each file stores array with shape (n_algos, rec_bs, T)
@@ -114,23 +114,28 @@ def collect_rewards(args, algo_group, timestr, algo_prefixes, all_rewards, trial
     """
     root_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'trial')
     for algo_prefix in algo_prefixes:
-        print(os.path.join(root_path, '{}-rewards-{}-*'.format(trials, algo_prefix)))
-        filenames = glob.glob(os.path.join(root_path, '{}-rewards-{}-*'.format(trials, algo_prefix)))
-        all_trial_rewards = []
-        for filename in filenames:
-            print(filename)
-            rewards = np.load(filename)
-            rewards = np.expand_dims(rewards, axis = 0)[:,:,:,:T]
-            print(rewards.shape)
-            assert len(rewards.shape) == 4
-            all_trial_rewards.append(rewards)
-        
-        all_trial_rewards = np.concatenate(all_trial_rewards, axis = 0)
-        print('Collect trials rewards for {}: {}'.format(algo_prefix, all_trial_rewards.shape))
+        search_names = os.path.join(root_path, '{}-rewards-{}-*'.format(trials, algo_prefix))
+        print(search_names)
+        filenames = glob.glob(search_names)
+        if len(filenames) > 0:
+            all_trial_rewards = []
+            for filename in filenames:
+                print(filename)
+                rewards = np.load(filename)
+                rewards = np.expand_dims(rewards, axis = 0)[:,:,:,:T]
+                print(rewards.shape)
+                assert len(rewards.shape) == 4
+                all_trial_rewards.append(rewards)
+            
+            all_trial_rewards = np.concatenate(all_trial_rewards, axis = 0)
+            print('Collect trials rewards for {}: {}'.format(algo_prefix, all_trial_rewards.shape))
 
-        all_rewards.append(all_trial_rewards )
+            all_rewards.append(all_trial_rewards)
+            algo_names.append(algo_prefix)
+        else:
+            print('No file found for ', search_names)
     
-    return all_rewards
+    return all_rewards, algo_names
 
 def main(args):
     # plot_folder = '# user = 10' # 'tune_topic_update_period'
@@ -190,25 +195,65 @@ def main(args):
 def run_eva(args):
     algo_names = []
     all_rewards = []
-    timestr = '**'
-    trials = '[0-1]'
-    T = 2000
+    
+    trials = '[0]'
+    T = 5000
+    # num_selected_users = 10
 
-    algo_group = 'tune_neural_linear'
-    # algo_prefixes = ['neuralglmucb_uihybrid']
     algo_prefixes = []
+
+    timestr = '20220323-0738'
+    algo_group = 'tune_pretrainedMode_nuser'
+    for pretrained_mode in [True, False]:
+        for num_selected_users in [10, 100, 1000]:
+            reward_type = 'threshold-eps'
+            algo = 'greedy'
+            algo_prefixes.append(algo + '-pretrained' + str(pretrained_mode) + '-num_selected_users' + str(num_selected_users))
+            
+
+    # timestr = '20220322-0834'
+    # algo_group = 'tune_pretrainedMode_rewardType'
+    # for pretrained_mode in [True, False]:
+    #     for reward_type in ['soft', 'hybrid', 'hard', 'threshold']:
+    #         algo = 'greedy'
+    #         algo_prefixes.append(algo + '-pretrained' + str(pretrained_mode) + '-reward' + str(reward_type))
+
+
+    # timestr = '20220317-0327'
+    # algo_group = 'single_stage'
+    # num_selected_users = 10
+    # for algo in ['single_neuralucb', 'greedy', 'single_linucb']:
+    #     algo_prefixes.append(algo_group + '-' + algo )
+    
+    # timestr = '20220316-0643'
+    # algo_group = 'test'
+    # num_selected_users = 10
     # for algo in ['glmucb']:
-    #         num_selected_users = 10
-    #         for epochs in [1, 5, 10]:
-    #             for lr in [0.1, 0.01]:
+    #         for epochs in [1, 5]:
+    #             for lr in [0.1, 0.01, 0.001]:
     #                 algo_prefixes.append(algo + '-num_selected_users' + str(num_selected_users) + '-epochs' + str(epochs) + '-lr' + str(lr))
-    for algo in ['neuralglmucb_uihybrid', 'neuralbilinucb_hybrid']:
-        for gamma in [0, 0.1, 0.5, 1]:
-            algo_prefixes.append(algo + '-gamma' + str(gamma))
+    # for algo in ['single_neuralucb']: # , 'greedy', 'single_linucb'
+    #         algo_prefixes.append(algo_group + '-' + algo + '-num_selected_users' + str(num_selected_users))
 
-    all_rewards = collect_rewards(args, algo_group, timestr, algo_prefixes, all_rewards, trials, T)
-    algo_names.extend(algo_prefixes)
+    # timestr = '20220318-1322' #'20220316-0642'
+    # algo_group = 'tune_neural_linear'
+    # for algo in ['neuralglmucb_uihybrid', 'neuralbilinucb_hybrid']:
+    #     for gamma in [0, 0.1]: #[0, 0.1, 0.5, 1]:
+    #         algo_prefixes.append(algo + '-gamma' + str(gamma) + '-num_selected_users' + str(num_selected_users))
 
+    # timestr = '20220319-0633' # '20220316-0643'
+    # algo_group = 'tune_topic_update_period'
+    # for algo in ['neuralucb_neuralucb', 'ts_neuralucb']:
+    #         if algo == 'ts_neuralucb':
+    #             updates = [1]
+    #         else:
+    #             updates = [10,50,100]
+    #         for topic_update_period in updates:
+    #             algo_prefixes.append(algo + '-topicUpdate' + str(topic_update_period) + '-num_selected_users' + str(num_selected_users))
+    #             # algo_prefixes.append(algo_group + '-' + algo + '-topicUpdate' + str(topic_update_period))
+
+    all_rewards, algo_names = collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_rewards, trials, T)
+    
     # algo_group = 'tune_neural_linear'
     # algo_prefixes = ['neural_linearts', 'neural_linearucb']
 
@@ -219,7 +264,7 @@ def run_eva(args):
     print('Collect all algos rewards: ', all_rewards.shape)
 
     metrics = cal_metric(all_rewards, algo_names, ['ctr']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, metrics, algo_names, plot_title=algo_group+trials)
+    plot_metrics(args, metrics, algo_names, plot_title='IPS-Threshold-eps0.1-' + algo_group+trials)
 
 
 if __name__ == '__main__':

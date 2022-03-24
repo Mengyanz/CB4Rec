@@ -463,12 +463,23 @@ class NRMS_IPS_Sim(Simulator):
             
             hard_rewards = (p_probs > n_probs).astype('float') 
             rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
+            threshold_rewards = (scores > self.args.sim_threshold).astype('float') 
             if self.args.reward_type == 'hard':
                 rewards = hard_rewards 
             elif self.args.reward_type == 'soft': 
                 rewards = rand_rewards 
-            else: 
+            elif self.args.reward_type == 'hybrid':
                 rewards = rand_rewards * hard_rewards 
+            elif self.args.reward_type == 'threshold':
+                rewards = threshold_rewards
+            elif self.args.reward_type == 'threshold-eps':
+                p = np.random.rand()
+                if p >= 0.1:
+                    rewards = threshold_rewards
+                else:
+                    rewards = 1 - threshold_rewards
+            else:
+                raise NotImplementedError
         for s,p,n in zip(scores, p_probs, n_probs):
             print(s,p,n)
         return rewards.ravel()

@@ -280,8 +280,8 @@ class NeuralLinearUCB_UserDisjoint(SingleStageNeuralGreedy):
             self.Ainv[uid] = np.linalg.inv(self.A[uid])
             self.b[uid] = np.zeros((self.dim)) 
             # TODO: try init with nrms user embedding?
-            if self.pretrained_mode and len(self.clicked_history[uid]) > 0:
-                self.update(topics = None, items=self.clicked_history[uid], rewards=np.ones((len(self.clicked_history[uid]),)), mode = 'item', uid = uid)
+            if len(self.clicked_history[uid]) > 0:
+                self.update(topics = None, items=self.clicked_history[uid], rewards=np.ones((len(self.clicked_history[uid]),)), mode = 'item-linear', uid = uid)
             else:
                 # REVIEW: alternatively, we can init theta to zeros
                 self.theta[uid] = np.random.rand(self.dim)
@@ -379,13 +379,14 @@ class NeuralGLMUCB_UserItemHybrid(SingleStageNeuralGreedy):
 
         for i, l in enumerate(self.data_buffer_lr):
             poss, negs, his, uid, tsp = l
-            tr_users.append(uid)
+            # tr_users.append(uid)
             if len(poss) > 0:
                 tr_samples.extend(poss)
                 tr_rewards.extend([1] * len(poss))
                 tr_neg_len = int(min(1.5 * len(poss), len(negs)))
                 tr_samples.extend(np.random.choice(negs, size = tr_neg_len, replace=False))
                 tr_rewards.extend([0] * tr_neg_len)
+                tr_users.extend([uid]*(len(poss) + tr_neg_len))
 
             self.data_buffer_lr.remove(l)
         # print('Debug tr_samples: ', tr_samples)
@@ -396,15 +397,14 @@ class NeuralGLMUCB_UserItemHybrid(SingleStageNeuralGreedy):
     def train_lr(self, uid):
         optimizer = optim.Adam(self.lr_model.parameters(), lr=self.args.lr)
         ft_sam, ft_labels, ft_users = self.construct_trainable_samples_lr()
-        x = self.news_embs[0][ft_sam] # n_tr, n_dim
-        z = np.array([self._get_user_embs(uid, 0) for uid in ft_users])# (b,d)
-        # print('Debug x shape: ', x.shape)
-        # print('Debug z shape: ', z.shape)
+        
         if len(ft_sam) > 0:
+            x = self.news_embs[0][ft_sam] # n_tr, n_dim
+            z = np.array([self._get_user_embs(uid, 0) for uid in ft_users])
+            z = z.reshape(-1, z.shape[-1]) # n_tr, n_dim
             self.lr_model.train()
             for epoch in range(self.args.epochs):
                 preds = self.lr_model(torch.Tensor(x), torch.Tensor(z))
-                # print('Debug preds: ', preds)
                 # print('Debug labels: ', ft_labels)
                 loss = self.criterion(preds, torch.Tensor(ft_labels))
                 
@@ -477,7 +477,7 @@ class NeuralGLMUCB_UserItemHybrid(SingleStageNeuralGreedy):
             numbers of items? 
         """
         if len(self.news_embs) < 1:
-            self._get_news_embs() # init news embeddings
+            self._get_news_embs() # init news embeddings[]
 
         cand_news = [self.nid2index[n] for n in self.cb_news]
         rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
@@ -494,32 +494,4 @@ class NeuralGLMUCB_UserItemHybrid(SingleStageNeuralGreedy):
         self.b = np.zeros((self.args.latent_dim))
 
         self.lr_model = LogisticRegression2(self.args.latent_dim, 1)
-        self.data_buffer_lr = [] # for logistic regression
-
-class LogisticRegression3(torch.nn.Module):
-    def __init__(self, input_dim1, input_dim2, output_dim):
-        super(LogisticRegression3, self).__init__()
-        self.bilinear = torch.nn.Bilinear(input_dim1, input_dim2, output_dim)
-        
-    def forward(self, x, z):
-        outputs = torch.sigmoid(self.bilinear(x,z))
-        return outputs
-
-class NeuralBilinUCB_Hybrid(NeuralGLMUCB_UserItemHybrid):
-    # TODO: change CI into bilinear form
-    def __init__(self,device, args, name='NeuralBilinUCB_Hybrid'):
-        """Use NRMS model with logistic regression (disjoint model for each user)
-        """      
-        super(NeuralGLMUCB_UserItemHybrid, self).__init__(device, args, name)
-        self.n_inference = 1
-        self.gamma = self.args.gamma
-        self.args = args
-        # self.dim = 400 # self.args.latent_dim
-
-        self.A =  np.identity(n=self.args.latent_dim)
-        self.Ainv = np.linalg.inv(self.A)
-        self.b = np.zeros((self.args.latent_dim))
-
-        self.lr_model = LogisticRegression3(self.args.latent_dim, self.args.latent_dim, 1)
-        self.criterion = torch.nn.BCELoss()
         self.data_buffer_lr = [] # for logistic regression

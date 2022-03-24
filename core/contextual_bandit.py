@@ -41,7 +41,8 @@ class ContextualBanditLearner(object):
             except:
                 print('Warning: Current algorithm has no model. Load checkpoint failed.')
         else:
-            raise NotImplementedError()
+            print('In pretrained_mode False: use no pretrained model.')
+            # raise NotImplementedError()
         
     def set_clicked_history(self, init_clicked_history):
         """
@@ -62,6 +63,20 @@ class ContextualBanditLearner(object):
         for item in pos:
             if item not in self.clicked_history[uid]: #TODO: Is it OK for an item to appear multiple times in a clicked history?
                 self.clicked_history[uid].append(item)
+
+    def create_cand_set(self, cand_news, m=1):
+        """sample candidate news set given score budget.
+        Args:
+            cand_news: list of candidate news nindex
+            m: number of recommendations per iteration
+        Return
+            cand_news: sampled candidate news nindex
+        """
+        score_budget = self.per_rec_score_budget * m
+        if len(cand_news)>score_budget:
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+        return cand_news 
 
     def sample_actions(self, uids):
         """Choose an action given a context. 
@@ -174,7 +189,7 @@ def run_contextual_bandit(args, simulator, algos):
             cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models_large_topic_splited', 'indices_{}.pkl'.format(e))
         else:
             cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
-        print('Load pre-trained CB learner on this trial from ', cb_learner_path)
+        # print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
 
@@ -192,6 +207,9 @@ def run_contextual_bandit(args, simulator, algos):
 
         # Set the init clicked history in each CB learner 
         [a.set_clicked_history(init_history) for a in algos]
+
+        if args.eva_model_valid:
+            [a.run_eva() for a in algos]
 
         
         # Run the contextual bandit process
@@ -275,16 +293,15 @@ def run_contextual_bandit(args, simulator, algos):
                     # for neural linear model only
                     a.update(topics, items, rewards, mode = 'item-linear', uid = u)
 
-            if t % 1000 == 0 and t > 0:
-                temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
-                temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
-                print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
-                print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
-                np.save(temp_item_path, np.expand_dims(h_items, axis=0))
-                np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
+            # if t % 1000 == 0 and t > 0:
+            #     temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
+            #     temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
+            #     print('Debug h_items shape: ', np.expand_dims(h_items, axis=0).shape)
+            #     print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
+            #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
+            #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
                 
-
             # if t % 1000 == 0 and t > 0:
             #     temp_item_path = os.path.join(result_path, "items-{}-{}-{}.npy".format(args.algo_prefix, e, t))
             #     temp_reward_path = os.path.join(result_path, "rewards-{}-{}-{}.npy".format(args.algo_prefix, e, t))
@@ -293,10 +310,11 @@ def run_contextual_bandit(args, simulator, algos):
             #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
             #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
-        np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
-        np.save(reward_path, np.array(h_rewards))
-        print('Debug h_items shape: ', np.array(h_items).shape)
-        print('Debug h_rewards shape: ', np.array(h_rewards).shape)
+        if (t+1) % 1000 == 0:
+            np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
+            np.save(reward_path, np.array(h_rewards))
+            print('Debug h_items shape: ', np.array(h_items).shape)
+            print('Debug h_rewards shape: ', np.array(h_rewards).shape)
 
     #     h_items_all.append(h_items)
     #     h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
