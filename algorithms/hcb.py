@@ -67,7 +67,7 @@ class Item():
 class HCB(ContextualBanditLearner):
     def __init__(self,device, args,root, name='HCB'):
         
-        super(HCB, self).__init__(args, name)
+        super(HCB, self).__init__(args, device, name)
         self.device = device
         self.args = args
         self.name = name

@@ -14,38 +14,29 @@ from algorithms.neural_greedy import SingleStageNeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
-class SingleStageNeuralUCB(SingleStageNeuralGreedy):
-    def __init__(self,device, args, name='SingleStageNeuralUCB'):
+class NeuralDropoutUCB(SingleStageNeuralGreedy):
+    def __init__(self, args, device, name='NeuralDropoutUCB'):
         """Use NRMS model. 
         """      
-        super(SingleStageNeuralUCB, self).__init__(device, args, name)
+        super(NeuralDropoutUCB, self).__init__(args, device, name)
         self.n_inference = self.args.n_inference 
         self.gamma = self.args.gamma
-        self.topic_budget = 0 # the score budget for topic exploration
-        # self.cb_indexs = self._get_cb_news_index([item for sublist in list(self.cb_news.values()) for item in sublist])
 
-        # # pre-generate news embeddings
-        # self.news_vecss = []
-        # for i in range(self.n_inference): 
-        #     news_vecs = self._get_news_vecs() # (n,d)
-        #     self.news_vecss.append(news_vecs) 
-
-    # def _get_cb_news_index(self, cb_news):
-    #     """Generate cb news vecs by inferencing model on cb news
-
-    #     Args
-    #         cb_news: list of cb news samples
-
-    #     Return
-    #         cb_indexs: list of indexs corresponding to the input cb_news
-    #     """
-    #     print('#cb news: ', len(cb_news))
-    #     cb_indexs = []
-    #     for l in cb_news:
-    #         nid = l.strip('\n').split("\t")[0]
-    #         cb_indexs.append(self.nid2index[nid])
-    #     return np.array(cb_indexs)     
-
+    def _get_news_embs(self):
+        print('Inference news {} times...'.format(self.n_inference))
+        news_dataset = NewsDataset(self.nindex2vec) 
+        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
+        
+        self.news_embs = []
+        self.model.train() # enable dropout
+        with torch.no_grad():
+            for i in range(self.n_inference): 
+                news_vecs = []
+                for news in news_dl: 
+                    news = news.to(self.device)
+                    news_vec = self.model.text_encoder(news).detach().cpu().numpy()
+                    news_vecs.append(news_vec)
+                self.news_embs.append(np.concatenate(news_vecs))
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -57,100 +48,31 @@ class SingleStageNeuralUCB(SingleStageNeuralGreedy):
         Return: 
             items: a list of `len(uids)`int 
         """
-        # TODO: to make full use of budget
-        score_budget = self.per_rec_score_budget * m - int(self.topic_budget /(self.rec_batch_size/m))
-        if len(cand_news)>score_budget:
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
-            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
-
-        if self.preinference_mode:
-            all_scores = []
-                
-            for i in range(self.n_inference): 
-                user_vecs = self._get_user_embs(uid, i) # (b,d)
-                scores = self.news_embs[i][cand_news] @ user_vecs.T # (n,b) 
-                all_scores.append(scores) 
-            
-            all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
-            mu = np.mean(all_scores, axis=0) 
-            std = np.std(all_scores, axis=0) # / math.sqrt(self.n_inference) 
-            # print('Debug mean: ', mu)
-            # print('Debug std: ', std)
-            ucb = mu + self.gamma * std # (n,) 
-            nid_argmax = np.argsort(ucb, axis = 0)[::-1][:m].tolist() # (len(uids),)
-            rec_itms = [cand_news[n] for n in nid_argmax]
-            return rec_itms 
-        else:
-        
-            batch_size = min(self.args.max_batch_size, len(cand_news))
-
-            # get user vect 
-        
-            h = self.clicked_history[uid]
-            h = h + [0] * (self.args.max_his_len - len(h))
-            h = self.nindex2vec[h]
-
-            h = torch.Tensor(h[None,:,:])
-            sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-            rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
-
-            all_scores = []
-            for i in range(self.n_inference): # @TODO: accelerate
-                scores = []
-                for cn in rdl:
-                    score = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
-                    scores.append(score.detach().cpu().numpy()) 
-                scores = np.concatenate(scores)
-                all_scores.append(scores) 
-
-            all_scores = np.array(all_scores).squeeze(-1) # (n_inference,len(cand_news))
-            mu = np.mean(all_scores, axis=0) 
-            std = np.std(all_scores, axis=0) #/ math.sqrt(self.n_inference) 
-            # print('Debug mean: ', mu)
-            # print('Debug std: ', std)
-            ucb = mu + self.gamma * std # (n,b) 
-        
-            nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
-            rec_itms = [cand_news[n] for n in nid_argmax]
-            return rec_itms 
-
-    def sample_actions(self, uids): 
-        """Choose an action given a context. 
-        Args:
-            uids: a list of str uIDs. 
-
-        Return: 
-            topics: (len(uids), `rec_batch_size`)
-            items: (len(uids), `rec_batch_size`) 
-            numbers of items? 
-        """
-        # all_scores = []
-        # self.model.eval()
-        # for i in range(self.n_inference): # @TODO: accelerate
-        #     user_vecs = self._get_user_embs(self.news_vecss[i], user_samples) # (b,d)
-        #     scores = self.news_vecss[i][self.cb_indexs] @ user_vecs.T # (n,b) 
-        #     all_scores.append(scores) 
-        
-        # all_scores = np.array(all_scores) # (n_inference,n,b)
-        # mu = np.mean(all_scores, axis=0) 
-        # std = np.std(all_scores, axis=0) / math.sqrt(self.n_inference) 
-        # ucb = mu + std # (n,b) 
-        # sorted_ids = np.argsort(ucb, axis=0)[-self.rec_batch_size:,:] 
-        # return self.cb_indexs[sorted_ids], np.empty(0)
-        if len(self.news_embs) < 1 and self.preinference_mode:
+        if len(self.news_embs) < 1:
             self._get_news_embs() # init news embeddings
 
-        cand_news = [self.nid2index[n] for n in self.cb_news]
-        rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
+        all_scores = []           
+        for i in range(self.n_inference): 
+            user_vecs = self._get_user_embs(uid, i) # (b,d)
+            scores = self.news_embs[i][cand_news] @ user_vecs.T # (n,b) 
+            all_scores.append(scores) 
+        
+        all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
+        mu = np.mean(all_scores, axis=0) 
+        std = np.std(all_scores, axis=0) # / math.sqrt(self.n_inference) 
+        print('Debug mean: ', mu)
+        print('Debug std: ', std)
+        ucb = mu + self.gamma * std # (n,) 
+        nid_argmax = np.argsort(ucb, axis = 0)[::-1][:m].tolist() # (len(uids),)
+        rec_itms = [cand_news[n] for n in nid_argmax]
+        return rec_itms 
 
-        return np.empty(0), rec_items
 
-
-class TwoStageNeuralUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, name='ThompsonSampling_NeuralUCB'):
+class TwoStageNeuralUCB(NeuralDropoutUCB):
+    def __init__(self, args, device, name='ThompsonSampling_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
         """
-        super(TwoStageNeuralUCB, self).__init__(device, args, name)
+        super(TwoStageNeuralUCB, self).__init__(args, device, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -298,11 +220,11 @@ class TwoStageNeuralUCB(SingleStageNeuralUCB):
         
         return selected_topics, rec_items
 
-class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
-    def __init__(self,device, args, name='SingleNerual_TwoStageUCB'):
+class SingleNerual_TwoStageUCB(NeuralDropoutUCB):
+    def __init__(self, args, device, name='SingleNerual_TwoStageUCB'):
         """Two stage exploration. Use a single NRMS model. 
         """
-        super(SingleNerual_TwoStageUCB, self).__init__(device, args, name)
+        super(SingleNerual_TwoStageUCB, self).__init__(args, device, name)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -421,10 +343,10 @@ class SingleNerual_TwoStageUCB(SingleStageNeuralUCB):
 
 
 class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of testing my pipeline only 
-    def __init__(self,device, args, name='TwoStageNeuralUCB'):
+    def __init__(self, args, device, name='TwoStageNeuralUCB'):
         """Two stage exploration. Use NRMS model. 
         """
-        super(DummyTwoStageNeuralUCB, self).__init__(args, name)
+        super(DummyTwoStageNeuralUCB, self).__init__(args, device, name)
         self.n_inference = self.args.n_inference 
         self.pretrained_mode = self.args.pretrained_mode 
         self.name = name 
@@ -604,15 +526,15 @@ class DummyTwoStageNeuralUCB(ContextualBanditLearner): #@Thanh: for the sake of 
         return rec_topics, rec_items
     
     
-class TwoStageNeuralUCB_zhenyu(SingleStageNeuralUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
-    def __init__(self,device, args, name='NeuralUCB_NeuralUCB'):
+class TwoStageNeuralUCB_zhenyu(NeuralDropoutUCB):  #@ZhenyuHe: for the sake of testing my pipeline only 
+    def __init__(self, args, device, name='NeuralUCB_NeuralUCB'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
-        super(TwoStageNeuralUCB_zhenyu, self).__init__(device, args, name)
+        super(TwoStageNeuralUCB_zhenyu, self).__init__(args, device, name)
         self.args = args
         self.n_inference = args.n_inference
         self.name = name 

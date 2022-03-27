@@ -11,33 +11,21 @@ from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.neural_greedy import SingleStageNeuralGreedy
+from algorithms.lr_model import LogisticRegression
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class SingleStageLinUCB(ContextualBanditLearner):
-    def __init__(self,device, args, name='SingleStageLinUCB'):
+    def __init__(self, args, device, name='SingleStageLinUCB'):
         """LinUCB.
         """
-        super(SingleStageLinUCB, self).__init__(args, name)
-        self.name = name 
-        self.device = device 
-
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
-
-        word2vec = torch.from_numpy(word2vec).float()
+        super(SingleStageLinUCB, self).__init__(args, device, name)
+        
+        word2vec = torch.from_numpy(self.word2vec).float()
         self.word_embedding = nn.Embedding.from_pretrained(word2vec, freeze=True).to(self.device)
 
-
-        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
-        cb_news = []
-        for k,v in topic_news.items():
-            cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
-        self.cb_news = [item for sublist in cb_news for item in sublist]
-
         self.gamma = self.args.gamma
-        self.dim = 300 # TODO: make it a parameter
+        self.dim = self.args.word_embedding_dim
         self.theta = {} # key: uid, value: theta_u
-        # self.D = defaultdict(list) # key: uid, value: list of nindex of uid's interactions
-        # self.c = defaultdict(list) # key: uid, value: list of labels of uid's interactions
 
         self.A = {}
         self.Ainv = {}
@@ -104,11 +92,6 @@ class SingleStageLinUCB(ContextualBanditLearner):
         Return: 
             items: a list of `len(uids)`int 
         """
-        score_budget = self.per_rec_score_budget * m
-        if len(cand_news)>score_budget:
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
-            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
-
         X = self._get_news_embedding(cand_news)
         # print('Debug X shape: ', X.shape)
 
@@ -123,21 +106,6 @@ class SingleStageLinUCB(ContextualBanditLearner):
                 self.theta[uid] = np.random.rand(self.dim)
                 # self.theta[uid] = np.zeros(self.dim)
                 # print('No history of user {}, init theta randomly!'.format(uid))
-            
-
-        # D = self._get_news_embedding(self.D[uid])
-        # # print('Debug D shape: ', D.shape)
-        # inverse_term = np.linalg.inv(D.T.dot(D) + np.identity(D.shape[-1]))
-        # print('Debug inverse term shape: ', inverse_term.shape)
-
-        # if len(self.clicked_history[uid]) == 0:
-        #     # REVIEW: alternatively, we can init theta to zeros
-        #     self.theta[uid] = np.random.rand(self.dim)
-        #     # self.theta[uid] = np.zeros(self.dim)
-        #     print('No history of user {}, init theta randomly!'.format(uid))
-        # else:
-        #     self.theta[uid] = inverse_term.dot(D.T).dot(self.c[uid])
-        #     # print('Debug theta shape: ', self.theta[uid].shape)
         
         mean = X.dot(self.theta[uid]) # n_cand, 
         CI = np.array([self.gamma * np.sqrt(x.dot(self.Ainv[uid]).dot(x.T)) for x in X])
@@ -147,41 +115,6 @@ class SingleStageLinUCB(ContextualBanditLearner):
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
         
-         # batch_size = min(self.args.max_batch_size, len(cand_news))
-
-        # # get user vect 
-     
-        # h = self.clicked_history[uid]
-        # h = h + [0] * (self.args.max_his_len - len(h))
-        # h = self.nindex2vec[h]
-
-        # h = torch.Tensor(h[None,:,:])
-        # sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-        # rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
-
-        # cand_vecs = []
-        # for cn in rdl:
-        #     cand_vec, user_vec = self.model.forward(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, return_embedding = True)
-        #     cand_vecs.append(cand_vec.detach().cpu().numpy()) 
-        # cand_vecs = np.concatenate(cand_vecs).squeeze(1) # n_cand_news, n_dim (1000, 400)
-        # user_vecs = user_vec[0].repeat(cand_vecs.shape[0], 1).detach().cpu().numpy() # n_cand_news, n_dim (1000, 400)
-        # context_vecs = np.concatenate([cand_vecs, user_vecs], axis = 1)  # (1000, 800)
-        # mean = np.dot(context_vecs, self.theta[uid].T) # (1000,)
-
-    def sample_actions(self, uid): 
-        """Choose an action given a context. 
-        Args:
-            uids: one str uID. 
-
-        Return: 
-            topics: (len(uid), `rec_batch_size`)
-            items: (len(uid), `rec_batch_size`) 
-        """
-   
-        cand_news = [self.nid2index[n] for n in self.cb_news]
-        rec_items = self.item_rec(uid, cand_news, self.rec_batch_size)
-
-        return np.empty(0), rec_items
 
     def reset(self):
         """Reset the CB learner to its initial state (do this for each experiment). """
@@ -194,47 +127,17 @@ class SingleStageLinUCB(ContextualBanditLearner):
         self.Ainv = {}
         self.b = {}
 
-class LogisticRegression(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LogisticRegression, self).__init__()
-        self.linear = torch.nn.Linear(input_dim, output_dim)
-        
-    def forward(self, x):
-        outputs = torch.sigmoid(self.linear(x))
-        return outputs
-
 class GLMUCB(SingleStageLinUCB):
     """Single stage Generalised linear model UCB
     We only consider Logistic Regression here.
     """
 
-    def __init__(self,device, args, name='GLMUCB'):
+    def __init__(self, args, device, name='GLMUCB'):
         """GLMUCB.
         """
-        super(GLMUCB, self).__init__(device, args, name)
-        self.name = name 
-        self.device = device 
-
-        self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
-
-        word2vec = torch.from_numpy(word2vec).float()
-        self.word_embedding = nn.Embedding.from_pretrained(word2vec, freeze=True).to(self.device)
-
-
-        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
-        cb_news = []
-        for k,v in topic_news.items():
-            cb_news.append(l.strip('\n').split("\t")[0] for l in v) # get nIDs 
-        self.cb_news = [item for sublist in cb_news for item in sublist]
-
-        self.dim = 300 # TODO: make it a parameter
+        super(GLMUCB, self).__init__(args, device, name)
         self.lr_models = {} # key: user, value: LogisticRegression(self.dim, 1)
         self.criterion = torch.nn.BCELoss()
-
-        self.gamma = self.args.gamma
-        self.A = {}
-        self.Ainv = {}
-        self.b = {}
 
     def construct_trainable_samples(self, tr_uid):
         """construct trainable samples which will be used in NRMS model training
@@ -263,7 +166,7 @@ class GLMUCB(SingleStageLinUCB):
         # print('Debug self.data_buffer: ', self.data_buffer)
         return np.array(tr_samples), np.array(tr_rewards)
 
-    def train(self, uid):
+    def train_lr(self, uid):
         optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.lr)
         ft_sam, ft_labels = self.construct_trainable_samples(uid)
         x = self._get_news_embedding(ft_sam) # n_tr, n_dim
@@ -291,14 +194,13 @@ class GLMUCB(SingleStageLinUCB):
             uid: user id.
         """
         if mode == 'item':
-            print('Update linucb parameters for user {}!'.format(uid))
+            print('Update glmucb parameters for user {}!'.format(uid))
             x = self._get_news_embedding(items).T # n_dim, n_hist
             # Update parameters
             self.A[uid]+=x.dot(x.T) # n_dim, n_dim
-            self.b[uid]+=x.dot(rewards) # n_dim, 
             for i in x.T:
                 self.Ainv[uid]=self.getInv(self.Ainv[uid],i) # n_dim, n_dim
-            self.train(uid)
+            self.train_lr(uid)
             
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -310,19 +212,13 @@ class GLMUCB(SingleStageLinUCB):
         Return: 
             items: a list of `len(uids)`int 
         """
-        score_budget = self.per_rec_score_budget * m
-        if len(cand_news)>score_budget:
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
-            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
-
         X = self._get_news_embedding(cand_news)
 
         if uid not in self.lr_models:
             self.A[uid] = np.identity(n=self.dim)
             self.Ainv[uid] = np.linalg.inv(self.A[uid])
-            self.b[uid] = np.zeros((self.dim)) 
             self.lr_models[uid] = LogisticRegression(self.dim, 1)
-            if self.pretrained_mode and len(self.clicked_history[uid]) > 0:
+            if len(self.clicked_history[uid]) > 0:
                 self.update(topics = None, items=self.clicked_history[uid], rewards=np.ones((len(self.clicked_history[uid]),)), mode = 'item', uid = uid)
         
         self.lr_models[uid].eval()
@@ -332,9 +228,19 @@ class GLMUCB(SingleStageLinUCB):
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
         # print('Debug nid_argmax: ', nid_argmax)
-        print('Debug mean: ', mean[nid_argmax])
-        print('Debug CI: ', CI[nid_argmax])
-        print('Debug ucb: ', ucb[nid_argmax])
+        # print('Debug mean: ', mean[nid_argmax])
+        # print('Debug CI: ', CI[nid_argmax])
+        # print('Debug ucb: ', ucb[nid_argmax])
 
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
+
+    def reset(self):
+        """Reset the CB learner to its initial state (do this for each experiment). """
+        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+        self.data_buffer = [] 
+        # self.D = defaultdict(list) 
+        # self.c = defaultdict(list)
+        self.lr_models = {}
+        self.A = {}
+        self.Ainv = {}

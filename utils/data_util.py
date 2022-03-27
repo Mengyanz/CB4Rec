@@ -154,7 +154,8 @@ def load_cb_nid2topicindex(args):
 
 def newsample(nnn, ratio):
     if ratio > len(nnn):
-        return nnn + np.random.choice(nnn, ratio-len(nnn)).tolist() # ["<unk>"] * (ratio - len(nnn))
+        # return nnn + np.random.choice(nnn, ratio-len(nnn)).tolist() # ["<unk>"] * (ratio - len(nnn))
+        return nnn + ["<unk>"] * (ratio - len(nnn))
     else:
         return random.sample(nnn, ratio)
 

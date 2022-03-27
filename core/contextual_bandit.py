@@ -4,42 +4,76 @@ from operator import itemgetter
 import numpy as np 
 import pickle, os, json
 from collections import defaultdict
-from utils.data_util import load_cb_train_data, load_cb_valid_data
+from utils.data_util import load_cb_train_data, load_cb_valid_data, load_word2vec, load_cb_topic_news
 import os
 import torch
 
 class ContextualBanditLearner(object):
-    def __init__(self, args, name='ContextualBanditLearner'):
+    def __init__(self, args, device, name='ContextualBanditLearner'):
         """Args:
+                args: parameters loaded by config argparser 
+                device: cuda device
+
+                nid2index: dict, key: nid; value: nindex
+                word2vec: dict, key: word index; value: word embedding (glove)
+                nindex2vec: dict, key: nindex, value: list of news title word indexes
+                
+                cb_news: dict, key: topic string; value: list of news nindex under key topic
+                cb_topics: list of topics
+                news_topics: dict, key: news index, value: topic string
+
                 rec_batch_size: int, recommendation size. 
                 n_inference: int, number of Monte Carlo samples of prediction. 
                 pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
         """
         self.name = name 
         self.args = args
+        self.device = device
+        print('Debug self.device: ', self.device)
+
+        self.nid2index, self.word2vec, self.nindex2vec = load_word2vec(args, 'utils')
+        
+        topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
+        cb_news = defaultdict(list)
+        news_topics = {} # key: news index, value: topic
+        for k,v in topic_news.items():
+            for l in v:
+                nid = l.strip('\n').split("\t")[0] # get nIDs 
+                cb_news[k].append(nid) 
+                news_topics[self.nid2index[nid]]=k
+        self.cb_news = cb_news 
+        self.cb_topics = list(self.cb_news.keys())
+        self.news_topics = news_topics
+        self.topic_budget = 0 # the score budget for topic exploration
+        # self.topic_budget = len(self.cb_topics) # for two stage
+
         self.rec_batch_size = self.args.rec_batch_size
         self.per_rec_score_budget = self.args.per_rec_score_budget
         self.pretrained_mode = self.args.pretrained_mode 
         
-        self.reset()
+        # self.reset()
 
     def load_cb_learner(self, cb_learner_path = None, topic=False):
-        """load pretrained 
+        """load pretrained models for topic or item
         Args
             cb_learner_path: str, pretrained cb learner path
         """
         if self.pretrained_mode:
-            if not os.path.exists(cb_learner_path):
-                raise Exception("No cb learner pretrained for this trial!")
-            try:
-                if topic:
+            # if not os.path.exists(cb_learner_path):
+            #     raise Exception("No cb learner pretrained for this trial!")
+            if topic:
+                try:
                     print('Load pre-trained CB topic learner on this trial from ', cb_learner_path)
                     self.topic_model.load_state_dict(torch.load(cb_learner_path))
-                else:
+                except:
+                    print('Warning: Current algorithm has no topic model. Load checkpoint failed.')
+            else:
+                try: 
                     print('Load pre-trained CB item learner on this trial from ', cb_learner_path)
                     self.model.load_state_dict(torch.load(cb_learner_path))
-            except:
-                print('Warning: Current algorithm has no model. Load checkpoint failed.')
+                except:
+                    print('Warning: Current algorithm has no item model. Load checkpoint failed.')
+            
         else:
             print('In pretrained_mode False: use no pretrained model.')
             # raise NotImplementedError()
@@ -72,7 +106,8 @@ class ContextualBanditLearner(object):
         Return
             cand_news: sampled candidate news nindex
         """
-        score_budget = self.per_rec_score_budget * m
+        # TODO: to make full use of budget
+        score_budget = self.per_rec_score_budget * m - int(self.topic_budget /(self.rec_batch_size/m))
         if len(cand_news)>score_budget:
             print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
             cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
@@ -98,7 +133,13 @@ class ContextualBanditLearner(object):
         # and the current `user_encoder``
         # * Compute the news representation using the current `news_encoder`` for each news of each recommended topics above 
         # * Run these two steps above for `n_inference` times to estimate score uncertainty 
-        pass 
+        
+        cand_news = [item for sublist in list(self.cb_news.values()) for item in sublist]
+        # print('Debug cand_news: ', cand_news)
+        cand_news = self.create_cand_set([self.nid2index[n] for n in cand_news], self.rec_batch_size)
+        rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
+
+        return np.empty(0), rec_items
 
     def update(self, topics, items, rewards, mode = 'topic', uid = None):
         """Update its internal model. 
@@ -140,11 +181,6 @@ def run_contextual_bandit(args, simulator, algos):
             where rec_batch_size (in args): int, number of recommendations per context.
     """
 
-    # contexts = contexts[:3]
-
-    # num_exper = args.num_exper
-    # num_round = args.num_round
-
     np.random.seed(2022)
     clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
@@ -184,7 +220,7 @@ def run_contextual_bandit(args, simulator, algos):
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
       
-        cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models', 'indices_{}.pkl'.format(e))
+        cb_learner_path = os.path.join(args.root_proj_dir, args.cb_pretrained_models, 'indices_{}.pkl'.format(e))
         if args.split_large_topic:
             cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models_large_topic_splited', 'indices_{}.pkl'.format(e))
         else:

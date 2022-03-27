@@ -35,7 +35,26 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
 def create_commands(args, algo_group, result_path):
     commands = []
     num_selected_users = 10
-    if algo_group == 'tune_pretrainedMode_rewardType':
+    if algo_group == 'test_proposed':
+        for algo in ['neural_glmadducb', 'neural_bilinucb']:
+            for gamma in [0, 0.1, 0.5, 1]:
+                algo_prefix = algo + '-gamma' + str(gamma)
+                # + '-' + str(args.n_trials) + '-' + str(args.T) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --gamma {} > {}".format(algo, algo_prefix, result_path, num_selected_users, gamma, log_path))
+    elif algo_group == 'test_dropout':
+        for algo in ['greedy', 'neural_dropoutucb', 'uniform_random']:
+            algo_prefix = algo 
+            # + '-' + str(args.n_trials) + '-' + str(args.T) 
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
+    elif algo_group == 'test_lin_glm_neural_ucb':
+        for algo in ['linucb', 'glmucb', 'neural_linucb', 'neural_glmucb']:
+            algo_prefix = algo 
+            # + '-' + str(args.n_trials) + '-' + str(args.T) 
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
+    elif algo_group == 'tune_pretrainedMode_rewardType':
         for pretrained_mode in [True, False]:
             for reward_type in ['threshold']: # 'soft', 'hybrid', 'hard', 
                 algo = 'greedy'
@@ -46,7 +65,7 @@ def create_commands(args, algo_group, result_path):
     elif algo_group == 'tune_pretrainedMode_nuser':
         for pretrained_mode in [True, False]:
             for num_selected_users in [10, 100, 1000]:
-                reward_type = 'threshold-eps'
+                reward_type = 'threshold_eps'
                 algo = 'greedy'
                 algo_prefix = algo + '-pretrained' + str(pretrained_mode) + '-num_selected_users' + str(num_selected_users)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
@@ -63,14 +82,14 @@ def create_commands(args, algo_group, result_path):
                     log_path = os.path.join(result_path, algo_prefix + '.log')
                     commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --epochs {} --lr {} > {}".format(algo, algo_prefix, result_path, num_selected_users, epochs, lr, log_path))
             # commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {}".format(algo, algo_prefix, result_path, num_selected_users))
-        for algo in ['single_neuralucb']: # , 'greedy', 'single_linucb'
+        for algo in ['neural_dropoutucb']: # , 'greedy', 'linucb'
             algo_prefix =  algo + '-num_selected_users' + str(num_selected_users)
             print('Debug algo_prefix: ', algo_prefix)
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
     elif algo_group == 'tune_neural_linear':
-        for algo in ['neuralbilinucb_hybrid', 'neuralglmucb_uihybrid']: # 'neural_linearts', 'neuralglmucb_uihybrid'
+        for algo in ['neuralbilinucb', 'neural_glmadducb']: # 'neural_linearts', 'neural_glmadducb'
             for gamma in [0, 0.1]:
                 algo_prefix = algo  + '-gamma' + str(gamma) + '-num_selected_users' + str(num_selected_users)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
@@ -112,7 +131,7 @@ def create_commands(args, algo_group, result_path):
                 log_path = os.path.join(result_path, algo_prefix + '.log')
                 commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --topic_update_period {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path,  topic_update_period, num_selected_users, log_path))
     elif algo_group == 'single_stage':
-        for algo in ['single_neuralucb', 'greedy', 'single_linucb', 'glmucb']: # , 'greedy', 'single_linucb'
+        for algo in ['neural_dropoutucb', 'greedy', 'linucb', 'glmucb']: # , 'greedy', 'linucb'
             algo_prefix = algo 
             print('Debug algo_prefix: ', algo_prefix)
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
@@ -139,9 +158,9 @@ if __name__ == '__main__':
     # from configs.zhenyu_params import parse_args
     args = parse_args()
 
-    # algo_group = ['single_neuralucb', 'ts_neuralucb', 'greedy', 'neuralucb_neuralucb'] # 'single_linucb'
+    # algo_group = ['neural_dropoutucb', 'ts_neuralucb', 'greedy', 'neuralucb_neuralucb'] # 'linucb'
     # algo_group = ['tune_ts_neuralucb']
-    algo_groups =  ['tune_pretrainedMode_nuser'] # tune_dynamicTopic, tune_neural_linear, tune_topic_update_period, test, tune_pretrainedMode_rewardType
+    algo_groups =  ['test_proposed'] # tune_dynamicTopic, tune_neural_linear, tune_topic_update_period, test, tune_pretrainedMode_rewardType
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     timestr = time.strftime("%Y%m%d-%H%M")

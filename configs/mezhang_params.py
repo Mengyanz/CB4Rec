@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument("--ips_normalize", type=bool, default=True)
     parser.add_argument("--empirical_ips", type=bool, default=True)
     parser.add_argument("--sim_margin", type=float, default=0.001)
-    parser.add_argument("--reward_type", type=str, default='soft', help='soft/hard/hybrid/threshold/threshold-eps')
+    parser.add_argument("--reward_type", type=str, default='threshold_eps', help='soft/hard/hybrid/threshold/threshold_eps')
 
     # Simulation
     parser.add_argument("--algo",type=str,default="ts_neuralucb")
@@ -41,14 +41,14 @@ def parse_args():
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
-    parser.add_argument("--T", type=int, default=5000, help = 'number of rounds (interactions)')
+    parser.add_argument("--T", type=int, default=2000, help = 'number of rounds (interactions)')
     parser.add_argument("--topic_update_period", type=int, default=50, help = 'Update period for CB topic model')
     parser.add_argument("--update_period", type=int, default=100, help = 'Update period for CB item model')
     parser.add_argument("--n_inference", type=int, default=5, help='number of Monte Carlo samples of prediction. ')
     parser.add_argument("--rec_batch_size", type=int, default=5, help='recommendation size for each round.')
     parser.add_argument("--per_rec_score_budget", type=int, default=1000, help='budget for calculating scores, e.g. ucb, for each rec')
     parser.add_argument("--max_batch_size", type=int, default=256, help = 'Maximum batch size your GPU can fit in.')
-    parser.add_argument("--pretrained_mode",type=str2bool,default=False, 
+    parser.add_argument("--pretrained_mode",type=str2bool,default=True, 
         help="Indicates whether to load a pretrained model. True: load from a pretrained model, False: no pretrained model ")
     parser.add_argument("--preinference_mode",type=str2bool,default=True, 
         help="Indicates whether to preinference news before each model update.")
@@ -63,10 +63,11 @@ def parse_args():
         help="If True: sample from Bernoulli to get binary simulated reward; If False: use a threshold.")
     parser.add_argument("--eva_model_valid", type=str2bool,default=False,
         help="If True: evaluate model on validation dataset")
+    parser.add_argument("--cb_pretrained_models",type=str,default="cb_pretrained_models_dim64")
 
     # for neural linear
     parser.add_argument("--lambda_prior", type=float, default=1.0, help = 'Prior for neural linear thompson sampling covariance diagonal term')
-    parser.add_argument("--latent_dim", type=int, default=400, help = 'latent representation dim for neural linear')
+    # parser.add_argument("--latent_dim", type=int, default=400, help = 'latent representation dim for neural linear')
     parser.add_argument("--item_linear_update_period", type=int, default=1, help = 'Update period for CB item linear model (for neural linear model)')
 
     # nrms topic

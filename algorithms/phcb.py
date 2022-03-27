@@ -70,7 +70,7 @@ class Item():
 
 class pHCB(ContextualBanditLearner):
     def __init__(self,device, args,root, name='pHCB'):
-        super(pHCB, self).__init__(args, name)
+        super(pHCB, self).__init__(args, device, name)
         
         self.device = device
         self.args = args

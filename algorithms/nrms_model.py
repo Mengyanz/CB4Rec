@@ -138,14 +138,15 @@ class TextEncoder(nn.Module):
         # REVIEW: remove training=self.training to enable dropout during testing 
         text_vector = F.dropout(self.word_embedding(text.long()),
                                 p=self.dropout_rate,
-                                training=True
+                                training=self.training
+                                # training=True
                                 )
         multihead_text_vector = self.multihead_attention(
             text_vector, text_vector, text_vector)
         multihead_text_vector = F.dropout(multihead_text_vector,
                                           p=self.dropout_rate,
-                                        #   training=self.training
-                                        training=True
+                                          training=self.training
+                                        #   training=True
                                           )
         # batch_size, word_embedding_dim
         text_vector = self.additive_attention(multihead_text_vector)

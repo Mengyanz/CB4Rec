@@ -19,7 +19,7 @@ contextual bandits for user interest exploration
     * `run_contextual_bandit`: interaction loop 
   * `simulator.py`: Abstract class for simulator 
 * `algorithms`: Define actual implementations of neural network models, CB algorithms and simulators.  
-  * `SingleStageNeuralUCB`
+  * `NeuralDropoutUCB`
   * `TwoStageNeuralUCB`
   * ... 
   * `nrms_model`: NRMS model 
