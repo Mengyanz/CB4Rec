@@ -34,15 +34,14 @@ def get_sim_news_embs(args):
     news_dataset = NewsDataset(nindex2vec) 
     news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
 
-    model = NRMS_IPS_Sim(device, args, pretrained_mode=True) #.to(device)
-    print(model)
+    simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True) 
 
-    model.eval()
+    simulator.model.eval()
     with torch.no_grad():
         news_vecs = []
         for news in news_dl: 
             news = news.to(device)
-            news_vec = model.text_encoder(news).detach().cpu().numpy()
+            news_vec = simulator.model.text_encoder(news).detach().cpu().numpy()
             news_vecs.append(news_vec)
     return np.concatenate(news_vecs)
 
@@ -305,7 +304,7 @@ def run_eva(args):
 
     timestr = '20220325-1500'
     algo_group = 'test_proposed'
-    for algo in ['neural_glmadducb', 'neural_bilinucb']:
+    for algo in ['neural_bilinucb']: # , 'neural_glmadducb'  
         for gamma in [0, 0.1, 0.5, 1]:
             algo_prefixes.append(algo + '-gamma' + str(gamma))
         
@@ -377,7 +376,7 @@ def run_eva(args):
     metrics = cal_metric(all_rewards, algo_names, ['ctr']) # , 'cumu_reward', 'ctr'
     plot_metrics(args, metrics, algo_names, plot_title='One stage '+trials)
 
-    # cal_diversity(args, all_items, algo_names)
+    cal_diversity(args, all_items, algo_names)
 
 
 if __name__ == '__main__':
