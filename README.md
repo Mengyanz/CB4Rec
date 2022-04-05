@@ -3,7 +3,8 @@
 contextual bandits for user interest exploration
 
 - overleaf doc: https://www.overleaf.com/8491477127bwdmpgvnmxyd 
-- data and simulator: [MIND](https://msnews.github.io/); and also [onedrive](https://microsoftapc-my.sharepoint.com/:f:/g/personal/v-mezhang_microsoft_com/EjPH1GwpA4NNn4xv2qhvgy8B-UveTuXVVbKH_WCdyt4A2g?e=YSHG2C)
+- data: [MIND](https://msnews.github.io/); 
+- model and meta data: [owncloud](https://cloudstor.aarnet.edu.au/plus/s/ALVV5oeDpQ3r8xD)
 - Refs:
   - Simulator: [PLM]((https://dl.acm.org/doi/abs/10.1145/3404835.3463069) and corresponding [repo](https://github.com/wuch15/PLM4NewsRec)
   - High related work: hierarchical UCB: https://arxiv.org/pdf/2110.09905.pdf 
@@ -20,7 +21,7 @@ contextual bandits for user interest exploration
   * `simulator.py`: Abstract class for simulator 
 * `algorithms`: Define actual implementations of neural network models, CB algorithms and simulators.  
   * `NeuralDropoutUCB`
-  * `TwoStageNeuralUCB`
+  * `ThompsonSampling_NeuralDropoutUCB`
   * ... 
   * `nrms_model`: NRMS model 
   * `nrms_sim`: NRMS simulator
@@ -55,3 +56,10 @@ def f(arg1, arg2, arg3, flag):
     Return:
       out: (None, d) 
 ```
+
+## Usage 
+
+To run experiments in parallel, add the commands you want to run in `create_commands` and modify settings in `tune_experiment.py`, then run `python tune_experiment.py` in command line. 
+
+
+To evaluate the performance of saved results, modify settings in `run_eva` in `evaluate.py`, then run `python evaluate.py` in command line.

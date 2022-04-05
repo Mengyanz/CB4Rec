@@ -13,10 +13,10 @@ def parse_args():
     parser = argparse.ArgumentParser() 
 
     # path
-    parser.add_argument("--root_data_dir",type=str,default="/home/v-mezhang/blob/data/")
-    parser.add_argument("--root_proj_dir",type=str,default="/home/v-mezhang/blob/CB4Rec/")
+    parser.add_argument("--root_data_dir",type=str,default="/data4/u6015325/data")
+    parser.add_argument("--root_proj_dir",type=str,default="/data4/u6015325/CB4Rec/")
     # parser.add_argument("--root_proj_dir",type=str,default="./")
-    parser.add_argument("--result_path", type=str, default='/home/v-mezhang/blob/CB4Rec/results/', help = 'CB simulation results')
+    parser.add_argument("--result_path", type=str, default='/data4/u6015325/CB4Rec/results/', help = 'CB simulation results')
 
     # Preprocessing 
     parser.add_argument("--dataset",type=str,default='large')
@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument("--reward_type", type=str, default='threshold_eps', help='soft/hard/hybrid/threshold/threshold_eps')
 
     # Simulation
-    parser.add_argument("--algo",type=str,default="ts_neuralucb")
+    parser.add_argument("--algo",type=str,default="2_ts_neuralucb")
     parser.add_argument("--algo_prefix", type=str, default="algo",
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
@@ -64,6 +64,7 @@ def parse_args():
     parser.add_argument("--eva_model_valid", type=str2bool,default=False,
         help="If True: evaluate model on validation dataset")
     parser.add_argument("--cb_pretrained_models",type=str,default="cb_pretrained_models_dim64")
+    parser.add_argument("--num_all_news", type=int, default=104151)
 
     # for neural linear
     parser.add_argument("--lambda_prior", type=float, default=1.0, help = 'Prior for neural linear thompson sampling covariance diagonal term')

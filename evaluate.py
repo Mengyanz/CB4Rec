@@ -149,7 +149,7 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
     
     return metrics
 
-def plot_metrics(args, metrics, algo_names, plot_title):
+def plot_metrics(args, metrics, algo_names, plot_title, save_title = None):
     plt_path = os.path.join(args.root_proj_dir, 'plots')
     if not os.path.exists(plt_path):
         os.mkdir(plt_path) 
@@ -173,7 +173,7 @@ def plot_metrics(args, metrics, algo_names, plot_title):
         plt.xlabel('Iteration')
         plt.ylabel(name)
         plt.title(plot_title.replace('_', ' '))
-        plt.savefig(os.path.join(plt_path, plot_title + '_' + name + '.pdf'),bbox_inches='tight')
+        plt.savefig(os.path.join(plt_path, save_title + '_' + name + '.pdf'),bbox_inches='tight')
 
 
 def cal_base_ctr(args):
@@ -233,14 +233,14 @@ def main(args):
 
     plot_folder = 'tune_topic_update_period'
     filenames = glob.glob(os.path.join(args.root_proj_dir, "results", plot_folder, "rewards-*-0-2000.npy"))
-    filenames.append(os.path.join(args.root_proj_dir, "results", "ts_neuralucb", "rewards-ts_neuralucb-topicUpdate100-ninfernece5-dynamicFalse-9-2000.npy"))
+    filenames.append(os.path.join(args.root_proj_dir, "results", "2_ts_neuralucb", "rewards-2_ts_neuralucb-topicUpdate100-ninfernece5-dynamicFalse-9-2000.npy"))
     filenames.append(os.path.join(args.root_proj_dir, "results", "baselines", "rewards-baselines-greedy-8-2000.npy"))
     filenames.append(os.path.join(args.root_proj_dir, "results", "baselines", "rewards-baselines-linucb-7-2000.npy"))
     filenames.append(os.path.join(args.root_proj_dir, "results", "neural_dropoutucb", "rewards-neural_dropoutucb-topicUpdate100-ninfernece5-dynamicFalse-0-2000.npy"))
     filenames.append(os.path.join(args.root_proj_dir, "results", "tune_neural_linear",  "20220313-1415", "trial", "0-rewards-neural_glmadducb-2000.npy"))
 
     # plot_folder = 'Dynamic Topics'
-    # filenames = glob.glob(os.path.join(args.root_proj_dir, "results", 'ts_neuralucb_zhenyu', "rewards-*-1-2000.npy"))
+    # filenames = glob.glob(os.path.join(args.root_proj_dir, "results", '2_ts_neuralucb_zhenyu', "rewards-*-1-2000.npy"))
 
     print('Debug filenames: ', filenames)
     algo_names = []
@@ -256,15 +256,15 @@ def main(args):
             algo_name = 'linucb'
         elif 'neural_dropoutucb' in filename:
             algo_name = 'neuralucb'
-        elif 'ts_neuralucb' in filename and 'zhenyu' not in filename:
-            algo_name = 'ThompsonSampling_neuralucb_topicUpdate1'
+        elif '2_ts_neuralucb' in filename and 'zhenyu' not in filename:
+            algo_name = 'ThompsonSampling_NeuralDropoutUCB_topicUpdate1'
         else:
             algo_name = ''.join(filename.split('-')[3:5])
         
-            if 'neuralucb_neuralucb' in algo_name:
-                algo_name = algo_name.replace('neuralucb_neuralucb', 'neuralucb_neuralucb_')
-            if 'ts_neuralucb_zhenyu' in algo_name:
-                algo_name = algo_name.replace('ts_neuralucb_zhenyu', 'neuralucb_neuralucb_')
+            if '2_neuralucb_neuralucb' in algo_name:
+                algo_name = algo_name.replace('2_neuralucb_neuralucb', '2_neuralucb_neuralucb_')
+            if '2_ts_neuralucb_zhenyu' in algo_name:
+                algo_name = algo_name.replace('2_ts_neuralucb_zhenyu', '2_neuralucb_neuralucb_')
         algo_names.append(algo_name)
         h_rewards_all = np.load(filename)
         if len(h_rewards_all.shape) == 3: # TODO: remove after the save format is consistent
@@ -286,7 +286,7 @@ def run_eva(args):
     all_rewards = []
     all_items = []
     
-    trials = '[0]'
+    trials = '[0-3]'
     T = 2000
     # num_selected_users = 10
 
@@ -302,10 +302,16 @@ def run_eva(args):
     # for algo in ['linucb', 'glmucb', 'neural_linucb', 'neural_glmucb']:
     #     algo_prefixes.append(algo) 
 
-    timestr = '20220325-1500'
+    # timestr = '20220325-1500'
+    # algo_group = 'test_proposed'
+    # for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
+    #     for gamma in [0, 0.1, 0.5, 1]:
+    #         algo_prefixes.append(algo + '-gamma' + str(gamma))
+
+    timestr = '20220402-1509'
     algo_group = 'test_proposed'
-    for algo in ['neural_bilinucb']: # , 'neural_glmadducb'  
-        for gamma in [0, 0.1, 0.5, 1]:
+    for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
+        for gamma in [0, 0.1, 0.5]:
             algo_prefixes.append(algo + '-gamma' + str(gamma))
         
 
@@ -344,14 +350,14 @@ def run_eva(args):
 
     # timestr = '20220318-1322' #'20220316-0642'
     # algo_group = 'tune_neural_linear'
-    # for algo in ['neural_glmadducb', 'neuralbilinucb']:
+    # for algo in ['neural_glmadducb', 'NeuralGBiLinUCB']:
     #     for gamma in [0, 0.1]: #[0, 0.1, 0.5, 1]:
     #         algo_prefixes.append(algo + '-gamma' + str(gamma) + '-num_selected_users' + str(num_selected_users))
 
     # timestr = '20220319-0633' # '20220316-0643'
     # algo_group = 'tune_topic_update_period'
-    # for algo in ['neuralucb_neuralucb', 'ts_neuralucb']:
-    #         if algo == 'ts_neuralucb':
+    # for algo in ['2_neuralucb_neuralucb', '2_ts_neuralucb']:
+    #         if algo == '2_ts_neuralucb':
     #             updates = [1]
     #         else:
     #             updates = [10,50,100]
@@ -374,7 +380,7 @@ def run_eva(args):
     print('Collect all algos items: ', all_items.shape)
 
     metrics = cal_metric(all_rewards, algo_names, ['ctr']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, metrics, algo_names, plot_title='One stage '+trials)
+    plot_metrics(args, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
     cal_diversity(args, all_items, algo_names)
 

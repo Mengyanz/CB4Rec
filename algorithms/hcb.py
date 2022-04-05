@@ -7,7 +7,7 @@ import torch
 import os
 from torch import nn
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.linucb import SingleStageLinUCB
+from algorithms.linucb import LinUCB
 from algorithms.naive_linucb import NaiveLinUCB
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
         

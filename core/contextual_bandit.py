@@ -81,7 +81,7 @@ class ContextualBanditLearner(object):
     def set_clicked_history(self, init_clicked_history):
         """
         Args:
-            init_click_history: list of init clicked history nindexs
+            init_click_history: list of init clicked history nindexes
         """
         self.clicked_history = init_clicked_history
 
@@ -98,27 +98,40 @@ class ContextualBanditLearner(object):
             if item not in self.clicked_history[uid]: #TODO: Is it OK for an item to appear multiple times in a clicked history?
                 self.clicked_history[uid].append(item)
 
-    def create_cand_set(self, cand_news, m=1):
-        """sample candidate news set given score budget.
-        Args:
-            cand_news: list of candidate news nindex
-            m: number of recommendations per iteration
-        Return
-            cand_news: sampled candidate news nindex
-        """
-        # TODO: to make full use of budget
-        score_budget = self.per_rec_score_budget * m - int(self.topic_budget /(self.rec_batch_size/m))
-        if len(cand_news)>score_budget:
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
-            cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
-        return cand_news 
+    # def create_cand_set(self, m=1):
+    #     """sample candidate news set given score budget.
+    #     Args:
+    #         m: number of recommendations per iteration
+    #     Return
+    #         cand_news: sampled candidate news nindex
+    #     """
+    #     # TODO: to make full use of budget
+    #     score_budget = self.per_rec_score_budget * m - int(self.topic_budget /(self.rec_batch_size/m))
+    #     cand_news = [item for sublist in list(self.cb_news.values()) for item in sublist]
+    #     cand_news = [self.nid2index[n] for n in cand_news]
+    #     if len(cand_news)>score_budget:
+    #         print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(cand_news)))
+    #         cand_news = np.random.choice(cand_news, size=score_budget, replace=False).tolist()
+    #     return cand_news 
 
-    def sample_actions(self, uids):
+    def item_rec(self, uid, cand_news, m = 1): 
+        """
+        Args:
+            uid: str, a user id 
+            cand_news: a list of int (not nIDs but their index version from `nid2index`) 
+            m: int, number of items to rec 
+
+        Return: 
+            items: a list of `len(uids)`int 
+        """
+        pass
+
+    def sample_actions(self, uids, cand_news = None):
         """Choose an action given a context. 
         
         Args:
             uids: a list of str uIDs (user ids). 
-
+            cand_news: list of candidate news indexes 
         Return: 
             topics: (len(uids), `rec_batch_size`)
             items: (len(uids), `rec_batch_size`) 
@@ -133,10 +146,13 @@ class ContextualBanditLearner(object):
         # and the current `user_encoder``
         # * Compute the news representation using the current `news_encoder`` for each news of each recommended topics above 
         # * Run these two steps above for `n_inference` times to estimate score uncertainty 
+
+        # cand_news = [item for sublist in list(self.cb_news.values()) for item in sublist]
+        # cand_news = [self.nid2index[n] for n in cand_news]
+
+        if cand_news is None:
+            cand_news = list(range(self.args.num_all_news))
         
-        cand_news = [item for sublist in list(self.cb_news.values()) for item in sublist]
-        # print('Debug cand_news: ', cand_news)
-        cand_news = self.create_cand_set([self.nid2index[n] for n in cand_news], self.rec_batch_size)
         rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
 
         return np.empty(0), rec_items
@@ -229,12 +245,13 @@ def run_contextual_bandit(args, simulator, algos):
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
 
-        if args.fix_user:
-            load_idx = 0
-        else:
-            load_idx = e
+        # if args.fix_user:
+        #     load_idx = 0
+        # else:
+        #     load_idx = e
+
         # Load the initial history for each user in each CB learner
-        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(load_idx))
+        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
         # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
         random_ids = np.load(indices_path)
         user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
@@ -256,17 +273,28 @@ def run_contextual_bandit(args, simulator, algos):
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
             if args.fix_user:
-                u = user_set[t]
+                u = user_set[t % args.num_selected_users]
             else:
                 # Randomly sample a user 
                 u = np.random.choice(user_set) 
             print('user: {}.'.format(u))
+
+            full_news_indexes = list(range(args.num_all_news))
+            score_budget = args.per_rec_score_budget * args.rec_batch_size
+            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(full_news_indexes)))
+            cand_news_indexes = np.random.choice(full_news_indexes, size=score_budget, replace=False).tolist()
+
             
             item_batches = []
             item_batches_phcb = []
             topic_batches = []
             for a in algos:
-                topics, items = a.sample_actions(u) # recommend for user u using their current history 
+                if a.name.startswith('2_'): # two stage
+                    topics, items = a.sample_actions(u) # recommend for user u using their current history 
+                else:
+                    # TODO: save and load user idx and cand news indexes
+                    print('For algorithm {}, use sampled candidate set ({}).'.format(a.name, len(cand_news_indexes)))
+                    topics, items = a.sample_actions(u, cand_news_indexes) # recommend for user u using their current history 
 
                 topic_batches.append(topics) 
                 if a.name.lower() != 'phcb':

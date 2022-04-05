@@ -10,7 +10,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.neural_greedy import SingleStageNeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 class UniformRandom(ContextualBanditLearner):

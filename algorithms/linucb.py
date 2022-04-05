@@ -10,15 +10,15 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.neural_greedy import SingleStageNeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy
 from algorithms.lr_model import LogisticRegression
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
-class SingleStageLinUCB(ContextualBanditLearner):
-    def __init__(self, args, device, name='SingleStageLinUCB'):
+class LinUCB(ContextualBanditLearner):
+    def __init__(self, args, device, name='LinUCB'):
         """LinUCB.
         """
-        super(SingleStageLinUCB, self).__init__(args, device, name)
+        super(LinUCB, self).__init__(args, device, name)
         
         word2vec = torch.from_numpy(self.word2vec).float()
         self.word_embedding = nn.Embedding.from_pretrained(word2vec, freeze=True).to(self.device)
@@ -127,7 +127,7 @@ class SingleStageLinUCB(ContextualBanditLearner):
         self.Ainv = {}
         self.b = {}
 
-class GLMUCB(SingleStageLinUCB):
+class GLMUCB(LinUCB):
     """Single stage Generalised linear model UCB
     We only consider Logistic Regression here.
     """
@@ -173,7 +173,7 @@ class GLMUCB(SingleStageLinUCB):
         if len(ft_sam) > 0:
             self.lr_models[uid].train()
             for epoch in range(self.args.epochs):
-                preds = self.lr_models[uid](torch.Tensor(x))
+                preds = self.lr_models[uid](torch.Tensor(x)).ravel()
                 # print('Debug preds: ', preds)
                 # print('Debug labels: ', rewards)
                 loss = self.criterion(preds, torch.Tensor(ft_labels))

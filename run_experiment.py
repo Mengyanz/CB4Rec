@@ -4,13 +4,13 @@ import math, os
 import numpy as np 
 import torch 
 from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim 
-from algorithms.neural_greedy import SingleStageNeuralGreedy
-from algorithms.neural_ucb import NeuralDropoutUCB, TwoStageNeuralUCB, DummyTwoStageNeuralUCB, TwoStageNeuralUCB_zhenyu, SingleNerual_TwoStageUCB
+from algorithms.neural_greedy import NeuralGreedy
+from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, NeuralDropoutUCB_NeuralDropoutUCB
 from algorithms.hcb import HCB
 from algorithms.phcb import pHCB
 from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMAddUCB
-from algorithms.neural_bilinear import NeuralBiLinUCB
-from algorithms.linucb import SingleStageLinUCB, GLMUCB
+from algorithms.neural_bilinear import NeuralGBiLinUCB
+from algorithms.linucb import LinUCB, GLMUCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
@@ -50,38 +50,30 @@ def main():
     print('Debug args.algo_prefix: ', args.algo_prefix)
 
      # rec_batch_size = 10
-    # dummylearner = DummyTwoStageNeuralUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
+    # dummylearner = DummyThompsonSampling_NeuralDropoutUCB(device, args, rec_batch_size = rec_batch_size, n_inference=n_inference)
 
     # construct a list of CB learners 
-    if args.algo == 'neural_dropoutucb':
-        learner = NeuralDropoutUCB(args, device)
-    elif args.algo == 'ts_neuralucb':
-        args.topic_update_period = 1 # update topic each iteration
-        learner = TwoStageNeuralUCB(args, device)
-    elif args.algo == 'singleneural_twostageucb':
-        learner = SingleNerual_TwoStageUCB(args, device)
+    # ----------------------------- Two stage ----------------------------------#
+    if args.algo == 'uniform_random':
+        learner = UniformRandom(args, device)
+    elif args.algo == 'greedy':
+        learner = NeuralGreedy(args, device)
+    elif args.algo == 'neural_dropoutucb':
+        learner = NeuralDropoutUCB(args, device) 
+    elif args.algo == 'linucb':
+        args.update_period = 1 # update parameters each iteration
+        learner = LinUCB(args, device)
+    elif args.algo == 'glmucb':
+        args.update_period = 1 # update parameters each iteration
+        learner = GLMUCB(args, device)
     elif args.algo == 'neural_linucb':
         learner = NeuralLinUCB(args, device)
     elif args.algo == 'neural_glmucb':
         learner = NeuralGLMUCB(args, device)
     elif args.algo == 'neural_glmadducb':
         learner = NeuralGLMAddUCB(args, device)
-    elif args.algo == 'neural_bilinucb':
-        learner = NeuralBiLinUCB(args, device)
-    elif args.algo == 'greedy':
-        learner = SingleStageNeuralGreedy(args, device)
-    elif args.algo == 'linucb':
-        args.update_period = 1 # update parameters each iteration
-        learner = SingleStageLinUCB(args, device)
-    elif args.algo == 'glmucb':
-        args.update_period = 1 # update parameters each iteration
-        learner = GLMUCB(args, device)
-    elif args.algo == 'neuralucb_neuralucb':
-        print(args.topic_update_period)
-        learner = TwoStageNeuralUCB_zhenyu(args, device)
-    elif args.algo == 'uniform_random':
-        args.algo_prefix = args.algo
-        learner = UniformRandom(args, device)
+    elif args.algo == 'neural_gbilinucb':
+        learner = NeuralGBiLinUCB(args, device)
     elif args.algo == 'hcb':
         args.update_period = 1
         root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
@@ -90,11 +82,18 @@ def main():
         args.update_period = 1
         root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
         learner = pHCB(device, args, root)
+    # ----------------------------- Two stage ----------------------------------#
+    elif args.algo == '2_ts_neuralucb':
+        args.topic_update_period = 1 # update topic each iteration
+        learner = ThompsonSampling_NeuralDropoutUCB(args, device)
+    elif args.algo == '2_neuralucb_neuralucb':
+        print(args.topic_update_period)
+        learner = NeuralDropoutUCB_NeuralDropoutUCB(args, device)
     else:
         raise NotImplementedError
 
     algos = [learner]
-    # algos = [greedylearner, neural_dropoutucb_learner, ts_neuralucb_learner]
+    # algos = [greedylearner, neural_dropoutucb_learner, 2_ts_neuralucb_learner]
 
     # construct dataset
     # contexts = simulator.valid_samples 

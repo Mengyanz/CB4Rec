@@ -26,7 +26,7 @@ parser.add_argument("--sim_npratio", type=int, default=4)
 parser.add_argument("--sim_val_batch_size", type=int, default=1024)
 
 # Simulation
-parser.add_argument("--algo",type=str,default="ts_neuralucb")
+parser.add_argument("--algo",type=str,default="2_ts_neuralucb")
 parser.add_argument("--algo_prefix", type=str, default="algo",
     help='the name of save files')
 parser.add_argument("--n_trials", type=int, default=4, help = 'number of experiment runs')

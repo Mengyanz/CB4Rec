@@ -11,13 +11,13 @@ from torch.utils.data import DataLoader
 from scipy.stats import invgamma
 
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.neural_greedy import SingleStageNeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from algorithms.lr_model import LogisticRegression, LogisticRegressionAddtive
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
 
-class NeuralLinUCB(SingleStageNeuralGreedy):
+class NeuralLinUCB(NeuralGreedy):
     def __init__(self, args, device, name='NeuralLinUCB'):
         """Use NRMS model (disjoint model for each user)
         """      
@@ -183,7 +183,7 @@ class NeuralGLMUCB(NeuralLinUCB):
             x = self.news_embs[0][ft_sam] # n_tr, n_dim
             self.lr_models[uid].train()
             for epoch in range(self.args.epochs):
-                preds = self.lr_models[uid](torch.Tensor(x))
+                preds = self.lr_models[uid](torch.Tensor(x)).ravel()
                 # print('Debug preds: ', preds)
                 # print('Debug labels: ', rewards)
                 loss = self.criterion(preds, torch.Tensor(ft_labels))
@@ -234,7 +234,7 @@ class NeuralGLMUCB(NeuralLinUCB):
         self.A = {}
         self.Ainv = {}
 
-class NeuralGLMAddUCB(SingleStageNeuralGreedy):
+class NeuralGLMAddUCB(NeuralGreedy):
     def __init__(self, args, device, name='neural_glmadducb'):
         """Use NRMS model with logistic regression (user item hybrid)
         \bm{x}_{i}^T \hat{\bm{\theta}}_x +  {\hat{\bm{\theta}}_z}^T \bm{z}_{u}+\alpha  \sqrt{\bm{x}_i^T A_t^{-1} \bm{x}_i},
@@ -303,7 +303,7 @@ class NeuralGLMAddUCB(SingleStageNeuralGreedy):
             z = z.reshape(-1, z.shape[-1]) # n_tr, n_dim
             self.lr_model.train()
             for epoch in range(self.args.epochs):
-                preds = self.lr_model(torch.Tensor(x), torch.Tensor(z))
+                preds = self.lr_model(torch.Tensor(x), torch.Tensor(z)).ravel()
                 # print('Debug labels: ', ft_labels)
                 loss = self.criterion(preds, torch.Tensor(ft_labels))
                 

@@ -9,19 +9,20 @@ import torch.optim as optim
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from scipy.stats import invgamma
+import datetime
 
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.neural_greedy import SingleStageNeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from algorithms.neural_linear import NeuralGLMAddUCB
 from algorithms.lr_model import LogisticRegressionBilinear
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
-class NeuralBiLinUCB(NeuralGLMAddUCB):
-    def __init__(self, args, device, name='neuralbilinucb'):
+class NeuralGBiLinUCB(NeuralGLMAddUCB):
+    def __init__(self, args, device, name='NeuralGBiLinUCB'):
         """Use NRMS model with logistic regression (disjoint model for each user)
         """      
-        super(NeuralBiLinUCB, self).__init__(args, device, name)
+        super(NeuralGBiLinUCB, self).__init__(args, device, name)
         
         self.A =  np.identity(n=self.dim**2)
         self.Ainv = np.linalg.inv(self.A)
@@ -64,16 +65,37 @@ class NeuralBiLinUCB(NeuralGLMAddUCB):
         """
         if len(self.news_embs) < 1:
             self._get_news_embs() # init news embeddings[]
+        t1 = datetime.datetime.now()
         z = self._get_user_embs(uid, 0) # (1,d)
         X = self.news_embs[0][cand_news] # (n,d)
         cands = np.array([np.outer(x,z) for x in X]).reshape(len(cand_news),-1)
-
+        t2 = datetime.datetime.now()
+        print('Debug news,user inference and get cands:, ', t2-t1)
         # x_mean = X.dot(self.theta_x) + z.dot(self.theta_z)# n_cand, 
         self.lr_model.eval()
         mean = self.lr_model.forward(torch.Tensor(X), torch.Tensor(np.repeat(z, len(cands), axis = 0))).detach().numpy().reshape(len(cands),)
+        t3 = datetime.datetime.now()
+        print('Debug get ucb mean:, ', t3-t2)
         # CI = np.array([self.gamma * np.sqrt(cand.dot(self.Ainv).dot(cand.T)) for cand in cands])
         # CI = self.gamma * np.sqrt(cands.dot(self.Ainv).dot(cands.T))
-        CI = np.array([self.gamma * np.sqrt(cand.dot(self.Ainv).dot(cand.T)) for cand in cands])
+        # CI = np.array([self.gamma * np.sqrt(cand.dot(self.Ainv).dot(cand.T)) for cand in cands])
+        # CI = np.array([self.gamma * np.sqrt(cand.dot(torch.Tensor(self.Ainv)).dot(cand.T)).detach().numpy() for torch.Tensor(cand) in cands])
+
+        # CI = []
+        # Ainv = torch.Tensor(self.Ainv).to(self.device)
+        # for cand in cands:
+        #     cand = torch.Tensor(cand).reshape(1,-1).to(self.device)
+        #     temp = cand@Ainv@cand.T
+        #     CI.append(self.gamma * np.sqrt(temp[0,0].cpu().numpy()))
+        # CI = np.array(CI)
+
+        CI = []
+        Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
+        cands = torch.unsqueeze(torch.Tensor(np.array(cands)).to(self.device),dim=1) # 5000,1,4096
+        CI = torch.bmm(torch.bmm(cands, Ainv.expand(5000,-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
+
+        t4 = datetime.datetime.now()
+        print('Debug get ucb CI (on GPU):, ', t4-t3)
         ucb = mean + CI # n_cand, 
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)

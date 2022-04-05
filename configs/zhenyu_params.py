@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument("--split_large_topic", type=bool, default=False)
 
     # Simulation
-    parser.add_argument("--algo",type=str,default="ts_neuralucb")
+    parser.add_argument("--algo",type=str,default="2_ts_neuralucb")
     parser.add_argument("--algo_prefix", type=str, default="algo",
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')

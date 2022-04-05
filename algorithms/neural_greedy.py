@@ -12,11 +12,11 @@ from core.contextual_bandit import ContextualBanditLearner
 from algorithms.nrms_model import NRMS_Model
 from utils.data_util import read_data, newsample, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
-class SingleStageNeuralGreedy(ContextualBanditLearner):
-    def __init__(self, args, device, name='SingleStageNeuralGreedy'):
+class NeuralGreedy(ContextualBanditLearner):
+    def __init__(self, args, device, name='NeuralGreedy'):
         """Use NRMS model. 
         """
-        super(SingleStageNeuralGreedy, self).__init__(args, device, name) 
+        super(NeuralGreedy, self).__init__(args, device, name) 
         self.n_inference = 1
         # self.preinference_mode = self.args.preinference_mode
         self.news_embs = [] # preinferenced news embeddings

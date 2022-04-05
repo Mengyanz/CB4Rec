@@ -5,7 +5,7 @@ import numpy as np
 import torch 
 import pickle 
 from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim
-from algorithms.neural_ucb import DummyTwoStageNeuralUCB
+from algorithms.neural_ucb import DummyThompsonSampling_NeuralDropoutUCB
 
 os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
@@ -46,8 +46,8 @@ def test_NRMS_IPS_Sim_train(device):
     nrms.train()
 
 
-def test_DummyTwoStageNeuralUCB(device): 
-    cbln = DummyTwoStageNeuralUCB(device, args, rec_batch_size = 3)
+def test_DummyThompsonSampling_NeuralDropoutUCB(device): 
+    cbln = DummyThompsonSampling_NeuralDropoutUCB(device, args, rec_batch_size = 3)
     uid = 'U403465'
     news_indexes = [0,1,2,3,4] 
     # res = cbln.item_rec(uid, news_indexes)
@@ -65,13 +65,13 @@ def test_PropensityScore(device):
 
 if __name__ == '__main__': 
     # test_NRMS_Sim()
-    # test_DummyTwoStageNeuralUCB()
+    # test_DummyThompsonSampling_NeuralDropoutUCB()
     # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
     device = torch.device("cuda:0")
     torch.cuda.set_device(device)
 
     test_NRMS_Sim(device)
-    # test_DummyTwoStageNeuralUCB()
+    # test_DummyThompsonSampling_NeuralDropoutUCB()
     # test_NRMS_Sim_train(device)
 
     # test_PropensityScore(device)

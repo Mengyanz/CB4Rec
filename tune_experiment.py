@@ -31,13 +31,20 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
         if p is not None:
             p.wait()
 
+def run_exps(args, algo_groups, result_path, gpus,models_per_gpu:
+    commands = []
+    for algo_group in algo_groups:
+        commands += create_commands(args, algo_group, result_path)
+    # random.shuffle(commands)
+    multi_gpu_launcher(commands,gpus,models_per_gpu)
+
 
 def create_commands(args, algo_group, result_path):
     commands = []
     num_selected_users = 10
     if algo_group == 'test_proposed':
-        for algo in ['neural_glmadducb', 'neural_bilinucb']:
-            for gamma in [0, 0.1, 0.5, 1]:
+        for algo in ['neural_gbilinucb']: # 'neural_glmadducb', 
+            for gamma in [0, 0.1]: # 0, 0.1, 0.5, 1
                 algo_prefix = algo + '-gamma' + str(gamma)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
@@ -89,22 +96,22 @@ def create_commands(args, algo_group, result_path):
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
     elif algo_group == 'tune_neural_linear':
-        for algo in ['neuralbilinucb', 'neural_glmadducb']: # 'neural_linearts', 'neural_glmadducb'
+        for algo in ['NeuralGBiLinUCB', 'neural_glmadducb']: # 'neural_linearts', 'neural_glmadducb'
             for gamma in [0, 0.1]:
                 algo_prefix = algo  + '-gamma' + str(gamma) + '-num_selected_users' + str(num_selected_users)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
                 commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --gamma {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, gamma, num_selected_users, log_path))
                 # commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {}".format(algo, algo_prefix, result_path))
-    elif algo_group == 'tune_ts_neuralucb':
+    elif algo_group == 'tune_2_ts_neuralucb':
         for uniform_init in [True, False]:
             algo_prefix = 'TSUniInit' + str(uniform_init) 
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --uniform_init {}> {}".format(algo_group, algo_prefix, result_path, uniform_init, log_path))
     elif algo_group == 'tune_dynamicTopic':
-        for algo in ['ts_neuralucb', 'neuralucb_neuralucb']:
-            for dynamic_aggregate_topic in [True, False]:
+        for algo in ['2_ts_neuralucb', '2_neuralucb_neuralucb']:
+            for dynamic_aggregate_topic in [True]: # , False
                 algo_prefix = algo + '-dynamicTopic' + str(dynamic_aggregate_topic) 
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
@@ -114,13 +121,13 @@ def create_commands(args, algo_group, result_path):
         for fix_user in [True, False]:
             sim_sampleBern = True
             n_trials = 10
-            algo_prefix =  'ts_neuralucb'  + '-FixUser' + str(fix_user) + '-SimSampleBern' + str(sim_sampleBern) 
+            algo_prefix =  '2_ts_neuralucb'  + '-FixUser' + str(fix_user) + '-SimSampleBern' + str(sim_sampleBern) 
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
-            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --fix_user {} --sim_sampleBern {} --n_trials {}> {}".format('ts_neuralucb', algo_prefix, result_path,  fix_user, sim_sampleBern, n_trials, log_path))
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --fix_user {} --sim_sampleBern {} --n_trials {}> {}".format('2_ts_neuralucb', algo_prefix, result_path,  fix_user, sim_sampleBern, n_trials, log_path))
     elif algo_group == 'tune_topic_update_period':
-        for algo in ['neuralucb_neuralucb', 'ts_neuralucb']:
-            if algo == 'ts_neuralucb':
+        for algo in ['2_neuralucb_neuralucb', '2_ts_neuralucb']:
+            if algo == '2_ts_neuralucb':
                 updates = [1]
             else:
                 updates = [10,50,100]
@@ -145,22 +152,16 @@ def create_commands(args, algo_group, result_path):
         commands.append("python run_experiment.py --algo {} --algo_prefix {} --result_path {} > {}".format(algo_group, algo_prefix, result_path,  log_path))
     return commands
 
-
-def run_exps(args, algo_groups, result_path):
-    commands = []
-    for algo_group in algo_groups:
-        commands += create_commands(args, algo_group, result_path)
-    # random.shuffle(commands)
-    multi_gpu_launcher(commands, [1,2,3,4,5,6,7], 1)
-
 if __name__ == '__main__':
     from configs.mezhang_params import parse_args
     # from configs.zhenyu_params import parse_args
     args = parse_args()
 
-    # algo_group = ['neural_dropoutucb', 'ts_neuralucb', 'greedy', 'neuralucb_neuralucb'] # 'linucb'
-    # algo_group = ['tune_ts_neuralucb']
-    algo_groups =  ['test_proposed'] # tune_dynamicTopic, tune_neural_linear, tune_topic_update_period, test, tune_pretrainedMode_rewardType
+    # settings
+    os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
+    gpus = [0,1]
+    models_per_gpu = 2
+    algo_groups =  ['test_lin_glm_neural_ucb'] 
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     timestr = time.strftime("%Y%m%d-%H%M")
@@ -171,4 +172,5 @@ if __name__ == '__main__':
         trial_path = os.path.join(result_path, 'trial') # store final results
         if not os.path.exists(trial_path):
                 os.mkdir(trial_path) 
-    run_exps(args, algo_groups, result_path)
+                
+    run_exps(args, algo_groups, result_path,gpus,models_per_gpu)
