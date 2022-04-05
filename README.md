@@ -10,6 +10,8 @@ contextual bandits for user interest exploration
   - High related work: hierarchical UCB: https://arxiv.org/pdf/2110.09905.pdf 
   - CB Predictor: [NRMS](https://aclanthology.org/D19-1671/)
 
+- [result table](https://anu365-my.sharepoint.com/:x:/g/personal/u6015325_anu_edu_au/EYFx8SL3o39Jnj62a-I3YVoBOiOtD61GiCdIoLyPEfyfrw?e=QKEnOK): record up-to-date results 
+
 
 
 ## API 
