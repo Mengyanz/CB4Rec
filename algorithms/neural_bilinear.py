@@ -96,7 +96,7 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
 
         t4 = datetime.datetime.now()
         print('Debug get ucb CI (on GPU):, ', t4-t3)
-        ucb = mean + CI # n_cand, 
+        ucb = mean + self.gamma * np.sqrt(CI) # n_cand, 
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]

@@ -31,7 +31,7 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
         if p is not None:
             p.wait()
 
-def run_exps(args, algo_groups, result_path, gpus,models_per_gpu:
+def run_exps(args, algo_groups, result_path, gpus,models_per_gpu):
     commands = []
     for algo_group in algo_groups:
         commands += create_commands(args, algo_group, result_path)
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
     gpus = [0,1]
     models_per_gpu = 2
-    algo_groups =  ['test_lin_glm_neural_ucb'] 
+    algo_groups =  ['neural_gbilinucb'] 
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     timestr = time.strftime("%Y%m%d-%H%M")
