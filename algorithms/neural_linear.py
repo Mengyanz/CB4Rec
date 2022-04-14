@@ -15,6 +15,8 @@ from algorithms.neural_greedy import NeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from algorithms.lr_model import LogisticRegression, LogisticRegressionAddtive
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
+from torch.utils.tensorboard import SummaryWriter
+import os
 
 
 class NeuralLinUCB(NeuralGreedy):
@@ -29,6 +31,14 @@ class NeuralLinUCB(NeuralGreedy):
         self.A = {}
         self.Ainv = {}
         self.b = {}
+
+        # debug glm
+        out_folder = os.path.join(args.result_path, 'runs') # store final results
+        if not os.path.exists(out_folder):
+            os.makedirs(out_folder)
+
+        out_path = os.path.join(out_folder, self.name)
+        self.writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html
 
     def getInv(self, old_Minv, nfv):
         # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
@@ -102,6 +112,12 @@ class NeuralLinUCB(NeuralGreedy):
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
 
+    # debug glm
+    def predict(self, uid, cand_news):
+        X = self.news_embs[0][cand_news] # (n,d)
+        preds = X.dot(self.theta[uid])
+        return preds
+
     def reset(self):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
@@ -170,7 +186,7 @@ class NeuralGLMUCB(NeuralLinUCB):
             # tr_samples.extend(negs)
             # tr_rewards.extend([0]*len(negs))
 
-            self.data_buffer_lr.remove(l)
+            # self.data_buffer_lr.remove(l)
         # print('Debug tr_samples: ', tr_samples)
         # print('Debug tr_rewards: ', tr_rewards)
         # print('Debug self.data_buffer: ', self.data_buffer)
@@ -180,17 +196,24 @@ class NeuralGLMUCB(NeuralLinUCB):
         optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.lr)
         ft_sam, ft_labels = self.construct_trainable_samples_lr(uid)
         if len(ft_sam) > 0:
+            
             x = self.news_embs[0][ft_sam] # n_tr, n_dim
             self.lr_models[uid].train()
-            for epoch in range(self.args.epochs):
-                preds = self.lr_models[uid](torch.Tensor(x)).ravel()
-                # print('Debug preds: ', preds)
-                # print('Debug labels: ', rewards)
-                loss = self.criterion(preds, torch.Tensor(ft_labels))
-                
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            # REVIEW: for epoch in range(self.args.epochs):
+            preds = self.lr_models[uid](torch.Tensor(x)).ravel()
+            # print('Debug preds: ', preds)
+            # print('Debug labels: ', rewards)
+            loss = self.criterion(preds, torch.Tensor(ft_labels))
+            print('Debug for uid {} loss {} '.format(uid, loss))
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # debug glm
+            self.writer.add_scalars('{} Training Loss'.format(uid),
+                    {'Training': loss}, 
+                    len(self.data_buffer_lr))
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -222,6 +245,13 @@ class NeuralGLMUCB(NeuralLinUCB):
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
+
+    # debug glm
+    def predict(self, uid, cand_news):
+        X = self.news_embs[0][cand_news] # (n,d)
+        preds = self.lr_models[uid].forward(torch.Tensor(X)).detach().numpy().reshape(X.shape[0],) # n_cand, 
+        return preds
+
 
     def reset(self):
         """Reset the CB learner to its initial state (do this for each experiment). """

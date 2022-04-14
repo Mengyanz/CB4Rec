@@ -7,6 +7,7 @@ from collections import defaultdict
 from utils.data_util import load_cb_train_data, load_cb_valid_data, load_word2vec, load_cb_topic_news
 import os
 import torch
+from sklearn.metrics import roc_auc_score
 
 class ContextualBanditLearner(object):
     def __init__(self, args, device, name='ContextualBanditLearner'):
@@ -264,7 +265,14 @@ def run_contextual_bandit(args, simulator, algos):
         if args.eva_model_valid:
             [a.run_eva() for a in algos]
 
-        
+        np.random.seed(2022)
+        us = np.random.choice(user_set, size = args.T, replace=True)
+
+        np.random.seed(2022) # REVIEW: keep sampled news the same from different trials, you can alternatively set to different seed to make news different for different trials.
+        full_news_indexes = list(range(args.num_all_news))
+        score_budget = args.per_rec_score_budget * args.rec_batch_size
+        newss = np.random.choice(full_news_indexes, size=args.T * score_budget, replace=True).reshape(args.T, -1)
+
         # Run the contextual bandit process
         h_items = np.empty((len(algos), args.rec_batch_size,0), float)
         h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
@@ -272,17 +280,18 @@ def run_contextual_bandit(args, simulator, algos):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
-            if args.fix_user:
-                u = user_set[t % args.num_selected_users]
-            else:
-                # Randomly sample a user 
-                u = np.random.choice(user_set) 
+            # if args.fix_user:
+            #     u = user_set[t % args.num_selected_users]
+            # else:
+            #     # Randomly sample a user 
+            #     u = np.random.choice(user_set) 
+            u = us[t]
             print('user: {}.'.format(u))
 
-            full_news_indexes = list(range(args.num_all_news))
-            score_budget = args.per_rec_score_budget * args.rec_batch_size
-            print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(full_news_indexes)))
-            cand_news_indexes = np.random.choice(full_news_indexes, size=score_budget, replace=False).tolist()
+            # print('Randomly sample {} candidates news out of candidate news ({})'.format(score_budget, len(full_news_indexes)))
+            # cand_news_indexes = np.random.choice(full_news_indexes, size=score_budget, replace=False).tolist()
+            cand_news_indexes = newss[t].tolist()
+            # print('Debug cand news indexes: ', cand_news_indexes)
 
             
             item_batches = []
@@ -357,6 +366,14 @@ def run_contextual_bandit(args, simulator, algos):
                     # for neural linear model only
                     a.update(topics, items, rewards, mode = 'item-linear', uid = u)
 
+                # DEBUG for neurla glmucb - lr model auc (0414)
+                # if (t + 1) % 10 == 0:
+                #     targets = simulator.reward(u, cand_news_indexes).ravel()
+                #     preds = a.predict(u, cand_news_indexes)
+                #     auc = roc_auc_score(targets, preds)
+                #     print('Debug at round {}: auc {}'.format(t, auc))
+                #     a.writer.add_scalars('{} auc'.format(u), {'auc': auc}, t)
+                    
             # if t % 1000 == 0 and t > 0:
             #     temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
             #     temp_reward_path = os.path.join(result_path, "rewards-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
