@@ -348,7 +348,7 @@ class EmpiricalIPSModel(object):
             return nominator * 1.0 / self.val_user_count[uindex]
 
 class NRMS_IPS_Sim(Simulator): 
-    def __init__(self, device, args, pretrained_mode=False, name='NRMS_IPS_Sim'): 
+    def __init__(self, device, args, pretrained_mode=False, name='NRMS_IPS_Sim', train_mode = False): 
         """
         Args:
             pretrained_mode: bool, True: load from a pretrained model, False: no pretrained model 
@@ -387,15 +387,17 @@ class NRMS_IPS_Sim(Simulator):
 
             self.sim_margin = args.sim_margin 
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
+        if train_mode:
+            self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
 
-        if self.args.empirical_ips:
-            data_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
-            with open(os.path.join(data_path, "uid2index.pkl"), "rb") as f:
-                uid2index = pickle.load(f)
-            self.ips_model = EmpiricalIPSModel(data_path, uid2index)
-        else:
-            self.ips_model = PropensityScore(args, device, pretrained_mode=True)
+            print('In train mode, create ips model')
+            if self.args.empirical_ips:
+                data_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
+                with open(os.path.join(data_path, "uid2index.pkl"), "rb") as f:
+                    uid2index = pickle.load(f)
+                self.ips_model = EmpiricalIPSModel(data_path, uid2index)
+            else:
+                self.ips_model = PropensityScore(args, device, pretrained_mode=True)
        
 
     # def reward(self, uid, news_indexes): 

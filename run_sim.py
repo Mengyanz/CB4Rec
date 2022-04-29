@@ -21,7 +21,7 @@ def main():
 
     device = torch.device("cuda:1")
     torch.cuda.set_device(device)
-    nrms = NRMS_IPS_Sim(device, args, pretrained_mode=False)
+    nrms = NRMS_IPS_Sim(device, args, pretrained_mode=False, train_mode=True)
     nrms.train()
 
 

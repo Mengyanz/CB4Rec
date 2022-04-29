@@ -175,8 +175,26 @@ class NeuralGreedy(ContextualBanditLearner):
         #     rec_itms = [cand_news[n] for n in nid_argmax]
         #     return rec_itms 
     
-    def reset(self):
-        """Reset the CB learner to its initial state (do this for each experiment). """
-        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
-        self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+    def reset(self, e=None, save_flag=True, reload_flag=False):
+        """Save and Reset the CB learner to its initial state (do this for each trial/experiment). """
+
+        # save
+        if save_flag:
+            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
+                pickle.dump(self.clicked_history, f)
+            np.save(os.path.join(model_path, "{}_data_buffer".format(e)), data_buffer)
+            torch.save(self.model.state_dict(), os.path.join(model_path, '{}_nrms.pkl'.format(e)))
+
+        # reset
         self.model = NRMS_Model(self.word2vec, news_embedding_dim = self.args.news_dim).to(self.device)
+        if reload_flag:
+            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
+               self.clicked_history = pickle.load(f) 
+            data_buffer = np.load(os.path.join(model_path, "{}_data_buffer".format(e)))
+            self.model.load_state_dict(torch.load(os.path.join(model_path, '{}_nrms.pkl'.format(e))))
+        else:
+            self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+            self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+            

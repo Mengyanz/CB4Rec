@@ -65,3 +65,18 @@ def batch_roc_auc_score(y_trues, y_scores):
         assert len(y_true) == n2 
         res.append(roc_auc_score(y_true,y_score))
     return res
+
+# diversity scores 
+def ILAD(vecs):
+    score = np.dot(vecs,vecs.T)
+    score = (score+1)/2
+    score = score.mean()-1/score.shape[0]
+    score = float(score)
+    return score
+
+def ILMD(vecs):
+    score = np.dot(vecs,vecs.T)
+    score = (score+1)/2
+    score = score.min()
+    score = float(score)
+    return score

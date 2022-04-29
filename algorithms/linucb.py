@@ -167,7 +167,7 @@ class GLMUCB(LinUCB):
         return np.array(tr_samples), np.array(tr_rewards)
 
     def train_lr(self, uid):
-        optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.lr)
+        optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.glm_lr)
         ft_sam, ft_labels = self.construct_trainable_samples(uid)
         x = self._get_news_embedding(ft_sam) # n_tr, n_dim
         if len(ft_sam) > 0:

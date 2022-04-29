@@ -22,7 +22,7 @@ def multi_gpu_launcher(commands,gpus,models_per_gpu):
                 new_proc = subprocess.Popen(
                     f'CUDA_VISIBLE_DEVICES={gpu_idx} {cmd}', shell=True)
                 procs[i] = new_proc
-                print("runnning ", cmd)
+                print("on GPU {} running {}".format(gpu_idx, cmd))
                 break
         time.sleep(1)
 
@@ -41,10 +41,31 @@ def run_exps(args, algo_groups, result_path, gpus,models_per_gpu):
 
 def create_commands(args, algo_group, result_path):
     commands = []
-    num_selected_users = 10
-    if algo_group == 'test_proposed':
-        for algo in ['neural_gbilinucb']: # 'neural_glmadducb', 
-            for gamma in [0, 0.1]: # 0, 0.1, 0.5, 1
+    # num_selected_users = 10
+    if algo_group == 'run_onestage_nonneural':
+        for num_selected_users in [1, 100, 1000]:
+            for algo in ['uniform_random', 'linucb', 'glmucb']:
+                algo_prefix = algo + '_nuser' + str(num_selected_users) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
+    elif algo_group == 'run_onestage_neural':
+        for num_selected_users in [1, 100, 1000]:
+            for algo in ['greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_gbilinucb', 'neural_glmadducb']:
+                algo_prefix = algo + '_nuser' + str(num_selected_users) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
+    elif algo_group == 'debug_glm':
+        # T = 100
+        # score_budget = 20
+        for algo in ['neural_glmucb']: # ['neural_glmucb_lbfgs']: # ['neural_glmucb', 'neural_linucb']: 
+            for glm_lr in [0.1, 0.01]:
+                algo_prefix = algo + '_randomInit' + str(random_init) + '_glmlr' + str(glm_lr) #+ 'score_budget' + str(score_budget)
+                # + '-' + str(args.n_trials) + '-' + str(args.T) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --random_init {} --glm_lr {} > {}".format(algo, algo_prefix, result_path, num_selected_users, random_init, glm_lr, log_path))
+    elif algo_group == 'test_proposed':
+        for algo in ['neural_gbilinucb', 'neural_glmadducb']: # 'neural_glmadducb', 
+            for gamma in [0.1]: # 0, 0.1, 0.5, 1
                 algo_prefix = algo + '-gamma' + str(gamma)
                 # + '-' + str(args.n_trials) + '-' + str(args.T) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
@@ -56,7 +77,7 @@ def create_commands(args, algo_group, result_path):
             log_path = os.path.join(result_path, algo_prefix + '.log')
             commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
     elif algo_group == 'test_lin_glm_neural_ucb':
-        for algo in ['linucb', 'glmucb', 'neural_linucb', 'neural_glmucb']:
+        for algo in ['glmucb']: # 'linucb', 'glmucb', 'neural_linucb', 'neural_glmucb'
             algo_prefix = algo 
             # + '-' + str(args.n_trials) + '-' + str(args.T) 
             log_path = os.path.join(result_path, algo_prefix + '.log')
@@ -158,19 +179,26 @@ if __name__ == '__main__':
     args = parse_args()
 
     # settings
-    os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
     gpus = [0,1]
     models_per_gpu = 2
-    algo_groups =  ['neural_gbilinucb'] 
+    algo_groups =  ['run_onestage_neural'] 
+
+    # gpus = [2]
+    # models_per_gpu = 2
+    # algo_groups =  ['run_onestage_nonneural'] 
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     timestr = time.strftime("%Y%m%d-%H%M")
+    print('Saving to {}'.format(timestr))
     for algo_group in algo_groups:
         result_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr)
         if not os.path.exists(result_path):
             os.makedirs(result_path) 
         trial_path = os.path.join(result_path, 'trial') # store final results
         if not os.path.exists(trial_path):
-                os.mkdir(trial_path) 
+            os.mkdir(trial_path) 
+        model_path = os.path.join(result_path, 'model') # store models (for future reload)
+        if not os.path.exists(model_path):
+            os.mkdir(model_path) 
                 
     run_exps(args, algo_groups, result_path,gpus,models_per_gpu)

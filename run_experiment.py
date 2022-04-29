@@ -8,13 +8,14 @@ from algorithms.neural_greedy import NeuralGreedy
 from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, NeuralDropoutUCB_NeuralDropoutUCB
 from algorithms.hcb import HCB
 from algorithms.phcb import pHCB
-from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMAddUCB
+from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMUCB_Newton, NeuralGLMUCB_LBFGS, NeuralGLMAddUCB
 from algorithms.neural_bilinear import NeuralGBiLinUCB
 from algorithms.linucb import LinUCB, GLMUCB
 from algorithms.uniform_random import UniformRandom
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 import pickle
+import json
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
 device = torch.device("cuda:0")
@@ -70,6 +71,10 @@ def main():
         learner = NeuralLinUCB(args, device)
     elif args.algo == 'neural_glmucb':
         learner = NeuralGLMUCB(args, device)
+    elif args.algo == 'neural_glmucb_newton':
+        learner = NeuralGLMUCB_Newton(args, device)
+    elif args.algo == 'neural_glmucb_lbfgs':
+        learner = NeuralGLMUCB_LBFGS(args, device)
     elif args.algo == 'neural_glmadducb':
         learner = NeuralGLMAddUCB(args, device)
     elif args.algo == 'neural_gbilinucb':
@@ -101,6 +106,9 @@ def main():
     # runner 
     # h_actions, h_rewards = run_contextual_bandit(args, simulator, algos)
     print(args)
+    args_save_path = os.path.join(args.result_path, args.algo_prefix)
+    with open(args_save_path, 'wt') as f:
+        json.dump(vars(args), f, indent=4)
     run_contextual_bandit(args, simulator, algos)
 
 

@@ -604,7 +604,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     best_auc = 0
-    for ep in range(2, args.epochs):
+    for ep in range(args.epochs):
         loss = 0
         model.train()
         train_loader = tqdm(train_dl)

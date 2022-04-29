@@ -10,26 +10,13 @@ import torch
 from torch.utils.data import DataLoader
 from algorithms.nrms_sim import NRMS_IPS_Sim 
 from utils.data_util import NewsDataset, TrainDataset, load_word2vec
-
-# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1,2,3"
-device = torch.device("cuda:0")
-torch.cuda.set_device(device)
-
-def ILAD(vecs):
-    score = np.dot(vecs,vecs.T)
-    score = (score+1)/2
-    score = score.mean()-1/score.shape[0]
-    score = float(score)
-    return score
-
-def ILMD(vecs):
-    score = np.dot(vecs,vecs.T)
-    score = (score+1)/2
-    score = score.min()
-    score = float(score)
-    return score
+from utils.metrics import ILAD, ILMD
 
 def get_sim_news_embs(args):
+    os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
+    device = torch.device("cuda:0")
+    torch.cuda.set_device(device)
+
     _, _, nindex2vec = load_word2vec(args, 'utils')
     news_dataset = NewsDataset(nindex2vec) 
     news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
@@ -58,36 +45,48 @@ def cal_diversity(args, rec_items_all, algo_names, metric_names = ['ILAD-batch',
     trial_stds = []
 
     for algo_i in range(rec_items_all.shape[0]):
-        all_batch_ILADs = [] # diversity for batch 
+        all_batch_ILADs = [] # diversity for batch
         all_trial_ILADs = [] # diversity for trial
         for trial_i in range(rec_items_all.shape[1]):
             batch_ILADs = [] # diversity for batch 
+            trial_ILADs = []
             rec_items = rec_items_all[algo_i][trial_i]
             all_embedding = []
-            for batch in rec_items:
+            for i, batch in enumerate(rec_items):
                 batch = list(map(int, batch))
                 nv = news_vecs[batch]
                 nv = nv/np.sqrt(np.square(nv).sum(axis=-1)).reshape((nv.shape[0],1))
                 all_embedding.append(nv)
-                batch_ILADs.append(ILAD(nv))
+                if (i + 1) % 100 == 0:
+                    batch_ILADs.append(ILAD(nv))
+                    trial_ILAD = ILAD(np.concatenate(all_embedding,axis=0))
+                    trial_ILADs.append(trial_ILAD)
+
+            all_batch_ILADs.append(batch_ILADs)
+            all_trial_ILADs.append(trial_ILADs)
             
-            all_batch_ILADs.append(np.mean(batch_ILADs))
-            all_embedding = np.concatenate(all_embedding, axis=0)
-            all_trial_ILADs.append(ILAD(all_embedding))
+            # all_batch_ILADs.append(np.mean(batch_ILADs))
+            # all_embedding = np.concatenate(all_embedding, axis=0)
+            # all_trial_ILADs.append(ILAD(all_embedding))
+
+        all_batch_ILADs = np.array(all_batch_ILADs) # n_trial, T
+        all_trial_ILADs = np.array(all_trial_ILADs) # n_trial, T
+        print('Debug all_batch_ILADs shape: ', all_batch_ILADs.shape)
+        print('Debug all_trial_ILADs shape: ', all_trial_ILADs.shape)
             
-        batch_means.append(np.mean(all_batch_ILADs))
-        batch_stds.append(np.std(all_batch_ILADs))
-        trial_means.append(np.mean(all_trial_ILADs))
-        trial_stds.append(np.std(all_trial_ILADs))
+        batch_means.append(np.mean(all_batch_ILADs, axis = 0))
+        batch_stds.append(np.std(all_batch_ILADs, axis = 0))
+        trial_means.append(np.mean(all_trial_ILADs, axis = 0))
+        trial_stds.append(np.std(all_trial_ILADs, axis = 0))
 
         print('Algorithm: ', algo_names[algo_i])
-        print('ILAD-batch Mean: ', batch_means[algo_i])
-        print('ILAD-batch Std: ', batch_stds[algo_i])
-        print('ILAD-trial Mean: ', trial_means[algo_i])
-        print('ILAD-trial Std: ', trial_stds[algo_i])
+        print('ILAD-batch Mean: ', batch_means[algo_i].mean())
+        print('ILAD-batch Std: ', batch_stds[algo_i].mean())
+        print('ILAD-trial Mean: ', trial_means[algo_i][-1])
+        print('ILAD-trial Std: ', trial_stds[algo_i][-1])
 
-    metrics['ILAD-batch'] = [batch_means, batch_stds]
-    metrics['ILAD-trial'] = [trial_means, trial_stds]
+    metrics['ILAD-batch'] = [np.array(batch_means), np.array(batch_stds)]
+    metrics['ILAD-trial'] = [np.array(trial_means), np.array(trial_stds)]
     return metrics
 
 
@@ -149,10 +148,11 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
     
     return metrics
 
-def plot_metrics(args, metrics, algo_names, plot_title, save_title = None):
-    plt_path = os.path.join(args.root_proj_dir, 'plots')
-    if not os.path.exists(plt_path):
-        os.mkdir(plt_path) 
+def plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title, save_title = None):
+    # plt_path = os.path.join(args.root_proj_dir, 'plots')
+    eva_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'eva')
+    if not os.path.exists(eva_path):
+        os.mkdir(eva_path) 
 
     for name, value in metrics.items():
         plt.figure()
@@ -162,6 +162,10 @@ def plot_metrics(args, metrics, algo_names, plot_title, save_title = None):
             if name == 'raw_reward' or name == 'ave_ctr':
                 # if i == 3:
                 plt.scatter(range(T), mean[i], label = algo_names[i], s = 1, alpha = 0.5)
+            elif 'ILAD' in name:
+                x = list(range(T * 100 +100)[::100])[1:]
+                plt.plot(x, mean[i], label = algo_names[i])
+                plt.fill_between(x, mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
             else:
                 plt.plot(range(T), mean[i], label = algo_names[i])
                 plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
@@ -173,7 +177,8 @@ def plot_metrics(args, metrics, algo_names, plot_title, save_title = None):
         plt.xlabel('Iteration')
         plt.ylabel(name)
         plt.title(plot_title.replace('_', ' '))
-        plt.savefig(os.path.join(plt_path, save_title + '_' + name + '.pdf'),bbox_inches='tight')
+        # plt.savefig(os.path.join(plt_path, save_title + '_' + name + '.pdf'),bbox_inches='tight')
+        plt.savefig(os.path.join(eva_path, name + '.png'),bbox_inches='tight')
 
 
 def cal_base_ctr(args):
@@ -286,7 +291,7 @@ def run_eva(args):
     all_rewards = []
     all_items = []
     
-    trials = '[0-3]'
+    trials = '[0-4]'
     T = 2000
     # num_selected_users = 10
 
@@ -302,18 +307,35 @@ def run_eva(args):
     # for algo in ['linucb', 'glmucb', 'neural_linucb', 'neural_glmucb']:
     #     algo_prefixes.append(algo) 
 
+    timestr = '20220428-1453'
+    algo_group = 'test_lin_glm_neural_ucb'
+    for algo in ['glmucb']:
+        algo_prefixes.append(algo) 
+
     # timestr = '20220325-1500'
     # algo_group = 'test_proposed'
     # for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
     #     for gamma in [0, 0.1, 0.5, 1]:
     #         algo_prefixes.append(algo + '-gamma' + str(gamma))
 
-    timestr = '20220402-1509'
-    algo_group = 'test_proposed'
-    for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
-        for gamma in [0, 0.1, 0.5]:
-            algo_prefixes.append(algo + '-gamma' + str(gamma))
-        
+    # timestr = '20220405-0626'
+    # algo_group = 'test_proposed'
+    # for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
+    #     for gamma in [0, 0.1]:
+    #         algo_prefixes.append(algo + '-gamma' + str(gamma))
+
+    # timestr = '20220427-1434'
+    # algo_group = 'debug_glm'
+    # random_init = False
+    # for algo in ['neural_glmucb']:  
+    #     for glm_lr in [0.01, 0.1]:
+    #         algo_prefixes.append(algo + '_randomInit' + str(random_init) + '_glmlr' + str(glm_lr))
+
+    # timestr = '20220428-0228'
+    # algo_group = 'test_proposed'
+    # for algo in ['neural_gbilinucb', 'neural_glmadducb']: # 'neural_glmadducb', 
+    #     for gamma in [0.1]: # 0, 0.1, 0.5, 1
+    #         algo_prefixes.append(algo + '-gamma' + str(gamma))
 
     # timestr = '20220323-0738'
     # algo_group = 'tune_pretrainedMode_nuser'
@@ -380,9 +402,10 @@ def run_eva(args):
     print('Collect all algos items: ', all_items.shape)
 
     metrics = cal_metric(all_rewards, algo_names, ['ctr']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
+    plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
-    cal_diversity(args, all_items, algo_names)
+    metrics = cal_diversity(args, all_items, algo_names)
+    plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
 
 if __name__ == '__main__':

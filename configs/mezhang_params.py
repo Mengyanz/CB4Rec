@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument("--algo",type=str,default="2_ts_neuralucb")
     parser.add_argument("--algo_prefix", type=str, default="algo",
         help='the name of save files')
-    parser.add_argument("--n_trials", type=int, default=10, help = 'number of experiment runs')
+    parser.add_argument("--n_trials", type=int, default=5, help = 'number of experiment runs')
     parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
     parser.add_argument("--T", type=int, default=2000, help = 'number of rounds (interactions)')
     parser.add_argument("--topic_update_period", type=int, default=50, help = 'Update period for CB topic model')
@@ -55,7 +55,9 @@ def parse_args():
 
     parser.add_argument("--uniform_init",type=str2bool,default=True, 
         help="For Thompson Sampling: Indicates whether to init ts parameters uniformly")
-    parser.add_argument("--gamma", type=float, default=1.0, help='ucb parameter: mean + gamma * std.')
+    parser.add_argument("--random_init",type=str2bool,default=False, 
+        help="For linear models: Indicates whether to init parameters randomly; If False, init with user click histories.")
+    parser.add_argument("--gamma", type=float, default=0.1, help='ucb parameter: mean + gamma * std.')
 
     parser.add_argument("--fix_user",type=str2bool,default=False, 
         help="Indicate whether to use fix set of users to run simulation. If true, then use trial 0 with given order.")
@@ -94,6 +96,9 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--num_workers", type=int, default=4)
+
+    parser.add_argument("--glm_epochs", type=int, default=5)
+    parser.add_argument("--glm_lr", type=float, default=0.01)
 
 
     args = parser.parse_args()

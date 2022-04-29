@@ -8,6 +8,7 @@ from utils.data_util import load_cb_train_data, load_cb_valid_data, load_word2ve
 import os
 import torch
 from sklearn.metrics import roc_auc_score
+import datetime
 
 class ContextualBanditLearner(object):
     def __init__(self, args, device, name='ContextualBanditLearner'):
@@ -51,10 +52,9 @@ class ContextualBanditLearner(object):
         self.rec_batch_size = self.args.rec_batch_size
         self.per_rec_score_budget = self.args.per_rec_score_budget
         self.pretrained_mode = self.args.pretrained_mode 
-        
         # self.reset()
 
-    def load_cb_learner(self, cb_learner_path = None, topic=False):
+    def load_cb_learner(self, cb_learner_path = None, topic=False, cb_pretrain_data = None):
         """load pretrained models for topic or item
         Args
             cb_learner_path: str, pretrained cb learner path
@@ -74,11 +74,10 @@ class ContextualBanditLearner(object):
                     self.model.load_state_dict(torch.load(cb_learner_path))
                 except:
                     print('Warning: Current algorithm has no item model. Load checkpoint failed.')
-            
         else:
             print('In pretrained_mode False: use no pretrained model.')
             # raise NotImplementedError()
-        
+      
     def set_clicked_history(self, init_clicked_history):
         """
         Args:
@@ -173,12 +172,19 @@ class ContextualBanditLearner(object):
         # Update the user_encoder and news_encoder using `self.clicked_history`
         pass
 
-    def reset(self):
-        """Reset the CB learner to its initial state (do this for each experiment). """
+    def reset(self, e=None, save_flag=True, reload_flag=False):
+        """Save Reset the CB learner to its initial state (do this for each experiment).
+        Args
+            e: int
+                trial
+            save_flag: bool
+                indicates whether save before reset
+            reload_flag: bool
+                indicates whether reload from saved file and continue to run each trial for more iterations
+        """
+        # TODO: currently save and reload is only added in neural greedy. 
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
-        #TODO: reset the internal model here for each instance of `ContextualBanditLearner`
-
 
     def train(self):
         print('Note that `self.data_buffer` gets updated after every learner-simulator interaciton in `run_contextual_bandit`')
@@ -222,7 +228,9 @@ def run_contextual_bandit(args, simulator, algos):
     #         os.mkdir(trial_path) 
     # all_path = os.path.join(args.result_path, 'all') # store all results
 
-    for e in range(args.n_trials):
+    t_start = datetime.datetime.now()
+        
+    for e in range(args.n_trials):      
         # store each trial results
         item_path = os.path.join(trial_path,  "{}-items-{}-{}.npy".format(e, args.algo_prefix, args.T))
         reward_path = os.path.join(trial_path, "{}-rewards-{}-{}.npy".format(e, args.algo_prefix, args.T))
@@ -232,7 +240,7 @@ def run_contextual_bandit(args, simulator, algos):
             continue
 
         # reset each CB learner
-        [a.reset() for a in algos] 
+        [a.reset(e) for a in algos] 
 
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
@@ -298,6 +306,8 @@ def run_contextual_bandit(args, simulator, algos):
             item_batches_phcb = []
             topic_batches = []
             for a in algos:
+                # specify cb pretrained path for glm model pretrain
+                # a.cb_pretrained_path = os.path.join(args.root_data_dir, args.dataset, 'utils', "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, e))
                 if a.name.startswith('2_'): # two stage
                     topics, items = a.sample_actions(u) # recommend for user u using their current history 
                 else:
@@ -391,6 +401,9 @@ def run_contextual_bandit(args, simulator, algos):
             #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
             #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
 
+        t_now = datetime.datetime.now()
+        print('TIME: run up to trial {} used {}'.format(e, t_now-t_start))
+        
         if (t+1) % 1000 == 0:
             np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
             np.save(reward_path, np.array(h_rewards))

@@ -222,6 +222,36 @@ class TrainDataset(Dataset):
             label[0] = 1.0 
             return candidate_news_index, his, torch.Tensor(label)
 
+class GLMTrainDataset(Dataset):
+    # TODO: extend to topic model
+    def __init__(self, args, samples, nid2index, news_index):
+        self.news_index = news_index
+        self.nid2index = nid2index
+        self.samples = samples
+        self.npratio = 1  # train topic model with BCELoss, force balance
+        self.max_his_len = args.max_his_len
+        self.nid2topicindex = nid2topicindex
+        self.index2nid = {v:k for k,v in nid2index.items()}
+        
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        # pos, neg, his, neg_his
+        pos, neg, _, uid, tsp = self.samples[idx]
+        neg = newsample(neg, self.npratio)
+        candidate_news = [pos] + neg
+        
+        candidate_news_vecs = []
+        for n in candidate_news:
+            if type(n) is str:
+                candidate_news_vecs.append(self.news_index[self.nid2index[n]])
+            else:
+                candidate_news_vecs.append(self.news_index[n])
+                
+            label = np.zeros(1 + self.npratio, dtype=float)
+            label[0] = 1.0 
+            return np.array(candidate_news_vecs), label
         
 class SimTrainDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):
