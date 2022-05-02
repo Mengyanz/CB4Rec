@@ -1,6 +1,6 @@
 """Run evaluation. """
 
-import math, os 
+import math, os, sys
 import numpy as np 
 import matplotlib.pyplot as plt
 from collections import defaultdict
@@ -148,11 +148,9 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
     
     return metrics
 
-def plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title, save_title = None):
+def plot_metrics(args, eva_path, metrics, algo_names, plot_title, save_title = None):
     # plt_path = os.path.join(args.root_proj_dir, 'plots')
-    eva_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'eva')
-    if not os.path.exists(eva_path):
-        os.mkdir(eva_path) 
+    
 
     for name, value in metrics.items():
         plt.figure()
@@ -218,13 +216,16 @@ def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_re
                     rewards = np.load(filename)
                     rewards = np.expand_dims(rewards, axis = 0)[:,:,:,:T]
                     print(rewards.shape)
-                    assert len(rewards.shape) == 4
+                    assert len(rewards.shape) == 4   
                     all_trial_rewards.append(rewards)
                 
                 all_trial_rewards = np.concatenate(all_trial_rewards, axis = 0)
                 print('Collect trials {} for {}: {}'.format(load_item, algo_prefix, all_trial_rewards.shape))
 
-                load_item_dict[load_item].append(all_trial_rewards)
+                print('Debug rewards.shape[0]', all_trial_rewards.shape[0])
+                print('Debug trials[-2]:, ', trials[-2])
+                if int(all_trial_rewards.shape[0]) == int(trials[-2]) + 1: # only collect rewards with required trials
+                    load_item_dict[load_item].append(all_trial_rewards)
             
         else:
             print('No file found for ', search_names)
@@ -286,6 +287,21 @@ def main(args):
     metrics = cal_metric(all_rewards, algo_names, ['cumu_reward', 'ctr']) # , 'cumu_reward', 'ctr'
     plot_metrics(args, metrics, algo_names, plot_title=plot_folder)
 
+class Logger(object):
+    def __init__(self, log_path):
+        self.terminal = sys.stdout
+        self.log = open(log_path, "a")
+   
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)  
+
+    def flush(self):
+        # this flush method is needed for python 3 compatibility.
+        # this handles the flush command by doing nothing.
+        # you might want to specify some extra behavior here.
+        pass    
+
 def run_eva(args):
     algo_names = []
     all_rewards = []
@@ -307,15 +323,43 @@ def run_eva(args):
     # for algo in ['linucb', 'glmucb', 'neural_linucb', 'neural_glmucb']:
     #     algo_prefixes.append(algo) 
 
-    timestr = '20220428-1453'
-    algo_group = 'test_lin_glm_neural_ucb'
-    for algo in ['glmucb']:
-        algo_prefixes.append(algo) 
+    # timestr = '20220428-1453'
+    # algo_group = 'test_lin_glm_neural_ucb'
+    # for algo in ['glmucb']:
+    #     algo_prefixes.append(algo) 
+    
+    # timestr = '20220502-0355'
+    # algo_group = 'test_reload'
+    # algo_prefixes.append('greedy_T400_reloadTrue')
+    # algo_prefixes.append('greedy_T400_reloadFalse')
+    # algo_prefixes.append('greedy_T200_reloadFalse')
+
+    # timestr = '20220430-0000'
+    # algo_group = 'run_onestage_nonneural'
+    # for num_selected_users in [100, 1000]:
+    #     for algo in ['uniform_random', 'linucb', 'glmucb']:
+    #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users))
+
+    # timestr = '20220429-1242'
+    # algo_group = 'run_onestage_neural'
+    # for num_selected_users in [100, 1000]:
+    #     for algo in ['greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_gbilinucb', 'neural_glmadducb']:
+    #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users)) 
+
+    timestr = '20220501-0546'
+    algo_group = 'run_onestage_neural'
+    for num_selected_users in [10, 100, 1000]:
+        for glm_lr in [0.0001, 0.01]:
+            for algo in ['neural_glmadducb', 'neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
+                algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr))
 
     # timestr = '20220325-1500'
     # algo_group = 'test_proposed'
     # for algo in ['neural_gbilinucb']: # , 'neural_glmadducb'  
-    #     for gamma in [0, 0.1, 0.5, 1]:
+    #     for gamma in [0, 0.5]:
+    #         algo_prefixes.append(algo + '-gamma' + str(gamma))
+    # for algo in ['neural_glmadducb']: # , '  
+    #     for gamma in [0.1, 0.5, 1]:
     #         algo_prefixes.append(algo + '-gamma' + str(gamma))
 
     # timestr = '20220405-0626'
@@ -386,6 +430,13 @@ def run_eva(args):
     #         for topic_update_period in updates:
     #             algo_prefixes.append(algo + '-topicUpdate' + str(topic_update_period) + '-num_selected_users' + str(num_selected_users))
     #             # algo_prefixes.append(algo_group + '-' + algo + '-topicUpdate' + str(topic_update_period))
+    eva_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'eva')
+    if not os.path.exists(eva_path):
+        os.mkdir(eva_path) 
+    log_path = os.path.join(eva_path, 'result_metrics.log')
+    # log_file = open(log_path, 'w')
+    sys.stdout = Logger(log_path)
+    # sys.stdout = log_file
 
     all_rewards, all_items, algo_names = collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_rewards, all_items, trials, T)
     
@@ -402,16 +453,16 @@ def run_eva(args):
     print('Collect all algos items: ', all_items.shape)
 
     metrics = cal_metric(all_rewards, algo_names, ['ctr']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
+    plot_metrics(args, eva_path, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
-    metrics = cal_diversity(args, all_items, algo_names)
-    plot_metrics(args, algo_group, timestr, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
-
+    # metrics = cal_diversity(args, all_items, algo_names)
+    # plot_metrics(args, eva_path, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
 if __name__ == '__main__':
     # from configs.thanh_params import parse_args
     from configs.mezhang_params import parse_args
     # from configs.zhenyu_params import parse_args
+
 
     args = parse_args()
     # main(args)

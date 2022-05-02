@@ -116,7 +116,7 @@ class LinUCB(ContextualBanditLearner):
         return rec_itms 
         
 
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] 
@@ -235,7 +235,7 @@ class GLMUCB(LinUCB):
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
 
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] 

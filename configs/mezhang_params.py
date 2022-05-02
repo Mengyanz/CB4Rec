@@ -67,6 +67,12 @@ def parse_args():
         help="If True: evaluate model on validation dataset")
     parser.add_argument("--cb_pretrained_models",type=str,default="cb_pretrained_models_dim64")
     parser.add_argument("--num_all_news", type=int, default=104151)
+    parser.add_argument("--save_freq", type=int, default=1000, help='frequency of saving simulation results (rewards and items)')
+
+    parser.add_argument("--reload_flag",type=str2bool,default=False, 
+        help="Indicate whether to reload from trained cb models, to continue run more iterations.")
+    parser.add_argument("--reload_path", type=str, default=None, help = 'reload cb model path. Need to specify if reload_flag is True')
+    
 
     # for neural linear
     parser.add_argument("--lambda_prior", type=float, default=1.0, help = 'Prior for neural linear thompson sampling covariance diagonal term')
