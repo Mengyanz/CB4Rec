@@ -191,7 +191,7 @@ class pHCB(ContextualBanditLearner):
         # print('size(data_buffer): {}'.format(len(self.D)))
         pass
     
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         # self.D = defaultdict(list) 

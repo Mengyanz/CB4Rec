@@ -38,8 +38,8 @@ class NeuralLinUCB(NeuralGreedy):
         if not os.path.exists(out_folder):
             os.makedirs(out_folder)
 
-        out_path = os.path.join(out_folder, args.algo_prefix)
-        self.writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html
+        # out_path = os.path.join(out_folder, args.algo_prefix)
+        # self.writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html
 
     def pretrain_glm_learner(self, uid=None):
         # NOTE: This intened to pre-train linear models with cb train data. However, we cannot do that since we remove the cb simulated users from the cb train data, and the linear models are disjoint, i.e. theta_u for per user. We can do this for our proposed shared model though.
@@ -134,8 +134,8 @@ class NeuralLinUCB(NeuralGreedy):
         preds = X.dot(self.theta[uid])
         return preds
 
-    def reset(self):
-        """Reset the CB learner to its initial state (do this for each experiment). """
+    def reset(self, e=None, reload_flag=False, reload_path=None):
+        """Save and Reset the CB learner to its initial state (do this for each trial/experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
         # self.D = defaultdict(list) 
@@ -238,9 +238,9 @@ class NeuralGLMUCB(NeuralLinUCB):
             optimizer.step()
 
             # debug glm
-            self.writer.add_scalars('{} Training Loss'.format(uid),
-                    {'Training': loss}, 
-                    len(self.data_buffer_lr) - self.init_data_buffer_lr_len)
+            # self.writer.add_scalars('{} Training Loss'.format(uid),
+            #         {'Training': loss}, 
+            #         len(self.data_buffer_lr) - self.init_data_buffer_lr_len)
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -280,7 +280,7 @@ class NeuralGLMUCB(NeuralLinUCB):
         return preds
 
 
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] 
@@ -314,9 +314,9 @@ class NeuralGLMUCB_LBFGS(NeuralGLMUCB):
                 loss.backward()
 
                 # debug glm
-                self.writer.add_scalars('{} Training Loss'.format(uid),
-                        {'Training': loss}, 
-                        len(self.data_buffer_lr) - self.init_data_buffer_lr_len)
+                # self.writer.add_scalars('{} Training Loss'.format(uid),
+                #         {'Training': loss}, 
+                #         len(self.data_buffer_lr) - self.init_data_buffer_lr_len)
                 return loss
             optimizer.step(closure)
 
@@ -442,7 +442,7 @@ class NeuralGLMUCB_Newton(NeuralGLMUCB):
         return preds
 
 
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] 
@@ -583,7 +583,7 @@ class NeuralGLMAddUCB(NeuralGreedy):
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 
 
-    def reset(self):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Reset the CB learner to its initial state (do this for each experiment). """
         self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
         self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  

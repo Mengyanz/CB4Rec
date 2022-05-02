@@ -42,18 +42,39 @@ def run_exps(args, algo_groups, result_path, gpus,models_per_gpu):
 def create_commands(args, algo_group, result_path):
     commands = []
     # num_selected_users = 10
-    if algo_group == 'run_onestage_nonneural':
-        for num_selected_users in [1, 100, 1000]:
+    if algo_group == 'test_reload':
+        algo = 'greedy'
+        n_trial = 5
+        reward_type = 'threshold' # remove stochastic to check reload 
+
+        reload_flag = True
+        reload_path = os.path.join(args.root_proj_dir, 'results', 'test_reload', '20220502-0355', 'model', 'greedy_T200_reloadFalse-200')
+        # reload_flag = False
+        # reload_path = None
+
+        for T in [400]:
+            algo_prefix = algo + '_T' + str(T) + '_reload' + str(reload_flag)
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --T {} --reload_flag {} --reload_path {} --reward_type {} --n_trial {} > {}".format(algo, algo_prefix, result_path, T, reload_flag, reload_path, reward_type, n_trial, log_path))
+    elif algo_group == 'test_save_load':
+        T = 500
+        for algo in ['greedy']:
+            algo_prefix = algo 
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --T {} > {}".format(algo, algo_prefix, result_path, T, log_path))
+    elif algo_group == 'run_onestage_nonneural':
+        for num_selected_users in [100, 1000]:
             for algo in ['uniform_random', 'linucb', 'glmucb']:
                 algo_prefix = algo + '_nuser' + str(num_selected_users) 
                 log_path = os.path.join(result_path, algo_prefix + '.log')
                 commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
     elif algo_group == 'run_onestage_neural':
-        for num_selected_users in [1, 100, 1000]:
-            for algo in ['greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_gbilinucb', 'neural_glmadducb']:
-                algo_prefix = algo + '_nuser' + str(num_selected_users) 
-                log_path = os.path.join(result_path, algo_prefix + '.log')
-                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
+        for num_selected_users in [10, 100, 1000]:
+            for glm_lr in [0.0001, 0.01]:
+                for algo in ['neural_glmadducb', 'neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
+                    algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr)
+                    log_path = os.path.join(result_path, algo_prefix + '.log')
+                    commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --glm_lr {} > {}".format(algo, algo_prefix, result_path, num_selected_users, glm_lr, log_path))
     elif algo_group == 'debug_glm':
         # T = 100
         # score_budget = 20
@@ -177,18 +198,21 @@ if __name__ == '__main__':
     from configs.mezhang_params import parse_args
     # from configs.zhenyu_params import parse_args
     args = parse_args()
+    os.system('ulimit -n 4096')
 
     # settings
-    gpus = [0,1]
-    models_per_gpu = 2
-    algo_groups =  ['run_onestage_neural'] 
+    gpus = [2]
+    models_per_gpu = 1
+    algo_groups = ['test_reload']
+    # algo_groups =  ['run_onestage_neural'] 
 
     # gpus = [2]
-    # models_per_gpu = 2
+    # models_per_gpu = 4
     # algo_groups =  ['run_onestage_nonneural'] 
     
     print("============================algo groups: {} ==============================".format(algo_groups))
-    timestr = time.strftime("%Y%m%d-%H%M")
+    # timestr = time.strftime("%Y%m%d-%H%M")
+    timestr = '20220502-0355'
     print('Saving to {}'.format(timestr))
     for algo_group in algo_groups:
         result_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr)

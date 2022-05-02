@@ -7,6 +7,8 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+import os
+import pickle
 
 from core.contextual_bandit import ContextualBanditLearner 
 from algorithms.nrms_model import NRMS_Model
@@ -23,6 +25,7 @@ class NeuralGreedy(ContextualBanditLearner):
         
         # model 
         self.model = NRMS_Model(self.word2vec, news_embedding_dim = args.news_dim).to(self.device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
 
     def run_eva(self):
         """Evaluate model on valid data
@@ -87,7 +90,6 @@ class NeuralGreedy(ContextualBanditLearner):
 
     def train(self): 
         # update learner
-        optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
         ft_sam = self.construct_trainable_samples()
         # print('Debug ft_sam: ', ft_sam)
         if len(ft_sam) > 0:
@@ -107,10 +109,10 @@ class NeuralGreedy(ContextualBanditLearner):
                 bz_loss, y_hat = self.model(candidate_news_index, his_index, label)
 
                 loss += bz_loss.detach().cpu().numpy()
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 bz_loss.backward()
 
-                optimizer.step()  
+                self.optimizer.step()  
             self._get_news_embs() # update news embeddings
             self.data_buffer = [] # reset data buffer
         else:
@@ -175,26 +177,44 @@ class NeuralGreedy(ContextualBanditLearner):
         #     rec_itms = [cand_news[n] for n in nid_argmax]
         #     return rec_itms 
     
-    def reset(self, e=None, save_flag=True, reload_flag=False):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Save and Reset the CB learner to its initial state (do this for each trial/experiment). """
-
-        # save
-        if save_flag:
-            model_path = os.path.join(self.args.result_path, 'model') # store final results
-            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
-                pickle.dump(self.clicked_history, f)
-            np.save(os.path.join(model_path, "{}_data_buffer".format(e)), data_buffer)
-            torch.save(self.model.state_dict(), os.path.join(model_path, '{}_nrms.pkl'.format(e)))
-
-        # reset
+          
         self.model = NRMS_Model(self.word2vec, news_embedding_dim = self.args.news_dim).to(self.device)
-        if reload_flag:
-            model_path = os.path.join(self.args.result_path, 'model') # store final results
-            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
-               self.clicked_history = pickle.load(f) 
-            data_buffer = np.load(os.path.join(model_path, "{}_data_buffer".format(e)))
-            self.model.load_state_dict(torch.load(os.path.join(model_path, '{}_nrms.pkl'.format(e))))
+        if reload_flag: # and reload_path is not None:
+            print('Info: reload cb model from {}'.format(reload_path))
+            with open(os.path.join(reload_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
+                self.clicked_history = pickle.load(f) 
+            self.data_buffer = np.load(os.path.join(reload_path, "{}_data_buffer.npy".format(e)), allow_pickle=True).tolist()
+            state = torch.load(os.path.join(reload_path, '{}_nrms.pkl'.format(e)))
+            self.model.load_state_dict(state['state_dict'])
+            self.optimizer.load_state_dict(state['optimizer'])
         else:
+            print('Info: reset without reload!')
             self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
             self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+
+    def save(self, e=None):
+        """Save the CB learner for future reload to continue run more iterations.
+        Args
+            e: int
+                trial
+        """
+        try:
+            model_path = os.path.join(self.args.result_path, 'model', self.args.algo_prefix + '-' + str(self.args.T)) # store final results
+            if not os.path.exists(model_path):
+                os.mkdir(model_path)
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
+                pickle.dump(self.clicked_history, f)
+            np.save(os.path.join(model_path, "{}_data_buffer".format(e)), self.data_buffer)
+
+            state = {
+                'state_dict': self.model.state_dict(),
+                'optimizer': self.optimizer.state_dict()
+            }
+            torch.save(state, os.path.join(model_path, '{}_nrms.pkl'.format(e)))
+            print('Info: model saved at {}'.format(model_path))
+        except AttributeError:
+            print('Warning: no attribute clicked_history find. Skip saving.')
+            pass 
             

@@ -172,25 +172,47 @@ class ContextualBanditLearner(object):
         # Update the user_encoder and news_encoder using `self.clicked_history`
         pass
 
-    def reset(self, e=None, save_flag=True, reload_flag=False):
+    def reset(self, e=None, reload_flag=False, reload_path=None):
         """Save Reset the CB learner to its initial state (do this for each experiment).
         Args
             e: int
                 trial
-            save_flag: bool
-                indicates whether save before reset
             reload_flag: bool
                 indicates whether reload from saved file and continue to run each trial for more iterations
         """
-        # TODO: currently save and reload is only added in neural greedy. 
-        self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
-        self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
+        # TODO: currently reload is only added in neural greedy. 
+
+        if reload_flag:
+            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
+                self.clicked_history = pickle.load(f) 
+            self.data_buffer = np.load(os.path.join(model_path, "{}_data_buffer".format(e)))
+        else:
+            self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+            self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected  
 
     def train(self):
         print('Note that `self.data_buffer` gets updated after every learner-simulator interaciton in `run_contextual_bandit`')
         print('size(data_buffer): {}'.format(len(self.data_buffer)))
         pass
 
+    def save(self, e=None):
+        """Save the CB learner for future reload to continue run more iterations.
+        Args
+            e: int
+                trial
+        """
+        try:
+            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
+                pickle.dump(self.clicked_history, f)
+            np.save(os.path.join(model_path, "{}_data_buffer".format(e)), self.data_buffer)
+            print('Info: model saved at {}'.format(model_path))
+            print('Warning: only save clicked_history and data_buffer. Add more if needed.')
+            # TODO: currently save is only added in neural greedy. 
+        except AttributeError:
+            print('Warning: no attribute clicked_history find. Skip saving.')
+            pass 
 
 def run_contextual_bandit(args, simulator, algos):
     """Run a contextual bandit problem on a set of algorithms.
@@ -240,7 +262,7 @@ def run_contextual_bandit(args, simulator, algos):
             continue
 
         # reset each CB learner
-        [a.reset(e) for a in algos] 
+        [a.reset(e, reload_flag=args.reload_flag, reload_path=args.reload_path) for a in algos] 
 
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
@@ -279,12 +301,25 @@ def run_contextual_bandit(args, simulator, algos):
         np.random.seed(2022) # REVIEW: keep sampled news the same from different trials, you can alternatively set to different seed to make news different for different trials.
         full_news_indexes = list(range(args.num_all_news))
         score_budget = args.per_rec_score_budget * args.rec_batch_size
-        newss = np.random.choice(full_news_indexes, size=args.T * score_budget, replace=True).reshape(args.T, -1)
+        newss = np.zeros((args.T, score_budget))
+        for row in range(args.T):
+            newss[row,:] = np.random.choice(full_news_indexes, size=score_budget, replace=False) # in each iteration, the candidate news is not repeatable
+        # newss = np.random.choice(full_news_indexes, size=args.T * score_budget, replace=True).reshape(args.T, -1)
+        newss = np.array(newss, dtype = int)
 
         # Run the contextual bandit process
-        h_items = np.empty((len(algos), args.rec_batch_size,0), float)
-        h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
-        for t in range(args.T):
+        if args.reload_flag and args.reload_path is not None:
+            root_path, reload_algo_prefix = args.reload_path.split('/model/')
+            reload_item_path = os.path.join(root_path, 'trial', "{}-items-{}.npy".format(e, reload_algo_prefix))
+            reload_reward_path = os.path.join(root_path, 'trial', "{}-rewards-{}.npy".format(e, reload_algo_prefix))
+            h_items = np.array(np.load(reload_item_path))
+            h_rewards = np.array(np.load(reload_reward_path))
+            reload_t = h_rewards.shape[-1]
+        else:
+            h_items = np.empty((len(algos), args.rec_batch_size,0), float)
+            h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
+            reload_t = 0
+        for t in range(reload_t, args.T):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
@@ -403,12 +438,15 @@ def run_contextual_bandit(args, simulator, algos):
 
         t_now = datetime.datetime.now()
         print('TIME: run up to trial {} used {}'.format(e, t_now-t_start))
-        
-        if (t+1) % 1000 == 0:
-            np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
-            np.save(reward_path, np.array(h_rewards))
-            print('Debug h_items shape: ', np.array(h_items).shape)
-            print('Debug h_rewards shape: ', np.array(h_rewards).shape)
+
+        # save each CB learner
+        [a.save(e) for a in algos] 
+        # if (t+1) % args.save_freq == 0 or t == args.T -1:
+        np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
+        np.save(reward_path, np.array(h_rewards))
+        print('Info saving rewards and item results at t: ', t)
+        print('Debug h_items shape: ', np.array(h_items).shape)
+        print('Debug h_rewards shape: ', np.array(h_rewards).shape)
 
     #     h_items_all.append(h_items)
     #     h_rewards_all.append(h_rewards) # (n_trials, n_algos, rec_bs, T)
