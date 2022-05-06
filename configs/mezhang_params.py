@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("--algo_prefix", type=str, default="algo",
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=5, help = 'number of experiment runs')
-    parser.add_argument("--num_selected_users", type=int, default=1000, help='number of randomly selected users from val set')
+    parser.add_argument("--num_selected_users", type=int, default=100, help='number of randomly selected users from val set')
     parser.add_argument("--T", type=int, default=2000, help = 'number of rounds (interactions)')
     parser.add_argument("--topic_update_period", type=int, default=50, help = 'Update period for CB topic model')
     parser.add_argument("--update_period", type=int, default=100, help = 'Update period for CB item model')
@@ -72,6 +72,10 @@ def parse_args():
     parser.add_argument("--reload_flag",type=str2bool,default=False, 
         help="Indicate whether to reload from trained cb models, to continue run more iterations.")
     parser.add_argument("--reload_path", type=str, default=None, help = 'reload cb model path. Need to specify if reload_flag is True')
+
+    # debug
+    parser.add_argument("--reset_buffer",type=str2bool,default=True, 
+        help="Debug whether we should reset buffer after each train in cb simulation.")
     
 
     # for neural linear

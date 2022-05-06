@@ -126,11 +126,11 @@ class ContextualBanditLearner(object):
         """
         pass
 
-    def sample_actions(self, uids, cand_news = None):
+    def sample_actions(self, uid, cand_news = None):
         """Choose an action given a context. 
         
         Args:
-            uids: a list of str uIDs (user ids). 
+            uids: a str uIDs (user id). 
             cand_news: list of candidate news indexes 
         Return: 
             topics: (len(uids), `rec_batch_size`)
@@ -153,7 +153,7 @@ class ContextualBanditLearner(object):
         if cand_news is None:
             cand_news = list(range(self.args.num_all_news))
         
-        rec_items = self.item_rec(uids, cand_news, self.rec_batch_size)
+        rec_items = self.item_rec(uid, cand_news, self.rec_batch_size)
 
         return np.empty(0), rec_items
 
@@ -346,7 +346,6 @@ def run_contextual_bandit(args, simulator, algos):
                 if a.name.startswith('2_'): # two stage
                     topics, items = a.sample_actions(u) # recommend for user u using their current history 
                 else:
-                    # TODO: save and load user idx and cand news indexes
                     print('For algorithm {}, use sampled candidate set ({}).'.format(a.name, len(cand_news_indexes)))
                     topics, items = a.sample_actions(u, cand_news_indexes) # recommend for user u using their current history 
 

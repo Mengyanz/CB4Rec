@@ -18,7 +18,6 @@ class UniformRandom(ContextualBanditLearner):
         """Uniform random recommend news to user.
         """
         super(UniformRandom, self).__init__(args, device, name)
-        self.name = name 
 
     def item_rec(self, uid, cand_news, m = 1): 
         """
@@ -32,3 +31,32 @@ class UniformRandom(ContextualBanditLearner):
         """
         rec_items = np.random.choice(cand_news, size=m, replace=False).tolist()
         return rec_items 
+
+class Random_Random(UniformRandom):
+    def __init__(self, args, device, name='2_random'):
+        """Randomly recommend topics and then randomly recommend news to user.
+        """
+        super(Random_Random, self).__init__(args, device, name)
+
+    def topic_rec(self, uid, m = 1):
+        rec_topics = np.random.choice(self.cb_topics, size=m, replace=False).tolist()
+        return rec_topics
+
+    def sample_actions(self, uid, cand_news = None):
+        """Choose an action given a context. 
+        
+        Args:
+            uids: a str uIDs (user id). 
+            cand_news: list of candidate news indexes 
+        Return: 
+            topics: (len(uids), `rec_batch_size`)
+            items: (len(uids), `rec_batch_size`) 
+        """
+        rec_topics = self.topic_rec(uid, m=self.rec_batch_size)
+        rec_items = []
+        for rec_topic in rec_topics:
+            cand_news = [self.nid2index[n] for n in self.cb_news[rec_topic]]
+            rec_item = self.item_rec(uid, cand_news, m=1)
+            rec_items.append(rec_item[0])
+
+        return rec_topics, rec_items
