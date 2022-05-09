@@ -1,6 +1,7 @@
 """Define utils for data. """
 
-import os 
+import os
+from telnetlib import TSPEED 
 import numpy as np 
 import pickle 
 from pathlib import Path
@@ -223,13 +224,10 @@ class TrainDataset(Dataset):
             return candidate_news_index, his, torch.Tensor(label)
 
 class GLMTrainDataset(Dataset):
-    # TODO: extend to topic model
-    def __init__(self, args, samples, nid2index, news_index):
-        self.news_index = news_index
+    def __init__(self, args, samples, nid2index, nid2topicindex=None):
         self.nid2index = nid2index
         self.samples = samples
         self.npratio = 1  # train topic model with BCELoss, force balance
-        self.max_his_len = args.max_his_len
         self.nid2topicindex = nid2topicindex
         self.index2nid = {v:k for k,v in nid2index.items()}
         
@@ -238,20 +236,36 @@ class GLMTrainDataset(Dataset):
     
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
+        print('Debug in data_util self.samples[idx]: ', self.samples[idx])
         pos, neg, _, uid, tsp = self.samples[idx]
         neg = newsample(neg, self.npratio)
         candidate_news = [pos] + neg
         
-        candidate_news_vecs = []
-        for n in candidate_news:
-            if type(n) is str:
-                candidate_news_vecs.append(self.news_index[self.nid2index[n]])
-            else:
-                candidate_news_vecs.append(self.news_index[n])
-                
-            label = np.zeros(1 + self.npratio, dtype=float)
-            label[0] = 1.0 
-            return np.array(candidate_news_vecs), label
+        candidate_news_index = []
+        if self.nid2topicindex is None:
+            # print('Debug in data_util candidate_news: ', candidate_news)
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_index.append(self.nid2index[n])
+                else:
+                    candidate_news_index.append(n)    
+            candidate_news_index = np.array(candidate_news_index)
+            print('Debug in data_util for item candidate_news_index: ', candidate_news_index)
+        else:
+            for n in candidate_news:
+                if type(n) is str:
+                    candidate_news_index.append(self.nid2topicindex[n])
+                else:
+                    candidate_news_index.append(self.nid2topicindex[self.index2nid[n]])
+            candidate_news_index = torch.LongTensor(candidate_news_index)
+            print('Debug in data_util for topic candidate_news_index: ', candidate_news_index)
+        
+        label = np.zeros(1 + self.npratio, dtype=float)
+        label[0] = 1.0 
+        # uids = np.array((1 + self.npratio) * [uid])
+        print('Debug in data_util uid: ', uid)
+        return candidate_news_index, label, uid
+
         
 class SimTrainDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):

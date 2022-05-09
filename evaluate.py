@@ -19,7 +19,7 @@ def get_sim_news_embs(args):
 
     _, _, nindex2vec = load_word2vec(args, 'utils')
     news_dataset = NewsDataset(nindex2vec) 
-    news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
+    news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=args.num_workers)
 
     simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True) 
 
@@ -224,8 +224,8 @@ def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_re
                 all_trial_rewards = np.concatenate(all_trial_rewards, axis = 0)
                 print('Collect trials {} for {}: {}'.format(load_item, algo_prefix, all_trial_rewards.shape))
 
-                if int(all_trial_rewards.shape[0]) == n_trial: # only collect rewards with required trials
-                    load_item_dict[load_item].append(all_trial_rewards)
+                if int(all_trial_rewards.shape[0]) >= n_trial: # only collect rewards with required trials
+                    load_item_dict[load_item].append(all_trial_rewards[:n_trial,:,:,:])
                     if load_item == 'rewards':
                         algo_names.append(algo_prefix)          
             else:
@@ -257,7 +257,7 @@ def run_eva(args):
     
     trials = '[0-4]'
     T = 2000
-    n_trial = 3
+    n_trial = 5
     # num_selected_users = 10
 
     algo_prefixes = []
@@ -319,15 +319,43 @@ def run_eva(args):
     # for num_selected_users in [100]: #  100, 1000
     #     for gamma in [0.05, 0.2]:
     #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_gamma' + str(gamma))
+    
+    # timestr = '20220506-0108'
+    # algo_group = 'run_onestage_neural'
+    # T = 5000
+    # for num_selected_users in [10]: #  100, 1000
+    #     # for glm_lr in [1e-3,1e-4]: # 0.0001, 0.01
+    #     for algo in ['neural_gbilinucb', 'neural_glmadducb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_glmadducb', 
+    #         if algo == 'neural_gbilinucb':
+    #             glm_lr = 1e-3
+    #         if algo == 'neural_glmadducb':
+    #             glm_lr = 0.01
+    #         algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr) + '_T' + str(T)
+    #         algo_prefixes.append(algo_prefix)
+    
+    # timestr = '20220507-0159'
+    # algo_group = 'test_reset_buffer'
+    # algo = 'greedy'
+    # for reset in [True, False]:
+    #     algo_prefix = algo + '_resetbuffer' + str(reset)
+    #     algo_prefixes.append(algo_prefix)
 
-    timestr = '20220506-0733'
-    algo_group = 'test_reload'
-    algo = 'greedy'
-    reload_flag = False
+    # timestr = '20220506-0733'
+    # algo_group = 'test_reload'
+    # algo = 'greedy'
+    # reload_flag = False
+    # for T in [2000]:
+    #     algo_prefix = algo + '_T' + str(T) + '_reload' + str(reload_flag)
+    #     algo_prefixes.append(algo_prefix)
 
-    for T in [2000]:
-        algo_prefix = algo + '_T' + str(T) + '_reload' + str(reload_flag)
-        algo_prefixes.append(algo_prefix)
+    timestr = '20220507-0212'
+    algo_group = 'test_twostage'
+    n_inference = 1
+    gamma = 0
+    for algo in ['2_neuralgreedy_neuralgreedy']: # ['2_neuralucb_neuralucb']: # 
+        for dynamic_aggregate_topic in [True, False]:
+            algo_prefix = algo + '_ninf' + str(n_inference) + '_gamma' + str(gamma) + '_dynTopic' + str(dynamic_aggregate_topic)
+            algo_prefixes.append(algo_prefix)
 
     eva_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'eva')
     if not os.path.exists(eva_path):
@@ -343,7 +371,7 @@ def run_eva(args):
     print('Collect all algos rewards: ', all_rewards.shape)
 
     metrics = cal_metric(all_rewards, algo_names, ['ctr', 'cumu_reward']) # , 'cumu_reward', 'ctr'
-    plot_metrics(args, eva_path, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
+    plot_metrics(args, eva_path, metrics, algo_names, plot_title=str(n_trial) + ' trials', save_title = algo_group + '-' + timestr)
 
     # all_items = np.concatenate(all_items, axis = 1) # (n_trial, n_algos, rec_bs, T)
     # print('Collect all algos items: ', all_items.shape)

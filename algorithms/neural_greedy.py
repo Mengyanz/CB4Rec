@@ -48,10 +48,13 @@ class NeuralGreedy(ContextualBanditLearner):
     def _get_news_embs(self):
         print('Inference news {} times...'.format(self.n_inference))
         news_dataset = NewsDataset(self.nindex2vec) 
-        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
+        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=self.args.num_workers)
         
         self.news_embs = []
-        self.model.eval() # disable dropout
+        if self.n_inference == 1:
+            self.model.eval() # disable dropout
+        else:
+            self.model.train() # enable dropout, for dropout ucb
         for i in range(self.n_inference): 
             news_vecs = []
             for news in news_dl: 
@@ -96,7 +99,7 @@ class NeuralGreedy(ContextualBanditLearner):
         if len(ft_sam) > 0:
             print('Updating the internal neural model of the bandit!')
             ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
-            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
+            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
             
             # do one epoch only
             loss = 0
@@ -166,7 +169,7 @@ class NeuralGreedy(ContextualBanditLearner):
         #     h = self.nindex2vec[h]
         #     h = torch.Tensor(h[None,:,:])
         #     sed = SimEvalDataset2(self.args, cand_news, self.nindex2vec)
-        #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+        #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers) 
 
         #     scores = []
         #     for cn in rdl:
@@ -190,7 +193,7 @@ class NeuralGreedy(ContextualBanditLearner):
             self.data_buffer = np.load(os.path.join(reload_path, "{}_data_buffer.npy".format(e)), allow_pickle=True).tolist()
             state = torch.load(os.path.join(reload_path, '{}_nrms.pkl'.format(e)))
             self.model.load_state_dict(state['state_dict'])
-            self.optimizer.load_state_dict(state['optimizer'])
+            # self.optimizer.load_state_dict(state['optimizer'])
         else:
             print('Info: reset without reload!')
             self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
@@ -212,7 +215,7 @@ class NeuralGreedy(ContextualBanditLearner):
 
             state = {
                 'state_dict': self.model.state_dict(),
-                'optimizer': self.optimizer.state_dict()
+                # 'optimizer': self.optimizer.state_dict()
             }
             torch.save(state, os.path.join(model_path, '{}_nrms.pkl'.format(e)))
             print('Info: model saved at {}'.format(model_path))
@@ -225,11 +228,12 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
         """Use NRMS model. 
         """
         super(NeuralGreedy_NeuralGreedy, self).__init__(args, device, name) 
-
+        self.n_inference = 1
         topic_list, nid2topic = load_cb_topic_news(args, ordered=True) # topic_list: a list of all the topic names, the order of them matters; newsid_to_topic: a dict that maps newsid to topic
         self.nid2topic = nid2topic
         self.nid2topicindex = load_cb_nid2topicindex(args)
         self.topic_order = [i for i in range(len(topic_list))]
+        self.index2nid = {v:k for k,v in self.nid2index.items()}
 
         # model 
         self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=args.split_large_topic).to(self.device)
@@ -247,11 +251,14 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
     def _get_news_embs(self, topic=False):
         print('Inference news {} times...'.format(self.n_inference))
         news_dataset = NewsDataset(self.nindex2vec) 
-        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=2)
+        news_dl = DataLoader(news_dataset,batch_size=1024, shuffle=False, num_workers=self.args.num_workers)
         
         if not topic:  
             self.news_embs = []
-            self.model.eval() # disable dropout
+            if self.n_inference == 1:
+                self.model.eval() # disable dropout
+            else:
+                self.model.train() # enable dropout, for dropout ucb
             for i in range(self.n_inference): 
                 news_vecs = []
                 for news in news_dl: 
@@ -261,7 +268,10 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
                 self.news_embs.append(np.concatenate(news_vecs))
         else:
             self.topic_news_embs = []
-            self.topic_model.eval() # disable dropout
+            if self.n_inference == 1:
+                self.topic_model.eval() # disable dropout
+            else:
+                self.topic_model.train() # enable dropout, for dropout ucb
             for i in range(self.n_inference): 
                 news_vecs = []
                 for news in news_dl: 
@@ -272,7 +282,10 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
 
     @torch.no_grad()
     def _get_topic_user_embs(self, uid, i):
-        self.topic_model.eval()
+        if self.n_inference == 1:
+            self.topic_model.eval() # disable dropout
+        else:
+            self.topic_model.train() # enable dropout, for dropout ucb
         h = self.clicked_history[uid]
         h = h + [0] * (self.args.max_his_len - len(h))
         # h = torch.LongTensor(self.nindex2vec[h]).to(self.device)
@@ -290,7 +303,7 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             if len(ft_sam) > 0:
                 print('Updating the internal item model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
-                ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
+                ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
                 ft_loader = tqdm(ft_dl)
                 
                 # do one epoch only
@@ -309,9 +322,10 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
 
                     optimizer.step()  
                 self._get_news_embs() # update news embeddings
-                # REVIEW: not reset data buffer 
-                self.data_buffer = [] # reset data buffer
-            print('Skip update cb item learner due to lack valid samples!')
+                if self.args.reset_buffer:
+                    self.data_buffer = [] # reset data buffer
+            else:
+                print('Skip update cb item learner due to lack valid samples!')
             
         elif mode == 'topic':
             optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
@@ -319,7 +333,7 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             if len(ft_sam) > 0:
                 print('Updating the internal topic model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
-                ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=0)
+                ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
                 ft_loader = tqdm(ft_dl)
                 
                 # do one epoch only
@@ -372,27 +386,57 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
         topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.topic_order)
         # topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.active_topics_order) # get all active topic scores, num x reduction_dim
         scores = (topic_embeddings @ user_vector.unsqueeze(-1)).squeeze(-1).cpu().numpy() # num_topic
-        sorted_topic_indexs = np.argsort(scores)[::-1].tolist() # (len(uids),)
+        sorted_topic_indexs = np.argsort(scores)[::-1].tolist() 
         # rec_topic = [self.active_topics[n] for n in nid_argmax]
-        
+        recs = self.topic_cand_news_prep(sorted_topic_indexs,m)
+        return recs
+    
+    def topic_cand_news_prep(self, sorted_topic_indexs, m=1):
         recs = [] # each element is a list of cand news index inside a topic (topic can be newly formed if we dynamically form topics)
         recs_topic = [] # each element is a list of topic names
         recs_size = [] # each element is the size of the new topic
         rank = 0
+
+        # for i in range(m):
+        #     cand_news = []
+        #     topics = []
+        #     while len(cand_news) < self.args.min_item_size:
+        #         topic_idx = sorted_topic_indexs[rank]
+        #         topic = self.cb_topics[topic_idx]
+        #         cand_news.extend([self.nid2index[n] for n in self.cb_news[topic]])
+        #         rank += 1
+        #         topics.append(topic)
+        #         if not self.args.dynamic_aggregate_topic:
+        #             break
+        #     recs.append(cand_news)
+        #     recs_size.append(len(cand_news))
+        #     recs_topic.append(topics)
+
+        cand_news = []
+        topics = []
         for i in range(m):
-            cand_news = []
-            topics = []
-            while len(cand_news) < self.args.min_item_size:
-                topic_idx = sorted_topic_indexs[rank]
-                topic = self.cb_topics[topic_idx]
-                cand_news.extend([self.nid2index[n] for n in self.cb_news[topic]])
-                rank += 1
-                topics.append(topic)
-                if not self.args.dynamic_aggregate_topic:
-                    break
-            recs.append(cand_news)
-            recs_size.append(len(cand_news))
-            recs_topic.append(topics)
+            topic_idx = sorted_topic_indexs[rank]
+            topic = self.cb_topics[topic_idx]
+            cand_news.append([self.nid2index[n] for n in self.cb_news[topic]])
+            rank += 1
+            topics.append([topic])
+        if self.args.dynamic_aggregate_topic:
+            unfinished_topics = list(range(m))
+            while len(unfinished_topics) > 0:
+                for i in unfinished_topics:
+                    if len(cand_news[i]) < self.args.min_item_size:
+                        topic_idx = sorted_topic_indexs[rank]
+                        topic = self.cb_topics[topic_idx]
+                        cand_news[i].extend([self.nid2index[n] for n in self.cb_news[topic]])
+                        rank += 1
+                        topics[i].extend([topic])
+                    else:
+                        unfinished_topics.remove(i)
+                        
+        recs = cand_news
+        recs_topic = topics
+        for i in range(m):
+            recs_size.append(len(recs[i]))
             
         # rec_topic = [self.cb_topics[n] for n in nid_argmax]
         # sort topic by topic size, from small to large
@@ -401,7 +445,8 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
         recs_topic = [recs_topic[i] for i in np.argsort(recs_size)]
         for i in range(m):
             print('Debug rec topic {}, total size {}'.format(recs_topic[i], len(recs[i])))
-        return recs, recs_topic
+        return recs
+        
 
     def sample_actions(self, uid, cand_news = None):
         """Choose an action given a context. 
@@ -413,7 +458,7 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             topics: (len(uids), `rec_batch_size`)
             items: (len(uids), `rec_batch_size`) 
         """
-        rec_news_indexs, rec_topics = self.topic_rec(uid, m=self.rec_batch_size)
+        rec_news_indexs = self.topic_rec(uid, m=self.rec_batch_size)
         left_budget = self.per_rec_score_budget * self.rec_batch_size - len(self.cb_topics)
         left_to_rec = self.rec_batch_size
         rec_items = []
@@ -428,8 +473,53 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             rec_items.append(rec_item[0].item()) # Convert numpy int64 to python int
 
             left_budget -= allocate_budget
-            left_to_rec -= 1    
+            left_to_rec -= 1   
+        rec_topics = [self.nid2topicindex[self.index2nid[n]] for n in rec_items] 
         return rec_topics, rec_items
+    
+    def reset(self, e=None, reload_flag=False, reload_path=None):
+        """Save and Reset the CB learner to its initial state (do this for each trial/experiment). """
+          
+        self.model = NRMS_Model(self.word2vec, news_embedding_dim = self.args.news_dim).to(self.device)
+        self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=self.args.split_large_topic).to(self.device)
+        if reload_flag: # and reload_path is not None:
+            print('Info: reload cb model from {}'.format(reload_path))
+            with open(os.path.join(reload_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
+                self.clicked_history = pickle.load(f) 
+            self.data_buffer = np.load(os.path.join(reload_path, "{}_data_buffer.npy".format(e)), allow_pickle=True).tolist()
+            state = torch.load(os.path.join(reload_path, '{}_nrms.pkl'.format(e)))
+            self.model.load_state_dict(state['state_dict'])
+            self.topic_model.load_state_dict(state['topic_state_dict'])
+        else:
+            print('Info: reset without reload!')
+            self.clicked_history = defaultdict(list) # a dict - key: uID, value: a list of str nIDs (clicked history) of a user at current time 
+            self.data_buffer = [] # a list of [pos, neg, hist, uid, t] samples collected 
+            
+    def save(self, e=None):
+        """Save the CB learner for future reload to continue run more iterations.
+        Args
+            e: int
+                trial
+        """
+        try:
+            model_path = os.path.join(self.args.result_path, 'model', self.args.algo_prefix + '-' + str(self.args.T)) # store final results
+            if not os.path.exists(model_path):
+                os.mkdir(model_path)
+            with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
+                pickle.dump(self.clicked_history, f)
+            np.save(os.path.join(model_path, "{}_data_buffer".format(e)), self.data_buffer)
+
+            state = {
+                'state_dict': self.model.state_dict(),
+                'topic_state_dict': self.topic_model.state_dict(),
+                # 'optimizer': self.optimizer.state_dict()
+            }
+            torch.save(state, os.path.join(model_path, '{}_nrms.pkl'.format(e)))
+            print('Info: model saved at {}'.format(model_path))
+        except AttributeError:
+            print('Warning: no attribute clicked_history find. Skip saving.')
+            pass 
+            
     
     # def item_rec(self, uid, cand_news): 
     #     """

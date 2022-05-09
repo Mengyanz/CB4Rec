@@ -5,11 +5,12 @@ import numpy as np
 import torch 
 from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim 
 from algorithms.neural_greedy import NeuralGreedy, NeuralGreedy_NeuralGreedy
-from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, NeuralDropoutUCB_NeuralDropoutUCB
+from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, Two_NeuralDropoutUCB
 from algorithms.hcb import HCB
 from algorithms.phcb import pHCB
 from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMAddUCB
 from algorithms.neural_bilinear import NeuralGBiLinUCB
+from algorithms.proposed import Two_NeuralGLMAddUCB, Two_NeuralGBiLinUCB
 from algorithms.linucb import LinUCB, GLMUCB
 from algorithms.uniform_random import UniformRandom, Random_Random
 from core.contextual_bandit import run_contextual_bandit
@@ -92,7 +93,11 @@ def main():
         args.topic_update_period = 1 # update topic each iteration
         learner = ThompsonSampling_NeuralDropoutUCB(args, device)
     elif args.algo == '2_neuralucb_neuralucb':
-        learner = NeuralDropoutUCB_NeuralDropoutUCB(args, device)
+        learner = Two_NeuralDropoutUCB(args, device)
+    elif args.algo == '2_neuralglmadducb':
+        learner = Two_NeuralGLMAddUCB(args, device)
+    elif args.algo == '2_neuralglmbilinucb':
+        learner = Two_NeuralGBiLinUCB(args, device)
     else:
         raise NotImplementedError
 

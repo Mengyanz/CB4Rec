@@ -93,7 +93,7 @@ class CB_sim():
         
     def get_news_vec(self, model, batch_news_index):
         batch_news_dataset = NewsDataset(batch_news_index)
-        news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+        news_dl = DataLoader(batch_news_dataset, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers)
         news_vecs = []
         for news in news_dl:
             news = news.to(device)
@@ -106,7 +106,7 @@ class CB_sim():
     def get_user_vec(self, model, batch_sam, news_vecs, batch_nid2index):
         user_dataset = UserDataset(batch_sam, news_vecs, batch_nid2index)
         user_vecs = []
-        user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+        user_dl = DataLoader(user_dataset, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers)
 
         for his_tsp in user_dl:
             his, tsp = his_tsp
@@ -130,7 +130,7 @@ class CB_sim():
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
         ft_sam = self.construct_trainable_samples(ft_sam)
         ft_ds = TrainDataset(ft_sam, self.nid2index, self.news_index)
-        ft_dl = DataLoader(ft_ds, batch_size=self.finetune_batch_size, shuffle=True, num_workers=0)
+        ft_dl = DataLoader(ft_ds, batch_size=self.finetune_batch_size, shuffle=True, num_workers=self.args.num_workers)
         for ep in range(epoch):
             loss = 0
             accuary = 0.0

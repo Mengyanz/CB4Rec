@@ -92,7 +92,7 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
         CI = []
         Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
         cands = torch.unsqueeze(torch.Tensor(np.array(cands)).to(self.device),dim=1) # 5000,1,4096
-        CI = torch.bmm(torch.bmm(cands, Ainv.expand(5000,-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
+        CI = torch.bmm(torch.bmm(cands, Ainv.expand(cands.shape[0],-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
 
         t4 = datetime.datetime.now()
         print('Debug get ucb CI (on GPU):, ', t4-t3)

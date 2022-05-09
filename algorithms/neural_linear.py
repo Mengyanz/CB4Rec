@@ -299,7 +299,6 @@ class NeuralGLMAddUCB(NeuralGreedy):
         super(NeuralGLMAddUCB, self).__init__(args, device, name)
         self.gamma = self.args.gamma
         self.dim = self.args.news_dim
-        # self.dim = 400 # self.args.latent_dim
 
         self.A =  np.identity(n=self.dim)
         self.Ainv = np.linalg.inv(self.A)
@@ -343,16 +342,16 @@ class NeuralGLMAddUCB(NeuralGreedy):
                 tr_rewards.extend([0] * tr_neg_len)
                 tr_users.extend([uid]*(len(poss) + tr_neg_len))
 
-            self.data_buffer_lr.remove(l)
+            # REVIEW:
+            # self.data_buffer_lr.remove(l)
         # print('Debug tr_samples: ', tr_samples)
         # print('Debug tr_rewards: ', tr_rewards)
         # print('Debug self.data_buffer: ', self.data_buffer)
         return tr_samples, tr_rewards, tr_users
 
-    def train_lr(self, uid):
+    def train_lr(self, uid_input=None):
         optimizer = optim.Adam(self.lr_model.parameters(), lr=self.args.glm_lr)
         ft_sam, ft_labels, ft_users = self.construct_trainable_samples_lr()
-        
         if len(ft_sam) > 0:
             x = self.news_embs[0][ft_sam] # n_tr, n_dim
             z = np.array([self._get_user_embs(uid, 0) for uid in ft_users])
@@ -366,6 +365,36 @@ class NeuralGLMAddUCB(NeuralGreedy):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+        else:
+                print('Skip update cb item GLM learner due to lack valid samples!')
+        
+        # ft_sam = self.construct_trainable_samples()
+        # if len(ft_sam) > 0:
+        #     print('Updating the internal item GLM model of the bandit!')
+        #     ft_ds = GLMTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
+        #     ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
+        #     ft_loader = tqdm(ft_dl)
+
+        #     self.lr_model.train()
+        #     for cnt, batch_sample in enumerate(ft_loader):
+        #         candidate_news_index, label, uids = batch_sample
+        #         x = self.news_embs[0][candidate_news_index] # n_tr, n_dim
+        #         z = np.array([self._get_user_embs(uid, 0) for uid in uids])
+        #         z = z.reshape(-1, z.shape[-1]) # n_tr, n_dim
+                
+        #         for epoch in range(self.args.epochs):
+        #             preds = self.lr_model_topic(torch.Tensor(x), torch.Tensor(z)).ravel()
+        #             # print('Debug labels: ', ft_labels)
+        #             loss = self.criterion(preds, torch.Tensor(label))
+                    
+        #             optimizer.zero_grad()
+        #             loss.backward()
+        #             optimizer.step()
+        #         # REVIEW:
+        #         if self.args.reset_buffer:
+        #             self.data_buffer = [] # reset data buffer
+        #     else:
+        #         print('Skip update cb item GLM learner due to lack valid samples!')
 
         
     def update(self, topics, items, rewards, mode = 'item', uid = None):
@@ -429,4 +458,4 @@ class NeuralGLMAddUCB(NeuralGreedy):
         self.b = np.zeros((self.dim))
 
         self.lr_model = LogisticRegressionAddtive(self.dim, 1)
-        self.data_buffer_lr = [] # for logistic regression
+        # self.data_buffer_lr = [] # for logistic regression

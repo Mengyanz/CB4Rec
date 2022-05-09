@@ -74,7 +74,7 @@ def parse_args():
     parser.add_argument("--reload_path", type=str, default=None, help = 'reload cb model path. Need to specify if reload_flag is True')
 
     # debug
-    parser.add_argument("--reset_buffer",type=str2bool,default=True, 
+    parser.add_argument("--reset_buffer",type=str2bool,default=False, 
         help="Debug whether we should reset buffer after each train in cb simulation.")
     
 
@@ -105,7 +105,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=64) 
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.0001)
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=0)
 
     parser.add_argument("--glm_epochs", type=int, default=5)
     parser.add_argument("--glm_lr", type=float, default=0.01)

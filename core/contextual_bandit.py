@@ -240,9 +240,9 @@ def run_contextual_bandit(args, simulator, algos):
     h_items_all = [] 
     h_rewards_all = []
 
-    algos_name = ''
-    for a in algos:
-        algos_name += (a.name+'-')
+    # algos_name = ''
+    # for a in algos:
+    #     algos_name += (a.name+'-')
 
     # runs_path = os.path.join(args.result_path, 'runs') # store running results
     trial_path = os.path.join(args.result_path, 'trial') # store final results
@@ -439,7 +439,8 @@ def run_contextual_bandit(args, simulator, algos):
         print('TIME: run up to trial {} used {}'.format(e, t_now-t_start))
 
         # save each CB learner
-        [a.save(e) for a in algos] 
+        # [a.save(e) for a in algos] 
+
         # if (t+1) % args.save_freq == 0 or t == args.T -1:
         np.save(item_path, np.array(h_items)) # (n_algos, rec_bs, T)
         np.save(reward_path, np.array(h_rewards))

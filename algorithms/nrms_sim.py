@@ -86,7 +86,7 @@ class NRMS_Sim(Simulator):
         h = torch.Tensor(h[None,:,:])
 
         sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
-        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers) 
 
         self.model.eval()
         with torch.no_grad():
@@ -199,12 +199,12 @@ class NRMS_Sim(Simulator):
         with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
             train_samples = pickle.load(fo)
         train_dataset = SimTrainDataset(self.args, self.nid2index, self.nindex2vec, train_samples) 
-        train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, num_workers=5)
+        train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
 
         with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
             val_samples = pickle.load(fo)
         val_dataset = SimValDataset(self.args, self.nid2index, self.nindex2vec, val_samples) 
-        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=5)
+        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=self.args.num_workers)
 
         epoch_number = 0 
 
@@ -419,7 +419,7 @@ class NRMS_IPS_Sim(Simulator):
     #     h = torch.Tensor(h[None,:,:])
 
     #     sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
-    #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+    #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers) 
 
     #     self.model.eval()
     #     with torch.no_grad():
@@ -451,7 +451,7 @@ class NRMS_IPS_Sim(Simulator):
         h = torch.Tensor(h[None,:,:])
 
         sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
-        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=4) 
+        rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers) 
 
         self.model.eval()
         with torch.no_grad():
@@ -539,12 +539,12 @@ class NRMS_IPS_Sim(Simulator):
         with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
             train_samples = pickle.load(fo)
         train_dataset = SimTrainWithIPSDataset(self.args, self.nid2index, self.nindex2vec, train_samples) 
-        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=1)
+        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=self.args.num_workers)
 
         with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
             val_samples = pickle.load(fo)
         val_dataset = SimValWithIPSDataset(self.args, self.nid2index, self.nindex2vec, val_samples)  
-        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=5)
+        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=self.args.num_workers)
 
         epoch_number = 0 
 

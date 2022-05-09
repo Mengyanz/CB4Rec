@@ -134,7 +134,7 @@ class PropensityScore(object):
                 user_news_obs[u] = list(set(v))
             train_dataset = PropensityScoreDatasetWithRealLabels(self.args, train_uidset, \
                 self.user_embs, self.news_embs, self.nid2index, self.uid2index, user_news_obs, self.train_user_count, self.train_pair_count)
-            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=5) 
+            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True) #, num_workers=self.args.num_workers) 
 
         print('Loading val_user_news_obs.pkl')
         with open(os.path.join(self.data_path, "val_user_news_obs.pkl"), 'rb') as fo: 
