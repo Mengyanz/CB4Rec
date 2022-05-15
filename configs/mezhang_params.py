@@ -74,7 +74,7 @@ def parse_args():
     parser.add_argument("--reload_path", type=str, default=None, help = 'reload cb model path. Need to specify if reload_flag is True')
 
     # debug
-    parser.add_argument("--reset_buffer",type=str2bool,default=False, 
+    parser.add_argument("--reset_buffer",type=str2bool,default=True, 
         help="Debug whether we should reset buffer after each train in cb simulation.")
     
 
@@ -84,7 +84,7 @@ def parse_args():
     parser.add_argument("--item_linear_update_period", type=int, default=1, help = 'Update period for CB item linear model (for neural linear model)')
 
     # nrms topic
-    parser.add_argument("--dynamic_aggregate_topic", type=str2bool, default = False) # whether to dynamically aggregate small topic during simulation
+    parser.add_argument("--dynamic_aggregate_topic", type=str2bool, default = True) # whether to dynamically aggregate small topic during simulation
     parser.add_argument("--min_item_size", type=int, default=1000)
 
     

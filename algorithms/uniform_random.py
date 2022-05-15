@@ -32,11 +32,11 @@ class UniformRandom(ContextualBanditLearner):
         rec_items = np.random.choice(cand_news, size=m, replace=False).tolist()
         return rec_items 
 
-class Random_Random(UniformRandom):
+class Two_Random(UniformRandom):
     def __init__(self, args, device, name='2_random'):
         """Randomly recommend topics and then randomly recommend news to user.
         """
-        super(Random_Random, self).__init__(args, device, name)
+        super(Two_Random, self).__init__(args, device, name)
 
     def topic_rec(self, uid, m = 1):
         rec_topics = np.random.choice(self.cb_topics, size=m, replace=False).tolist()

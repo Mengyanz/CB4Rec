@@ -1,5 +1,5 @@
 class NeuralDropoutUCB_NeuralDropoutUCB(NeuralDropoutUCB):  #@ZhenyuHe version
-    def __init__(self, args, device, name='2_neuralucb_neuralucb'):
+    def __init__(self, args, device, name='2_neuralucb'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 

@@ -193,7 +193,7 @@ def cal_base_ctr(args):
     plot_metrics(args, metrics, 'uniform_random', plot_title='Uniform Random 10 trials')
     return metrics
 
-def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_rewards, all_items, trials = '[0-9]', T =2000, n_trial = 5):
+def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_rewards, all_items, trials = '[0-9]', T =2000, n_trial = 5, rec_batch_size=5):
     """collect rewards 
     the rewards files are saved in the results/algo_group/timestr/trial-algo_prefix-round.npy
     each file stores array with shape (n_algos, rec_bs, T)
@@ -223,14 +223,17 @@ def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_re
                 
                 all_trial_rewards = np.concatenate(all_trial_rewards, axis = 0)
                 print('Collect trials {} for {}: {}'.format(load_item, algo_prefix, all_trial_rewards.shape))
+                print('Debug n_trial {} rec_batch_size {}'.format(n_trial, rec_batch_size))
 
-                if int(all_trial_rewards.shape[0]) >= n_trial: # only collect rewards with required trials
+                if int(all_trial_rewards.shape[0]) >= n_trial and int(all_trial_rewards.shape[2]) == rec_batch_size: # only collect rewards with required trials
                     load_item_dict[load_item].append(all_trial_rewards[:n_trial,:,:,:])
                     if load_item == 'rewards':
                         algo_names.append(algo_prefix)          
             else:
                 print('No file found for ', search_names)
         
+        print('Debug len(load_item_dict[rewards]): ', len(load_item_dict['rewards']))
+        print('Debug len(algo_names): ', len(algo_names))
         assert len(load_item_dict['rewards']) == len(algo_names)
     
     return load_item_dict['rewards'], load_item_dict['items'], algo_names
@@ -297,8 +300,8 @@ def run_eva(args):
     # algo_group = 'test_twostage'
     # n_inference = 1
     # gamma = 0
-    # # algo = '2_neuralucb_neuralucb' # 
-    # algo = '2_neuralgreedy_neuralgreedy' 
+    # # algo = '2_neuralucb' # 
+    # algo = '2_neuralgreedy' 
     # algo_prefixes.append(algo + '_ninf' + str(n_inference) + '_gamma' + str(gamma)) 
 
     # timestr = '20220506-0244'
@@ -352,7 +355,7 @@ def run_eva(args):
     algo_group = 'test_twostage'
     n_inference = 1
     gamma = 0
-    for algo in ['2_neuralgreedy_neuralgreedy']: # ['2_neuralucb_neuralucb']: # 
+    for algo in ['2_neuralgreedy']: # ['2_neuralucb']: # 
         for dynamic_aggregate_topic in [True, False]:
             algo_prefix = algo + '_ninf' + str(n_inference) + '_gamma' + str(gamma) + '_dynTopic' + str(dynamic_aggregate_topic)
             algo_prefixes.append(algo_prefix)

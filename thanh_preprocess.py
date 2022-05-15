@@ -645,6 +645,43 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
             with open(os.path.join(log_path, 'indices_{}.txt'.format(trial)), 'a') as f:
                 f.write(f"[{ep}] epoch save model\n")
 
+def pretrain_glm_learner(args, cb_train_sam, trial, glm_name='additive'):
+    if args.pretrain_topic:
+        # TODO: split large topic
+        out_model_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_glm_models')
+    else:
+        out_model_path = os.path.join(args.root_proj_dir, 'cb_pretrained_glm_models_dim64')
+    if not os.path.exists(out_model_path):
+        os.mkdir(out_model_path)
+    log_path = os.path.join(args.root_proj_dir, 'logs')
+    if not os.path.exists(log_path):
+        os.mkdir(log_path) 
+
+    # load data
+    if args.pretrain_topic:
+        with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2topicindex.pkl'), 'rb') as f:
+            nid2topicindex = pickle.load(f)
+    with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+        nid2index = pickle.load(f)
+    word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
+    nindex2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
+
+    # REVIEW: randomly selecting 90% of the data for training and 10% for validation
+    train_idx = np.random.choice(range(len(cb_train_sam)), size = int(0.9 * len(cb_train_sam)), replace=False)
+    valid_idx = list(set(range(len(cb_train_sam))) - set(train_idx))
+    train_sam = [cb_train_sam[i] for i in train_idx]
+    valid_sam = [cb_train_sam[i] for i in valid_idx]
+
+    if args.pretrain_topic:
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec, nid2topicindex)
+    else:
+        train_ds = TrainDataset(args, train_sam, nid2index,  nindex2vec)
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    if args.pretrain_topic:
+        model = NRMS_Topic_Model(word2vec, split_large_topic=args.split_large_topic).to(device)
+    else:
+        model = NRMS_Model(word2vec, news_embedding_dim = 64).to(device)
+            
 def eva(args, model, valid_sam, nid2index, news_index, nid2topicindex=None):
     model.eval()
     news_dataset = NewsDataset(news_index)

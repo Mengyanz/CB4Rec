@@ -33,8 +33,8 @@ def main(args):
         else:
             algo_name = ''.join(filename.split('-')[3:5])
         
-            if '2_neuralucb_neuralucb' in algo_name:
-                algo_name = algo_name.replace('2_neuralucb_neuralucb', '2_neuralucb_neuralucb_')
+            if '2_neuralucb' in algo_name:
+                algo_name = algo_name.replace('2_neuralucb', '2_neuralucb_neuralucb_')
             if '2_ts_neuralucb_zhenyu' in algo_name:
                 algo_name = algo_name.replace('2_ts_neuralucb_zhenyu', '2_neuralucb_neuralucb_')
         algo_names.append(algo_name)
@@ -78,7 +78,7 @@ def main(args):
 
 # timestr = '20220319-0633' # '20220316-0643'
 # algo_group = 'tune_topic_update_period'
-# for algo in ['2_neuralucb_neuralucb', '2_ts_neuralucb']:
+# for algo in ['2_neuralucb', '2_ts_neuralucb']:
 #         if algo == '2_ts_neuralucb':
 #             updates = [1]
 #         else:

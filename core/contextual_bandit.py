@@ -9,6 +9,8 @@ import os
 import torch
 from sklearn.metrics import roc_auc_score
 import datetime
+from tqdm import tqdm
+from evaluate import cal_metric
 
 class ContextualBanditLearner(object):
     def __init__(self, args, device, name='ContextualBanditLearner'):
@@ -240,9 +242,9 @@ def run_contextual_bandit(args, simulator, algos):
     h_items_all = [] 
     h_rewards_all = []
 
-    # algos_name = ''
-    # for a in algos:
-    #     algos_name += (a.name+'-')
+    algo_names = []
+    for a in algos:
+        algo_names.append(a.name)
 
     # runs_path = os.path.join(args.result_path, 'runs') # store running results
     trial_path = os.path.join(args.result_path, 'trial') # store final results
@@ -319,7 +321,7 @@ def run_contextual_bandit(args, simulator, algos):
             h_items = np.empty((len(algos), args.rec_batch_size,0), float)
             h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
             reload_t = 0
-        for t in range(reload_t, args.T):
+        for t in tqdm(range(reload_t, args.T)):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
             
@@ -410,13 +412,14 @@ def run_contextual_bandit(args, simulator, algos):
                     # for neural linear model only
                     a.update(topics, items, rewards, mode = 'item-linear', uid = u)
 
-                # DEBUG for neurla glmucb - lr model auc (0414)
-                # if (t + 1) % 10 == 0:
-                #     targets = simulator.reward(u, cand_news_indexes).ravel()
-                #     preds = a.predict(u, cand_news_indexes)
-                #     auc = roc_auc_score(targets, preds)
-                #     print('Debug at round {}: auc {}'.format(t, auc))
-                #     a.writer.add_scalars('{} auc'.format(u), {'auc': auc}, t)
+                # DEBUG for neural glmucb - lr model auc
+                # if a.name == '2_neuralglmadducb':
+                #     if (t + 1) % 10 == 0:
+                #         targets = simulator.reward(u, cand_news_indexes).ravel()
+                #         preds = a.predict(u, cand_news_indexes)
+                #         auc = roc_auc_score(targets, preds)
+                #         print('Debug at round {}: auc {}'.format(t, auc))
+                #         a.writer.add_scalars('{} auc'.format(u), {'auc': auc}, t)
                     
             # if t % 1000 == 0 and t > 0:
             #     temp_item_path = os.path.join(result_path, "items-{}-ninference{}-dynamic{}-splitlarge{}-{}-{}.npy".format(args.algo_prefix,str(args.n_inference),str(args.dynamic_aggregate_topic),str(args.split_large_topic), e, args.T))
@@ -434,6 +437,9 @@ def run_contextual_bandit(args, simulator, algos):
             #     print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
             #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
             #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
+            
+        if (t+1)%100==0 or t == args.T -1:
+            cal_metric(np.expand_dims(np.array(h_rewards), axis = 0), algo_names, ['ctr', 'cumu_reward'])
 
         t_now = datetime.datetime.now()
         print('TIME: run up to trial {} used {}'.format(e, t_now-t_start))

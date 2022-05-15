@@ -10,7 +10,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from core.contextual_bandit import ContextualBanditLearner 
-from algorithms.neural_greedy import NeuralGreedy, NeuralGreedy_NeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy, Two_NeuralGreedy
 from algorithms.nrms_model import NRMS_Model, NRMS_Topic_Model
 from utils.data_util import read_data, NewsDataset, UserDataset, TrainDataset, load_word2vec, load_cb_topic_news,load_cb_nid2topicindex, SimEvalDataset, SimEvalDataset2, SimTrainDataset
 
@@ -326,8 +326,8 @@ class DummyThompsonSampling_NeuralDropoutUCB(ContextualBanditLearner): #@Thanh: 
             # do one epoch only
             loss = 0
             self.model.train()
-            ft_loader = tqdm(ft_dl)
-            for cnt, batch_sample in enumerate(ft_loader):
+            # ft_loader = tqdm(ft_dl)
+            for cnt, batch_sample in enumerate(ft_dl):
                 candidate_news_index, his_index, label = batch_sample
                 sample_num = candidate_news_index.shape[0]
                 candidate_news_index = candidate_news_index.to(self.device)
@@ -393,8 +393,8 @@ class DummyThompsonSampling_NeuralDropoutUCB(ContextualBanditLearner): #@Thanh: 
         return rec_topics, rec_items
     
     
-class Two_NeuralDropoutUCB(NeuralGreedy_NeuralGreedy):  
-    def __init__(self, args, device, name='2_neuralucb_neuralucb'):
+class Two_NeuralDropoutUCB(Two_NeuralGreedy):  
+    def __init__(self, args, device, name='2_neuralucb'):
         """Two stage exploration. Use NRMS model. 
             Args:
                 rec_batch_size: int, recommendation size. 

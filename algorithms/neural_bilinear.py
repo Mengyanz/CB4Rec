@@ -40,6 +40,9 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
         print('size(data_buffer): {}'.format(len(self.data_buffer)))
         if mode == 'item':
             self.train() 
+            if self.args.reset_buffer:
+                 # REVIEW: only reset buffer ever update_period round
+                self.data_buffer_lr = []
 
         if mode == 'item-linear':
             print('Update linucb parameters for user {}!'.format(uid))

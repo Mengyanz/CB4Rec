@@ -34,26 +34,12 @@ class NeuralLinUCB(NeuralGreedy):
         self.b = {}
 
         # debug glm
-        out_folder = os.path.join(args.result_path, 'runs') # store final results
-        if not os.path.exists(out_folder):
-            os.makedirs(out_folder)
+        # out_folder = os.path.join(args.result_path, 'runs') # store final results
+        # if not os.path.exists(out_folder):
+        #     os.makedirs(out_folder)
 
         # out_path = os.path.join(out_folder, args.algo_prefix)
         # self.writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html
-
-    def pretrain_glm_learner(self, uid=None):
-        # NOTE: This intened to pre-train linear models with cb train data. However, we cannot do that since we remove the cb simulated users from the cb train data, and the linear models are disjoint, i.e. theta_u for per user. We can do this for our proposed shared model though.
-        """pretrain the generalised linear models (if any) with the pretrained data, to initialise glm parameters.
-        """
-        print('pretrain glm learner using {} for user {}'.format(self.pretrain_path, uid))
-        with open(self.pretrain_path, "rb") as f:
-            cb_train_sam = pickle.load(f)
-
-        train_ds = GLMTrainDataset(args, cb_train_sam, self.nid2index,  self.nindex2vec)
-        train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-        for cnt, batch_sample in enumerate(train_loader):
-            news_index, label = batch_sample
-            self.update(topics = None, items=news_index, rewards=label, mode = 'item-linear', uid = uid)
         
     def getInv(self, old_Minv, nfv):
         # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
@@ -178,9 +164,12 @@ class NeuralGLMUCB(NeuralLinUCB):
             rewards: a list of `rec_batch_size` {0,1}
             mode: `topic`/`item`/'item-linear'
         """
-        print('size(data_buffer): {}'.format(len(self.data_buffer)))
+        print('size of data_buffer: {}; data_buffer_lr: {}'.format(len(self.data_buffer), len(self.data_buffer_lr)))
         if mode == 'item':
             self.train() 
+            if self.args.reset_buffer:
+                 # REVIEW: only reset buffer ever update_period round
+                self.data_buffer_lr = []
 
         if mode == 'item-linear':
             print('Update glmucb parameters for user {}!'.format(uid))
@@ -212,14 +201,12 @@ class NeuralGLMUCB(NeuralLinUCB):
             # tr_samples.extend(negs)
             # tr_rewards.extend([0]*len(negs))
 
-            # self.data_buffer_lr.remove(l)
         # print('Debug tr_samples: ', tr_samples)
         # print('Debug tr_rewards: ', tr_rewards)
         # print('Debug self.data_buffer: ', self.data_buffer)
         return np.array(tr_samples), np.array(tr_rewards)
         
     def train_lr(self, uid):
-        # TODO: use GLMTrainDataset
         optimizer = optim.Adam(self.lr_models[uid].parameters(), lr=self.args.glm_lr)
         ft_sam, ft_labels = self.construct_trainable_samples_lr(uid)
         if len(ft_sam) > 0:
@@ -342,8 +329,6 @@ class NeuralGLMAddUCB(NeuralGreedy):
                 tr_rewards.extend([0] * tr_neg_len)
                 tr_users.extend([uid]*(len(poss) + tr_neg_len))
 
-            # REVIEW:
-            # self.data_buffer_lr.remove(l)
         # print('Debug tr_samples: ', tr_samples)
         # print('Debug tr_rewards: ', tr_rewards)
         # print('Debug self.data_buffer: ', self.data_buffer)
@@ -406,9 +391,12 @@ class NeuralGLMAddUCB(NeuralGreedy):
             rewards: a list of `rec_batch_size` {0,1}
             mode: `topic`/`item`/'item-linear'
         """
-        print('size(data_buffer): {}'.format(len(self.data_buffer)))
+        print('size of data_buffer: {}; data_buffer_lr: {}'.format(len(self.data_buffer), len(self.data_buffer_lr)))
         if mode == 'item':
             self.train() 
+            if self.args.reset_buffer:
+                 # REVIEW: only reset buffer ever update_period round
+                self.data_buffer_lr = []
 
         if mode == 'item-linear':
             print('Update linucb parameters for user {}!'.format(uid))
@@ -458,4 +446,4 @@ class NeuralGLMAddUCB(NeuralGreedy):
         self.b = np.zeros((self.dim))
 
         self.lr_model = LogisticRegressionAddtive(self.dim, 1)
-        # self.data_buffer_lr = [] # for logistic regression
+        self.data_buffer_lr = [] # for logistic regression

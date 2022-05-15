@@ -263,8 +263,9 @@ class GLMTrainDataset(Dataset):
         label = np.zeros(1 + self.npratio, dtype=float)
         label[0] = 1.0 
         # uids = np.array((1 + self.npratio) * [uid])
-        print('Debug in data_util uid: ', uid)
-        return candidate_news_index, label, uid
+        uids = np.array((1 + self.npratio) *  list(uid[1:]), dtype = int)
+        print('Debug in data_util uids: ', uids)
+        return candidate_news_index, label, uids
 
         
 class SimTrainDataset(Dataset):

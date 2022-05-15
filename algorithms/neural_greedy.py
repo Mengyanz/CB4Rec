@@ -104,8 +104,8 @@ class NeuralGreedy(ContextualBanditLearner):
             # do one epoch only
             loss = 0
             self.model.train()
-            ft_loader = tqdm(ft_dl)
-            for cnt, batch_sample in enumerate(ft_loader):
+            # ft_loader = tqdm(ft_dl)
+            for cnt, batch_sample in enumerate(ft_dl):
                 candidate_news_index, his_index, label = batch_sample
                 candidate_news_index = candidate_news_index.to(self.device)
                 his_index = his_index.to(self.device)
@@ -223,11 +223,11 @@ class NeuralGreedy(ContextualBanditLearner):
             print('Warning: no attribute clicked_history find. Skip saving.')
             pass 
             
-class NeuralGreedy_NeuralGreedy(NeuralGreedy):
-    def __init__(self, args, device, name='2_NGreedy_NGreedy'):
+class Two_NeuralGreedy(NeuralGreedy):
+    def __init__(self, args, device, name='2_neuralgreedy'):
         """Use NRMS model. 
         """
-        super(NeuralGreedy_NeuralGreedy, self).__init__(args, device, name) 
+        super(Two_NeuralGreedy, self).__init__(args, device, name) 
         self.n_inference = 1
         topic_list, nid2topic = load_cb_topic_news(args, ordered=True) # topic_list: a list of all the topic names, the order of them matters; newsid_to_topic: a dict that maps newsid to topic
         self.nid2topic = nid2topic
@@ -301,15 +301,15 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
-                print('Updating the internal item model of the bandit!')
+                print('Updating the internal item neural model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
-                ft_loader = tqdm(ft_dl)
+                # ft_loader = tqdm(ft_dl)
                 
                 # do one epoch only
                 loss = 0
                 self.model.train()
-                for cnt, batch_sample in enumerate(ft_loader):
+                for cnt, batch_sample in enumerate(ft_dl):
                     candidate_news_index, his_index, label = batch_sample
                     candidate_news_index = candidate_news_index.to(self.device)
                     his_index = his_index.to(self.device)
@@ -321,7 +321,8 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
                     bz_loss.backward()
 
                     optimizer.step()  
-                self._get_news_embs() # update news embeddings
+                self._get_news_embs() # update news embeddings#
+                # REVIEW: assume topics is updated more frequently than items
                 if self.args.reset_buffer:
                     self.data_buffer = [] # reset data buffer
             else:
@@ -331,15 +332,15 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
             ft_sam = self.construct_trainable_samples()
             if len(ft_sam) > 0:
-                print('Updating the internal topic model of the bandit!')
+                print('Updating the internal topic neural model of the bandit!')
                 ft_ds = TrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec, self.nid2topicindex)
                 ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
-                ft_loader = tqdm(ft_dl)
+                # ft_loader = tqdm(ft_dl)
                 
                 # do one epoch only
                 loss = 0
                 self.topic_model.train()
-                for cnt, batch_sample in enumerate(ft_loader):
+                for cnt, batch_sample in enumerate(ft_dl):
                     candidate_news_index, his_index, label = batch_sample
                     candidate_news_index = candidate_news_index.to(self.device)
                     his_index = his_index.to(self.device)
@@ -383,8 +384,7 @@ class NeuralGreedy_NeuralGreedy(NeuralGreedy):
             self._get_news_embs(topic=True) # init news embeddings
         
         user_vector = self._get_topic_user_embs(uid, 0) # reduction_dim
-        topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.topic_order)
-        # topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.active_topics_order) # get all active topic scores, num x reduction_dim
+        topic_embeddings = self.topic_model.get_topic_embeddings_byindex(self.topic_order) # get all active topic scores, num x reduction_dim
         scores = (topic_embeddings @ user_vector.unsqueeze(-1)).squeeze(-1).cpu().numpy() # num_topic
         sorted_topic_indexs = np.argsort(scores)[::-1].tolist() 
         # rec_topic = [self.active_topics[n] for n in nid_argmax]

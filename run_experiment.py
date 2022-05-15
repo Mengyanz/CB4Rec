@@ -4,7 +4,7 @@ import math, os
 import numpy as np 
 import torch 
 from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim 
-from algorithms.neural_greedy import NeuralGreedy, NeuralGreedy_NeuralGreedy
+from algorithms.neural_greedy import NeuralGreedy, Two_NeuralGreedy
 from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, Two_NeuralDropoutUCB
 from algorithms.hcb import HCB
 from algorithms.phcb import pHCB
@@ -12,7 +12,7 @@ from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMAddUCB
 from algorithms.neural_bilinear import NeuralGBiLinUCB
 from algorithms.proposed import Two_NeuralGLMAddUCB, Two_NeuralGBiLinUCB
 from algorithms.linucb import LinUCB, GLMUCB
-from algorithms.uniform_random import UniformRandom, Random_Random
+from algorithms.uniform_random import UniformRandom, Two_Random
 from core.contextual_bandit import run_contextual_bandit
 import pretty_errors
 import pickle
@@ -86,13 +86,13 @@ def main():
         learner = pHCB(device, args, root)
     # ----------------------------- Two stage ----------------------------------#
     elif args.algo == '2_random':
-        learner = Random_Random(args, device)
-    elif args.algo == '2_neuralgreedy_neuralgreedy':
-        learner = NeuralGreedy_NeuralGreedy(args, device)
+        learner = Two_Random(args, device)
+    elif args.algo == '2_neuralgreedy':
+        learner = Two_NeuralGreedy(args, device)
     elif args.algo == '2_ts_neuralucb':
         args.topic_update_period = 1 # update topic each iteration
         learner = ThompsonSampling_NeuralDropoutUCB(args, device)
-    elif args.algo == '2_neuralucb_neuralucb':
+    elif args.algo == '2_neuralucb':
         learner = Two_NeuralDropoutUCB(args, device)
     elif args.algo == '2_neuralglmadducb':
         learner = Two_NeuralGLMAddUCB(args, device)
