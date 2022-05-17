@@ -414,24 +414,41 @@ class Two_NeuralGreedy(NeuralGreedy):
 
         cand_news = []
         topics = []
+        left_news_indexes = list(range(self.args.num_all_news))
         for i in range(m):
             topic_idx = sorted_topic_indexs[rank]
             topic = self.cb_topics[topic_idx]
-            cand_news.append([self.nid2index[n] for n in self.cb_news[topic]])
+            news_index_topic = [self.nid2index[n] for n in self.cb_news[topic]]
+            left_news_indexes = list(set(left_news_indexes) - set(news_index_topic))
+            cand_news.append(news_index_topic)
             rank += 1
             topics.append([topic])
         if self.args.dynamic_aggregate_topic:
             unfinished_topics = list(range(m))
             while len(unfinished_topics) > 0:
                 for i in unfinished_topics:
-                    if len(cand_news[i]) < self.args.min_item_size:
+                    num_news_to_add = self.args.min_item_size - len(cand_news[i])
+                    if num_news_to_add > 0:
                         topic_idx = sorted_topic_indexs[rank]
                         topic = self.cb_topics[topic_idx]
-                        cand_news[i].extend([self.nid2index[n] for n in self.cb_news[topic]])
+                        news_index_topic = [self.nid2index[n] for n in self.cb_news[topic]]
+                        if len(news_index_topic) <= num_news_to_add:
+                            cand_news[i].extend(news_index_topic)
+                        else:
+                            sample_news_index = np.random.choice(news_index_topic, size= num_news_to_add, replace=False)
+                            cand_news[i].extend(sample_news_index)
                         rank += 1
                         topics[i].extend([topic])
                     else:
                         unfinished_topics.remove(i)
+        else:
+            for i in range(len(topics)):
+                num_news_to_add = self.args.min_item_size - len(cand_news[i])
+                if num_news_to_add > 0:
+                    sample_news_index = np.random.choice(left_news_indexes, size= num_news_to_add, replace=False)
+                    cand_news[i].extend(sample_news_index)
+                    left_news_indexes = list(set(left_news_indexes) - set(sample_news_index))
+
                         
         recs = cand_news
         recs_topic = topics

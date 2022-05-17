@@ -353,6 +353,22 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         self.A_topic =  np.identity(n=self.dim**2)
         self.Ainv_topic = np.linalg.inv(self.A)
         self.lr_model_topic = LogisticRegressionBilinear(self.dim, self.dim, 1).to(self.device)
+        
+        self.A = torch.Tensor(self.A).to(self.device)
+        self.Ainv = torch.Tensor(self.Ainv).to(self.device)
+        self.A_topic = torch.Tensor(self.A_topic).to(self.device)
+        self.Ainv_topic = torch.Tensor(self.Ainv_topic).to(self.device)
+        
+    
+    def getInv(self, old_Minv, nfv):
+        # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
+        # new_M=old_M+nfv*nfv'
+        # try to get the inverse of new_M
+        tmp_a=torch.outer((old_Minv @ nfv).ravel(),nfv) @ old_Minv
+        # tmp_a = old_Minv.dot(nfv).dot(nfv.T).dot(old_Minv)
+        tmp_b=1+ nfv.T @ old_Minv @ nfv
+        new_Minv=old_Minv-tmp_a/tmp_b
+        return new_Minv
     
     def update(self, topics, items, rewards, mode = 'item', uid = None):
         """Updates the posterior using linear bayesian regression formula.
@@ -368,28 +384,60 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         if mode == 'item-linear': 
             # item
             print('Update glmucb item parameters')
-            X = self.news_embs[0][items] # n1, n_hist
-            z = self._get_user_embs(uid, 0)[0] # 1,d2
+            t1 = datetime.datetime.now()
+            
+            # X = self.news_embs[0][items] # n1, n_hist
+            # z = self._get_user_embs(uid, 0)[0] # 1,d2
+            # for x in X:
+            #     vec = np.outer(x.T,z).reshape(-1,) # d1d2,
+
+            #     # Update parameters
+            #     self.A+=np.outer(vec, vec.T) # d1d2, d1d2                
+            #     self.Ainv=self.getInv(self.Ainv,vec) # n_dim, n_dim
+            
+            X = torch.Tensor(self.news_embs[0][items]).to(self.device) # n1, n_hist
+            z = torch.Tensor(self._get_user_embs(uid, 0)[0]).to(self.device) # 1,d2
             for x in X:
-                vec = np.outer(x.T,z).reshape(-1,) # d1d2,
+                vec = torch.outer(x.T,z.ravel()).ravel() # d1d2,
 
                 # Update parameters
-                self.A+=np.outer(vec, vec.T) # d1d2, d1d2                
+                self.A+=torch.outer(vec, vec) # d1d2, d1d2                
                 self.Ainv=self.getInv(self.Ainv,vec) # n_dim, n_dim
+            
+            t2 = datetime.datetime.now()
+            # print('Debug update item A, Ainv:, ', t2-t1)
             self.train_lr(mode='item')
+            t3 = datetime.datetime.now()
+            # print('Debug train item lr:, ', t3-t2)
 
             # topic
             print('Update glmucb topic parameters')
-            X_topic = self.topic_embs[topics].cpu().numpy() # n_dim, n_hist
+
+            # X_topic = self.topic_embs[topics].cpu().numpy() # n_dim, n_hist
+            # # Update parameters
+            # z_topic = self._get_topic_user_embs(uid, 0).detach().cpu().numpy().reshape(1,-1) # 1,d2
+            # for x in X_topic:
+            #     vec = np.outer(x.T,z_topic).reshape(-1,) # d1d2,
+
+            #     # Update parameters
+            #     self.A_topic+=np.outer(vec, vec.T) # d1d2, d1d2                
+            #     self.Ainv_topic=self.getInv(self.Ainv_topic,vec) # n_dim, n_dim
+
+            X_topic = self.topic_embs[topics] # n_dim, n_hist
             # Update parameters
-            z_topic = self._get_topic_user_embs(uid, 0).detach().cpu().numpy().reshape(1,-1) # 1,d2
+            z_topic = self._get_topic_user_embs(uid, 0).reshape(1,-1) # 1,d2
             for x in X_topic:
-                vec = np.outer(x.T,z_topic).reshape(-1,) # d1d2,
+                vec = torch.outer(x.T,z_topic.ravel()).ravel() # d1d2,
 
                 # Update parameters
-                self.A_topic+=np.outer(vec, vec.T) # d1d2, d1d2                
+                self.A_topic+=torch.outer(vec, vec) # d1d2, d1d2                
                 self.Ainv_topic=self.getInv(self.Ainv_topic,vec) # n_dim, n_dim
+
+            t4 = datetime.datetime.now()
+            # print('Debug update topic A, Ainv:, ', t4-t3)
             self.train_lr(mode='topic')
+            t5 = datetime.datetime.now()
+            # print('Debug train item lr:, ', t5-t4)
         elif mode == 'item' or mode == 'topic':
             self.train(mode)
             if self.args.reset_buffer:
@@ -415,7 +463,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         X = self.news_embs[0][cand_news] # (n,d)
         cands = np.array([np.outer(x,z) for x in X]).reshape(len(cand_news),-1)
         t2 = datetime.datetime.now()
-        print('Debug news,user inference and get cands:, ', t2-t1)
+        # print('Debug news,user inference and get cands:, ', t2-t1)
         # x_mean = X.dot(self.theta_x) + z.dot(self.theta_z)# n_cand, 
         self.lr_model.eval()
         mean = self.lr_model.forward(
@@ -423,15 +471,16 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
             torch.Tensor(np.repeat(z, len(cands), axis = 0)).to(self.device)
             ).detach().cpu().numpy().reshape(len(cands),)
         t3 = datetime.datetime.now()
-        print('Debug get ucb mean:, ', t3-t2)
+        # print('Debug get ucb mean:, ', t3-t2)
 
         CI = []
-        Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
+        # Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
+        Ainv = torch.unsqueeze(self.Ainv,dim=0) # 1,4096,4096
         cands = torch.unsqueeze(torch.Tensor(np.array(cands)).to(self.device),dim=1) # 5000,1,4096
         CI = torch.bmm(torch.bmm(cands, Ainv.expand(cands.shape[0],-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
 
         t4 = datetime.datetime.now()
-        print('Debug get ucb CI (on GPU):, ', t4-t3)
+        # print('Debug get ucb CI (on GPU):, ', t4-t3)
         ucb = mean + self.gamma * np.sqrt(CI) # n_cand, 
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)
@@ -459,7 +508,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
 
         cands = torch.cat([torch.outer(x,z.ravel()) for x in X]).reshape(X.shape[0],-1)
         t2 = datetime.datetime.now()
-        print('Debug news,user inference and get cands:, ', t2-t1)
+        # print('Debug news,user inference and get cands:, ', t2-t1)
         # x_mean = X.dot(self.theta_x) + z.dot(self.theta_z)# n_cand, 
         self.lr_model_topic.eval()
         mean = self.lr_model_topic.forward(
@@ -467,15 +516,16 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
             z.repeat(len(cands),1)
             ).detach().cpu().numpy().reshape(len(cands),)
         t3 = datetime.datetime.now()
-        print('Debug get ucb mean:, ', t3-t2)
+        # print('Debug get ucb mean:, ', t3-t2)
 
         CI = []
-        Ainv_topic = torch.unsqueeze(torch.Tensor(self.Ainv_topic).to(self.device),dim=0) # 1,4096,4096
+        # Ainv_topic = torch.unsqueeze(torch.Tensor(self.Ainv_topic).to(self.device),dim=0) # 1,4096,4096
+        Ainv_topic = torch.unsqueeze(self.Ainv_topic,dim=0) # 1,4096,4096
         cands = torch.unsqueeze(cands,dim=1) # 5000,1,4096
         CI = torch.bmm(torch.bmm(cands, Ainv_topic.expand(cands.shape[0],-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
 
         t4 = datetime.datetime.now()
-        print('Debug get ucb CI (on GPU):, ', t4-t3)
+        # print('Debug get ucb CI (on GPU):, ', t4-t3)
         ucb = mean + self.gamma * np.sqrt(CI) # n_cand, 
 
         sorted_topic_indexs = np.argsort(ucb)[::-1].tolist() # (len(uids),)
@@ -496,3 +546,8 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         self.A_topic =  np.identity(n=self.dim**2)
         self.Ainv_topic = np.linalg.inv(self.A)
         self.lr_model_topic = LogisticRegressionBilinear(self.dim, self.dim, 1).to(self.device)
+
+        self.A = torch.Tensor(self.A).to(self.device)
+        self.Ainv = torch.Tensor(self.Ainv).to(self.device)
+        self.A_topic = torch.Tensor(self.A_topic).to(self.device)
+        self.Ainv_topic = torch.Tensor(self.Ainv_topic).to(self.device)

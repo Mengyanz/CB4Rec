@@ -463,9 +463,9 @@ class Two_NeuralDropoutUCB(Two_NeuralGreedy):
         all_scores = np.array(all_scores).squeeze(-1)  # (n_inference,n,b)
         mu = np.mean(all_scores, axis=0) 
         std = np.std(all_scores, axis=0) # / math.sqrt(self.n_inference) 
-        print('Debug mean: ', mu)
-        print('Debug std: ', std)
         ucb = mu + self.gamma * std # (n,) 
         nid_argmax = np.argsort(ucb, axis = 0)[::-1][:m].tolist() # (len(uids),)
+        print('Debug mean: ', mu[np.array(nid_argmax)])
+        print('Debug std: ', std[np.array(nid_argmax)])
         rec_itms = [cand_news[n] for n in nid_argmax]
         return rec_itms 

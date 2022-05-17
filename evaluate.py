@@ -109,6 +109,19 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
 
             metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
 
+        if metric == 'cumu_ctr':
+            cumu_rewards = np.cumsum(np.mean(h_rewards_all, axis=2), axis = -1) # n_trails, n_algos, T
+            cumu_rewards_mean = np.mean(cumu_rewards, axis = 0) # n_algos, T
+            cumu_rewards_std = np.std(cumu_rewards, axis = 0) # n_algos, T
+
+            for i in range(n_algos): 
+                print('Algorithm: ', algo_names[i])
+                print('Mean: {0:.3f}'.format(cumu_rewards_mean[i][-1]))
+                print('Std: {0:.3f}'.format(cumu_rewards_std[i][-1]))
+                print()
+
+            metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
+
         if metric == 'ctr':
             ave_ctr = np.cumsum(np.mean(h_rewards_all, axis=2), axis = -1)/np.arange(1, T+1) # n_trails, n_algos, T
             ave_ctr_mean = np.mean(ave_ctr, axis = 0) # n_algos, T
