@@ -254,7 +254,7 @@ def run_contextual_bandit(args, simulator, algos):
 
     t_start = datetime.datetime.now()
         
-    for e in range(3, args.n_trials):      
+    for e in range(0, args.n_trials):      
         # store each trial results
         item_path = os.path.join(trial_path,  "{}-items-{}-{}.npy".format(e, args.algo_prefix, args.T))
         reward_path = os.path.join(trial_path, "{}-rewards-{}-{}.npy".format(e, args.algo_prefix, args.T))

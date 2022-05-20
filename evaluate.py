@@ -121,6 +121,33 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
                 print()
 
             metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
+            
+        if metric == 'moving_ctr':
+            window_size = 100
+            moving_averages = np.zeros((n_trials, n_algos, T-window_size+1))
+            ctr = np.mean(h_rewards_all, axis=2) # n_trails, n_algos, T
+            while i < T - window_size + 1:
+                window = ctr[:,:,i:i+window_size]
+                window_average = np.mean(window, axis = -1) 
+      
+                # Store the average of current
+                # window in moving average list
+                moving_averages[:,:,i] = window_average
+                
+                # Shift window to right by one position
+                i += 1
+                
+            cumu_rewards_mean = np.mean(moving_averages, axis = 0) # n_algos, T-window_size
+            cumu_rewards_std = np.std(moving_averages, axis = 0) # n_algos, T-window_size
+
+            for i in range(n_algos): 
+                print('Algorithm: ', algo_names[i])
+                print('Mean: {0:.3f}'.format(cumu_rewards_mean[i][-1]))
+                print('Std: {0:.3f}'.format(cumu_rewards_std[i][-1]))
+                print()
+
+            metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
+
 
         if metric == 'ctr':
             ave_ctr = np.cumsum(np.mean(h_rewards_all, axis=2), axis = -1)/np.arange(1, T+1) # n_trails, n_algos, T

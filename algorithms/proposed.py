@@ -58,19 +58,53 @@ class Two_NeuralGLMAddUCB(Two_NeuralGreedy):
 
         self.topic_embs = []
         
-    def pretrain_glm_learner(self):
+    def pretrain_glm_learner(self, trial=None, mode = 'item', model_name = 'additive'):
         # NOTE: This intened to pre-train linear models with cb train data. However, we cannot do that since we remove the cb simulated users from the cb train data, and the linear models are disjoint, i.e. theta_u for per user. We can do this for our proposed shared model though.
         """pretrain the generalised linear models (if any) with the pretrained data, to initialise glm parameters.
         """
-        print('pretrain glm learner using {}'.format(self.pretrain_path))
-        with open(self.pretrain_path, "rb") as f:
-            cb_train_sam = pickle.load(f)
-
-        train_ds = GLMTrainDataset(self.args, cb_train_sam, self.nid2index,  self.nindex2vec)
-        train_dl = DataLoader(train_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
-        for cnt, batch_sample in enumerate(train_dl):
-            news_index, label = batch_sample
-            self.update(topics = None, items=news_index, rewards=label, mode = 'item-linear')
+        out_model_path = os.path.join(self.args.root_proj_dir,  'cb_{}_pretrained_glm_models'.format(mode), model_name)
+        if not os.path.exists(out_model_path):
+            os.makedirs(out_model_path)
+            
+        load_path = os.path.join(out_model_path, 'indices_{}.pkl'.format(trial))
+        if os.path.exists(load_path):
+            if mode == 'topic':
+                print('Load pre-trained CB GLM topic learner on this trial from ', load_path)
+                self.topic_model.load_state_dict(torch.load(load_path))
+            else:
+                print('Load pre-trained CB GLM item learner on this trial from ', load_path)
+                self.model.load_state_dict(torch.load(load_path))
+        else:
+            out_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
+        
+            cb_train_fname = os.path.join(out_path, "cb_train_contexts_nuser=1000_splitratio=0.2_trial={}.pkl".format(trial))
+            print('pretrain glm {} learner using {}'.format(mode, cb_train_fname))
+            with open(cb_train_fname, "rb") as f:
+                cb_train_sam = pickle.load(f)
+            
+            cb_train_uidfile = os.path.join(out_path, "cb_train_uid2index.pkl")
+            # if os.path.exists(cb_train_uidfile):
+            #     with open(os.path.join(out_path, "cb_train_uid2index.pkl"), "rb") as f:
+            #         self.uid2index = pickle.load(f)
+            # else:
+            self.uid2index = {}
+            index = 1
+            for sample in cb_train_sam:
+                _, _, _, uid, _ = sample
+                if uid not in self.uid2index:
+                    self.uid2index[uid] = index
+                    index += 1
+                # with open(cb_train_uidfile, "wb") as f:
+                #     pickle.dump(self.uid2index, f)
+            self.uindex2id = {v:k for k,v in self.uid2index.items()}
+                
+            self.train_glm(cb_train_sam, mode = mode, save_path=load_path)
+            
+        # train_ds = GLMTrainDataset(self.args, cb_train_sam, self.nid2index,  self.nindex2vec)
+        # train_dl = DataLoader(train_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
+        # for cnt, batch_sample in enumerate(train_dl):
+        #     news_index, label = batch_sample
+        #     self.update(topics = None, items=news_index, rewards=label, mode = 'item-linear')
     
     def getInv(self, old_Minv, nfv):
         # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
@@ -115,59 +149,106 @@ class Two_NeuralGLMAddUCB(Two_NeuralGreedy):
         # print('Debug self.data_buffer: ', self.data_buffer)
         return tr_samples, tr_rewards, tr_users
     
-    def train_glm(self, uid_input=None, mode='item'):
-        ft_sam = self.construct_trainable_samples()
+    def train_glm(self, ft_sam, mode='item', save_path=None):
+        # TODO: add evaluate
+        if len(self.news_embs) < 1:
+            self._get_news_embs() # init news embeddings[]
+            self._get_news_embs(topic=True)
+        if len(self.topic_embs) < 1:
+            self._get_topic_embs()
+        epochs = 2 # self.args.epochs
+        
+        
         if mode == 'item':
+            ft_ds = GLMTrainDataset(samples=ft_sam, nid2index=self.nid2index, uid2index=self.uid2index, nid2topicindex=self.nid2topicindex)
+            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True)
+            # num_workers=self.args.num_workers
+            
             optimizer = optim.Adam(self.lr_model.parameters(), lr=self.args.glm_lr)
-            if len(ft_sam) > 0:
-                print('Updating the internal item GLM model of the bandit!')
-                ft_ds = GLMTrainDataset(self.args, ft_sam, self.nid2index, self.nindex2vec)
-                ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True, num_workers=self.args.num_workers)
+            self.lr_model.train()
+            for epoch in range(epochs):
+                epoch_loss = 0
                 ft_loader = tqdm(ft_dl)
-
-                self.lr_model.train()
                 for cnt, batch_sample in enumerate(ft_loader):
-                    candidate_news_index, label, uids = batch_sample
-                    x = self.news_embs[0][candidate_news_index] # n_tr, n_dim
+                    candidate_news_index, label, uindexs = batch_sample
+                    x = self.news_embs[0][candidate_news_index.ravel()] # n_tr, n_dim
+                    # uids = [''.join(str(e) for e in uid) for uid in uids]
+                    uids = [self.uindex2id[n.item()] for n in uindexs.ravel()]
                     z = np.array([self._get_user_embs(uid, 0) for uid in uids])
                     z = z.reshape(-1, z.shape[-1]) # n_tr, n_dim
+                    x = torch.Tensor(x).to(self.device)
+                    z = torch.Tensor(z).to(self.device)
+                    label = label.ravel().to(self.device)
                     
-                    for epoch in range(self.args.epochs):
-                        preds = self.lr_model_topic(torch.Tensor(x), torch.Tensor(z)).ravel()
-                        # print('Debug labels: ', ft_labels)
-                        loss = self.criterion(preds, torch.Tensor(label))
-                        
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                    # REVIEW:
-                    if self.args.reset_buffer:
-                        self.data_buffer = [] # reset data buffer
-                else:
-                    print('Skip update cb item GLM learner due to lack valid samples!')
-
-        elif mode == 'topic':
-            if len(ft_sam) > 0:
-                topic_indexs = [self.nid2topicindex[self.index2nid[n]] for n in ft_sam]
-                x = self.topic_embs[topic_indexs] # n_tr, n_dim
-                z = np.array([self._get_topic_user_embs(uid, 0).detach().cpu().numpy() for uid in ft_users])
-                z = z.reshape(-1, z.shape[-1]) # n_tr, n_dim
-                self.lr_model_topic.train()
-                for epoch in range(self.args.epochs):
-                    preds = self.lr_model_topic(torch.Tensor(x), torch.Tensor(z)).ravel()
-                    # print('Debug labels: ', ft_labels)
-                    loss = self.criterion(preds, torch.Tensor(ft_labels))
+                    preds = self.lr_model(x, z).ravel()
+                    # print('Debug preds: ', preds)
+                    loss = self.criterion(preds, label)
+                    epoch_loss += loss.detach().cpu().numpy()
                     
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
-                  # debug glm
-                self.writer.add_scalars('Training topic Loss',
-                        {'Training topic': loss}, 
-                        self.round)
-                print('Debug Loss: topic - ', loss)
-            else:
-                print('Skip update cb topic GLM learner due to lack valid samples!')
+                    
+                    if cnt % 10 == 0:
+                        ft_loader.set_description(f"[{cnt}]steps item loss: {epoch_loss / (cnt+1):.4f} ")
+                        ft_loader.refresh() 
+                    
+                # self.writer.add_scalars('Training item Loss',
+                #     {'Training item': loss}, 
+                #     self.round)
+                # print('Debug Loss: item - ', loss)
+                torch.save(self.lr_model.state_dict(), save_path)
+            print('glm item model save to {}'.format(save_path))
+
+        elif mode == 'topic':
+            ft_ds = GLMTrainDataset(samples=ft_sam, nid2index=self.nid2index, uid2index=self.uid2index)
+            ft_dl = DataLoader(ft_ds, batch_size=self.args.batch_size, shuffle=True)
+            # num_workers=self.args.num_workers
+            
+            optimizer = optim.Adam(self.lr_model_topic.parameters(), lr=self.args.glm_lr)
+            
+            self.lr_model_topic.train()
+            for epoch in range(epochs):
+                epoch_loss=0
+                ft_loader = tqdm(ft_dl)
+                for cnt, batch_sample in enumerate(ft_loader):
+                    candidate_news_index, label, uindexs = batch_sample
+                    # print('Debug in proposed candidate_news_index: ', candidate_news_index)
+                    topic_indexs = [self.nid2topicindex[self.index2nid[n.item()]] for n in candidate_news_index.ravel()]
+                    # topic_indexs = []
+                    # for n in candidate_news_index.ravel():
+                    #     print('Debug n: ', n)
+                    #     print('Debug self.index2nid[n.item()]: ', self.index2nid[n.item()])
+                    #     index = self.nid2topicindex[self.index2nid[n.item()]] 
+                    #     topic_indexs = [index]
+                    # print('Debug topic indexs: ', topic_indexs)
+                    x = self.topic_embs[topic_indexs].to(self.device) # n_tr, n_dim
+                    # uids = [''.join(str(e) for e in uid) for uid in uids]
+                    uids = [self.uindex2id[n.item()] for n in uindexs.ravel()]
+                    z = np.array([self._get_topic_user_embs(uid, 0).detach().cpu().numpy() for uid in uids])
+                    z = torch.Tensor(z.reshape(-1, z.shape[-1])).to(self.device) # n_tr, n_dim
+                    label = torch.Tensor(label).ravel().to(self.device)
+                
+                    preds = self.lr_model_topic(x, z).ravel()
+                    # print('Debug labels: ', ft_labels)
+                    loss = self.criterion(preds, label)
+                    epoch_loss += loss.detach().cpu().numpy()
+                    
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    
+                    if cnt % 10 == 0:
+                        ft_loader.set_description(f"[{cnt}]steps topic loss: {epoch_loss / (cnt+1):.4f} ")
+                        ft_loader.refresh() 
+                # debug glm
+                # self.writer.add_scalars('Training topic Loss',
+                #         {'Training topic': loss}, 
+                #         self.round)
+                # print('Debug Loss: topic - ', loss)
+                torch.save(self.lr_model.state_dict(), save_path)
+            print('glm item model save to {}'.format(save_path))
+            
     
     def train_lr(self, uid_input=None, mode='item'):
         ft_sam, ft_labels, ft_users = self.construct_trainable_samples_lr()
@@ -337,6 +418,12 @@ class Two_NeuralGLMAddUCB(Two_NeuralGreedy):
         self.Ainv_topic = np.linalg.inv(self.A)
         self.b_topic = np.zeros((self.dim))
         self.lr_model_topic = LogisticRegressionAddtive(self.dim, 1).to(self.device)
+        
+        if self.args.pretrain_glm:
+            self.pretrain_glm_learner(trial=e,mode='topic')
+            self.pretrain_glm_learner(trial=e,mode='item')
+        
+        
         
 
 class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
@@ -551,3 +638,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         self.Ainv = torch.Tensor(self.Ainv).to(self.device)
         self.A_topic = torch.Tensor(self.A_topic).to(self.device)
         self.Ainv_topic = torch.Tensor(self.Ainv_topic).to(self.device)
+
+        if self.args.pretrain_glm:
+            self.pretrain_glm_learner(trial=e,mode='topic',model_name = 'bilinear')
+            self.pretrain_glm_learner(trial=e,mode='item',model_name = 'bilinear')

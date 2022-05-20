@@ -58,7 +58,8 @@ def run_exps(args, algo_groups, result_path, gpus,models_per_gpu, timestr, simul
             eva(args, algo_group, timestr, algo_prefixes, rec_batch_sizes)
 
 def eva(args, algo_group, timestr, algo_prefixes, rec_batch_sizes = [5]):
-    trials = '[0-{}]'.format(args.n_trials-1)
+    # trials = '[0-{}]'.format(args.n_trials-1)
+    trials = '[0-4]'
     T = args.T
     n_trial = args.n_trials 
 
@@ -92,7 +93,7 @@ def eva(args, algo_group, timestr, algo_prefixes, rec_batch_sizes = [5]):
             all_items = np.concatenate(all_items, axis = 1) # (n_trial, n_algos, rec_bs, T)
             print('Collected all algos items: ', all_items.shape)
 
-            metrics = cal_metric(all_rewards, algo_names, ['ctr', 'cumu_ctr']) # , 'cumu_reward', 'ctr'
+            metrics = cal_metric(all_rewards, algo_names, ['ctr', 'cumu_ctr', 'moving_ctr']) # , 'cumu_reward', 'ctr'
             plot_metrics(args, eva_path, metrics, algo_names, plot_title= trials)
 
             # metrics = cal_diversity(args, all_items, algo_names)
@@ -103,7 +104,33 @@ def create_commands(args, algo_group, result_path):
     commands = []
     algo_prefixes = []
     # num_selected_users = 10
-    if algo_group == 'accelerate_bilinear':
+    if algo_group == 'test_largeT':
+        T = 10000
+        for algo in ['neural_glmadducb', 'neural_gbilinucb', '2_neuralglmadducb', '2_neuralglmbilinucb']:
+            if 'bilinucb' in algo:
+                glm_lr = 1e-3
+            else:
+                glm_lr = args.glm_lr
+            
+            algo_prefix = algo + '_glmlr' + str(glm_lr) + '_T' + str(T)
+            log_path = os.path.join(result_path, algo_prefix + '.log')
+            commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {}  --glm_lr {} --T {} > {}".format(algo, algo_prefix, result_path, glm_lr, T, log_path))
+            algo_prefixes.append(algo_prefix)
+    elif algo_group == 'tune_gamma':
+        for gamma in [0.01, 0.05, 0.1, 0.5, 1, 2]:
+            for algo in ['2_neuralglmadducb', '2_neuralglmbilinucb']:
+        # for algo in ['2_neuralgreedy', '2_neuralucb', '2_neuralglmadducb', '2_neuralglmbilinucb']:
+                if 'bilinucb' in algo:
+                    glm_lr = 1e-3
+                else:
+                    glm_lr = args.glm_lr
+                
+                algo_prefix = algo + '_glmlr' + str(glm_lr) + '_gamma' + str(gamma)
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {}  --glm_lr {} --gamma {} > {}".format(algo, algo_prefix, result_path, glm_lr, gamma, log_path))
+                algo_prefixes.append(algo_prefix)
+
+    elif algo_group == 'accelerate_bilinear':
         for algo in ['2_neuralglmbilinucb']:
             for dynamic_aggregate_topic in [True]:
                 algo_prefix = algo + '_dynTopic' + str(dynamic_aggregate_topic)
@@ -126,17 +153,24 @@ def create_commands(args, algo_group, result_path):
     elif algo_group == 'test_rec_size':
         
         # for algo in ['2_neuralgreedy', '2_neuralucb', '2_neuralglmadducb', '2_neuralglmbilinucb']: 
-        for algo in ['2_neuralglmbilinucb']: 
+        for algo in ['2_neuralglmadducb', '2_neuralglmbilinucb']: 
          # 'uniform_random', 'greedy', 'neural_dropoutucb',  'neural_glmadducb', 'neural_gbilinucb', '2_random','2_neuralgreedy', '2_neuralucb', '2_neuralglmadducb', '2_neuralglmbilinucb'
+            pretrain_glm = True
             if 'bilinucb' in algo:
                 glm_lr = 1e-3
             else:
                 glm_lr = args.glm_lr
-            for rec_batch_size in [10]: # 1
+            for rec_batch_size in [1]: # 1， 10
+                if rec_batch_size == 1:
+                    if 'adducb' or 'bilinucb' in algo:
+                        item_linear_update_period = 1
+                else:
+                    item_linear_update_period = args.item_linear_update_period
                 per_rec_score_budget = int(5000/rec_batch_size)
-                algo_prefix = algo + '_recSize' + str(rec_batch_size) #+ '_glmlr' + str(glm_lr)
+                min_item_size = per_rec_score_budget
+                algo_prefix = algo + '_recSize' + str(rec_batch_size) + '_glmlr' + str(glm_lr) + '_minPerTopic' + str(min_item_size) + '_glmUpdate' + str(item_linear_update_period)
                 log_path = os.path.join(result_path, algo_prefix + '.log')
-                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --rec_batch_size {} --per_rec_score_budget {} --glm_lr {} > {}".format(algo, algo_prefix, result_path, rec_batch_size, per_rec_score_budget, glm_lr, log_path))
+                commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --rec_batch_size {} --per_rec_score_budget {} --glm_lr {} --min_item_size {} --item_linear_update_period {} --pretrain_glm {} > {}".format(algo, algo_prefix, result_path, rec_batch_size, per_rec_score_budget, glm_lr, min_item_size, item_linear_update_period, pretrain_glm, log_path))
                 algo_prefixes.append(algo_prefix)
     elif algo_group == 'test_reset_buffer':
         algo = 'greedy'
@@ -220,15 +254,15 @@ def create_commands(args, algo_group, result_path):
                 commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} > {}".format(algo, algo_prefix, result_path, num_selected_users, log_path))
                 algo_prefixes.append(algo_prefix)
     elif algo_group == 'run_onestage_neural':
-        # T = 10000
-        for num_selected_users in [1000]: #  10, 100, 1000
+        T = 10000
+        for num_selected_users in [10]: #  10, 100, 1000
             # for glm_lr in [1e-3,1e-4]: # 0.0001, 0.01
-            for algo in ['neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_glmadducb', 'neural_gbilinucb', 
+            for algo in ['neural_glmadducb', 'neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_glmadducb', 'neural_gbilinucb', 
                 if algo == 'neural_gbilinucb':
                     glm_lr = 1e-3
                 else:
                     glm_lr = args.glm_lr
-                algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr) # + '_T' + str(T)
+                algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr) + '_T' + str(T)
                 log_path = os.path.join(result_path, algo_prefix + '.log')
                 commands.append("python run_experiment.py --algo {}  --algo_prefix {} --result_path {} --num_selected_users {} --glm_lr {} > {}".format(algo, algo_prefix, result_path, num_selected_users, glm_lr, log_path))
                 algo_prefixes.append(algo_prefix)
@@ -341,17 +375,19 @@ if __name__ == '__main__':
     os.system('ulimit -n 4096')
 
     # settings
-    gpus = [1]
-    models_per_gpu = 1
+    gpus = [0,1]
+    models_per_gpu = 2
     # algo_groups = ['test_reset_buffer']
     # algo_groups = ['test_twostage']
-    algo_groups = ['test_rec_size']
+    # algo_groups = ['test_rec_size']
     # algo_groups = ['tune_dropout']
     # algo_groups = ['debug_glm']
     # algo_groups =  ['run_onestage_neural'] 
     # algo_groups = ['tune_glm']
     # algo_groups = ['test_dynamic_topic']
     # algo_groups = ['accelerate_bilinear']
+    # algo_groups = ['tune_gamma']
+    algo_groups = ['test_largeT']
 
     # gpus = [2]
     # models_per_gpu = 4
@@ -363,6 +399,10 @@ if __name__ == '__main__':
     # timestr = '20220516-1100'
     # timestr = '20220516-0859'
     # timestr = '20220517-0125'
+    # timestr = '20220517-0310'
+    # timestr = '20220517-0855'
+    # timestr = '20220517-1610'
+    # timestr = '20220518-0112'
     print('Saving to {}'.format(timestr))
     for algo_group in algo_groups:
         result_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr)
@@ -374,7 +414,7 @@ if __name__ == '__main__':
         model_path = os.path.join(result_path, 'model') # store models (for future reload)
         if not os.path.exists(model_path):
             os.mkdir(model_path) 
-    # args.n_trials = 
+    # args.n_trials = 1
     # args.T = 10000      
-    run_exps(args, algo_groups, result_path,gpus,models_per_gpu,timestr, simulate_flag=True, eva_flag=True, rec_batch_sizes=[10])
-    # run_exps(args, algo_groups, result_path,gpus,models_per_gpu,timestr, simulate_flag=False, eva_flag=True, rec_batch_sizes=[5])
+    run_exps(args, algo_groups, result_path,gpus,models_per_gpu,timestr, simulate_flag=True, eva_flag=True, rec_batch_sizes=[5])
+    # run_exps(args, algo_groups, result_path,gpus,models_per_gpu,timestr, simulate_flag=False, eva_flag=True, rec_batch_sizes=[1])

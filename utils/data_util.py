@@ -224,22 +224,26 @@ class TrainDataset(Dataset):
             return candidate_news_index, his, torch.Tensor(label)
 
 class GLMTrainDataset(Dataset):
-    def __init__(self, args, samples, nid2index, nid2topicindex=None):
+    def __init__(self, samples, nid2index, uid2index, nid2topicindex=None):
         self.nid2index = nid2index
         self.samples = samples
         self.npratio = 1  # train topic model with BCELoss, force balance
         self.nid2topicindex = nid2topicindex
         self.index2nid = {v:k for k,v in nid2index.items()}
+        self.uid2index = uid2index
         
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, idx):
         # pos, neg, his, neg_his
-        print('Debug in data_util self.samples[idx]: ', self.samples[idx])
+        # print('Debug in data_util self.samples[idx]: ', self.samples[idx])
         pos, neg, _, uid, tsp = self.samples[idx]
-        neg = newsample(neg, self.npratio)
-        candidate_news = [pos] + neg
+        if len(neg) >= 1:
+            neg = random.sample(neg, self.npratio)
+            candidate_news = [pos] + neg
+        else:
+            candidate_news = [pos]
         
         candidate_news_index = []
         if self.nid2topicindex is None:
@@ -250,7 +254,7 @@ class GLMTrainDataset(Dataset):
                 else:
                     candidate_news_index.append(n)    
             candidate_news_index = np.array(candidate_news_index)
-            print('Debug in data_util for item candidate_news_index: ', candidate_news_index)
+            # print('Debug in data_util for item candidate_news_index: ', candidate_news_index)
         else:
             for n in candidate_news:
                 if type(n) is str:
@@ -258,14 +262,18 @@ class GLMTrainDataset(Dataset):
                 else:
                     candidate_news_index.append(self.nid2topicindex[self.index2nid[n]])
             candidate_news_index = torch.LongTensor(candidate_news_index)
-            print('Debug in data_util for topic candidate_news_index: ', candidate_news_index)
+            # print('Debug in data_util for topic candidate_news_index: ', candidate_news_index)
         
-        label = np.zeros(1 + self.npratio, dtype=float)
+        label = np.zeros(1 + self.npratio, dtype=np.float32)
         label[0] = 1.0 
-        # uids = np.array((1 + self.npratio) * [uid])
-        uids = np.array((1 + self.npratio) *  list(uid[1:]), dtype = int)
-        print('Debug in data_util uids: ', uids)
-        return candidate_news_index, label, uids
+        
+        # uids = np.array((1 + self.npratio) *  list(uid[1:]), dtype = int).reshape(1 + self.npratio,-1)
+        uindex = self.uid2index[uid]
+        uindexs = np.array((1 + self.npratio) * [uindex])
+        # print('Debug in data_util  candidate_news_index: ', candidate_news_index)
+        # print('Debug in data_util label: ', label)
+        # print('Debug in data_util uids: ', uindexs)
+        return candidate_news_index, label, uindexs
 
         
 class SimTrainDataset(Dataset):

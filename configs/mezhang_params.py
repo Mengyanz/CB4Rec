@@ -50,6 +50,8 @@ def parse_args():
     parser.add_argument("--max_batch_size", type=int, default=256, help = 'Maximum batch size your GPU can fit in.')
     parser.add_argument("--pretrained_mode",type=str2bool,default=True, 
         help="Indicates whether to load a pretrained model. True: load from a pretrained model, False: no pretrained model ")
+    parser.add_argument("--pretrain_glm",type=str2bool,default=False, 
+        help="Indicates whether to load/pre-train a glm model. True: load from a pretrained model, False: no pretrained model ")
     parser.add_argument("--preinference_mode",type=str2bool,default=True, 
         help="Indicates whether to preinference news before each model update.")
 
