@@ -65,127 +65,6 @@ def read_news(args, path):
         news_info[nid] = title
         word_cnt.update(title)
 
-def mezhang_news_preprocess(args):
-    # news preprocess
-    out_path = os.path.join(args.root_data_dir, 'large/utils')
-
-    data_path = os.path.join(args.root_data_dir, 'large')
-    glove_path = os.path.join(args.root_data_dir, "glove/glove.6B.300d.txt")
-    npratio = 4
-    max_his_len = 50
-    min_word_cnt = 1
-    max_title_len = 30
-
-    news_info = {"<unk>": ""}
-    nid2index = {"<unk>": 0}
-    word_cnt = Counter()
-
-
-    def word_tokenize(sent):
-        pat = re.compile(r"[\w]+|[.,!?;|]")
-        if isinstance(sent, str):
-            return pat.findall(sent.lower())
-        else:
-            return []
-
-
-    for l in tqdm(open(os.path.join(args.root_data_dir, "large/train/news.tsv"), "r", encoding='utf-8')):
-        nid, vert, subvert, title, abst, url, ten, aen = l.strip("\n").split("\t")
-        if nid in nid2index:
-            continue
-        title = word_tokenize(title)[:max_title_len]
-        nid2index[nid] = len(nid2index)
-        news_info[nid] = title
-        word_cnt.update(title)
-
-    for l in tqdm(open(os.path.join(args.root_data_dir, "large/valid/news.tsv"), "r", encoding='utf-8')):
-        nid, vert, subvert, title, abst, url, ten, aen = l.strip("\n").split("\t")
-        if nid in nid2index:
-            continue
-        title = word_tokenize(title)[:max_title_len]
-        nid2index[nid] = len(nid2index)
-        news_info[nid] = title
-        word_cnt.update(title)
-
-    with open(os.path.join(out_path, "nid2index.pkl"), "wb") as f:
-        pickle.dump(nid2index, f)
-
-    with open(os.path.join(out_path, "news_info.pkl"), "wb") as f:
-        pickle.dump(news_info, f)
-
-    if os.path.exists(os.path.join(data_path , "test") ):
-        test_news_info = {"<unk>": ""}
-        test_nid2index = {"<unk>": 0}
-        for l in tqdm(open(os.path.join(args.root_data_dir, "large/test/news.tsv"), "r", encoding='utf-8')):
-            nid, vert, subvert, title, abst, url, ten, aen = l.strip("\n").split("\t")
-            if nid in test_nid2index:
-                continue
-            title = word_tokenize(title)[:max_title_len]
-            test_nid2index[nid] = len(test_nid2index)
-            test_news_info[nid] = title
-            # word_cnt.update(title)
-
-        with open(os.path.join(out_path, "test_nid2index.pkl"), "wb") as f:
-            pickle.dump(test_nid2index, f)
-
-        with open(os.path.join(out_path, "test_news_info.pkl"), "wb") as f:
-            pickle.dump(test_news_info, f)
-
-    vocab_dict = {"<unk>": 0}
-
-    for w, c in tqdm(word_cnt.items()):
-        if c >= min_word_cnt:
-            vocab_dict[w] = len(vocab_dict)
-
-    with open(os.path.join(out_path, "vocab_dict.pkl"), "wb") as f:
-        pickle.dump(vocab_dict, f)
-
-    news_index = np.zeros((len(news_info) + 1, max_title_len), dtype="float32")
-
-    for nid in tqdm(nid2index):
-        news_index[nid2index[nid]] = [
-            vocab_dict[w] if w in vocab_dict else 0 for w in news_info[nid]
-        ] + [0] * (max_title_len - len(news_info[nid]))
-
-    np.save(os.path.join(out_path, "news_index"), news_index)
-
-    if os.path.exists(os.path.join(data_path, "test") ):
-        test_news_index = np.zeros((len(test_news_info) + 1, max_title_len), dtype="float32")
-
-        for nid in tqdm(test_nid2index):
-            test_news_index[test_nid2index[nid]] = [
-                vocab_dict[w] if w in vocab_dict else 0 for w in test_news_info[nid]
-            ] + [0] * (max_title_len - len(test_news_info[nid]))
-
-        np.save(os.path.join(out_path, "test_news_index"), test_news_index)
-
-
-    def load_matrix(glove_path, word_dict):
-        # embebbed_dict = {}
-        embedding_matrix = np.zeros((len(word_dict) + 1, 300))
-        exist_word = []
-
-        # get embedded_dict
-        with open(glove_path, "rb") as f:
-            for l in tqdm(f):
-                l = l.split()
-                word = l[0].decode()
-                if len(word) != 0 and word in word_dict:
-                    wordvec = [float(x) for x in l[1:]]
-                    index = word_dict[word]
-                    embedding_matrix[index] = np.array(wordvec)
-                    exist_word.append(word)
-
-        # get union
-        return embedding_matrix, exist_word
-
-
-    embedding_matrix, exist_word = load_matrix(glove_path, vocab_dict)
-
-    print(embedding_matrix.shape[0], len(exist_word))
-
-    np.save(os.path.join(out_path , "embedding"), embedding_matrix)
-
 def news_preprocess(args):
     """
     Output:
@@ -717,11 +596,10 @@ def eva(args, model, valid_sam, nid2index, news_index, nid2topicindex=None):
 
 def generate_cb_news(args):
     """
-    Generate candidate news who subcat having #news>= 200 (@Thanh: I removed it here) for cb simulation.
+    Generate candidate news for cb simulation.
     generate cb_news: dict, key: subvert; value: list of news samples
     save to file cb_news.pkl
     """
-    # data_path = "/home/v-mezhang/blob/data/large/train_valid/news.tsv"
     cat_count = {}
     subcat_count = {}
     news_dict = {}
@@ -765,7 +643,6 @@ def generate_cb_news(args):
         # if subcat_count[subvert] >= 200:
         cb_news[subvert].append(l)
             
-    # np.save("/home/v-mezhang/blob/data/large/cb_news", cb_news)
     save_path = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
     if not os.path.exists(save_path):
         with open(save_path, "wb") as f:
@@ -1043,10 +920,7 @@ def compute_empirical_ips(args):
 
 if __name__ == "__main__":
     # from parameters import parse_args
-    # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
-
+    from configs.params import parse_args
 
     args = parse_args()
     

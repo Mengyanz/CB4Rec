@@ -12,8 +12,8 @@ device = torch.device("cuda:0")
 torch.cuda.set_device(device)
 
 print(device)
-from configs.thanh_params import parse_args
-from configs.mezhang_params import parse_args
+from CB4Rec.configs.t_params import parse_args
+from CB4Rec.configs.params import parse_args
 args = parse_args()
 
 def test_NRMS_Sim():

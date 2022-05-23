@@ -187,9 +187,6 @@ class NRMS_Sim(Simulator):
 
 
     def train(self): 
-        # TODO: distributed training 
-        #   refs: https://horovod.readthedocs.io/en/stable/pytorch.html
-        #         https://github.com/Mengyanz/CB4Rec/blob/main/Simulator/run.py 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         out_path = 'runs/nrms_sim_{}_r{}'.format(timestamp, self.args.sim_npratio)
         writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html 
@@ -360,6 +357,7 @@ class NRMS_IPS_Sim(Simulator):
         self.device = device 
         self.args = args 
         self.threshold = args.sim_threshold
+        self.ips_path = os.path.join(args.root_dir, args.ips_path)
 
         # preprocessed data 
         # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
@@ -522,9 +520,6 @@ class NRMS_IPS_Sim(Simulator):
 
 
     def train(self): 
-        # TODO: distributed training 
-        #   refs: https://horovod.readthedocs.io/en/stable/pytorch.html
-        #         https://github.com/Mengyanz/CB4Rec/blob/main/Simulator/run.py 
         if self.args.empirical_ips:
             prefix = 'PROP__empirical_normalize={}'.format(self.args.ips_normalize)
         else:

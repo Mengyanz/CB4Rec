@@ -35,7 +35,7 @@ class NeuralGreedy(ContextualBanditLearner):
         module_path = os.path.abspath(os.path.join('..'))
         if module_path not in sys.path:
             sys.path.append(module_path)
-        from thanh_preprocess import eva
+        from CB4Rec.preprocess import eva
         import pickle
 
         with open(os.path.join(self.args.root_data_dir, self.args.dataset, 'utils', "valid_contexts.pkl"), "rb") as f:

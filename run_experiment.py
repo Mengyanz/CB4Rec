@@ -5,9 +5,9 @@ import numpy as np
 import torch 
 from algorithms.nrms_sim import NRMS_Sim, NRMS_IPS_Sim 
 from algorithms.neural_greedy import NeuralGreedy, Two_NeuralGreedy
-from algorithms.neural_ucb import NeuralDropoutUCB, ThompsonSampling_NeuralDropoutUCB, DummyThompsonSampling_NeuralDropoutUCB, Two_NeuralDropoutUCB
-from algorithms.hcb import HCB
-from algorithms.phcb import pHCB
+from algorithms.neural_ucb import NeuralDropoutUCB, Two_NeuralDropoutUCB
+# from algorithms.hcb import HCB
+# from algorithms.phcb import pHCB
 from algorithms.neural_linear import NeuralLinUCB, NeuralGLMUCB, NeuralGLMAddUCB
 from algorithms.neural_bilinear import NeuralGBiLinUCB
 from algorithms.proposed import Two_NeuralGLMAddUCB, Two_NeuralGBiLinUCB
@@ -31,16 +31,11 @@ class Tree():
         self.is_leaf     = False
 
 def main():
-    # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
+    from configs.params import parse_args
     args = parse_args()
-    
-    # args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414'
-    # args.sim_path = 'model/large/large.pkl'
-    # args.sim_path = 'pretrained_models/sim_nrms_bce_r14_ep6_thres038414_copy'
-    # args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_r14_ep5'
-    # args.sim_threshold = 0.38414
+    args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
+    args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
+    args.result_path = os.path.join(args.root_dir, args.result_path)
     
     # construct a simulator
     simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True)
@@ -75,15 +70,16 @@ def main():
     elif args.algo == 'neural_glmadducb':
         learner = NeuralGLMAddUCB(args, device)
     elif args.algo == 'neural_gbilinucb':
+        args.glm_lr = 1e-3
         learner = NeuralGBiLinUCB(args, device)
-    elif args.algo == 'hcb':
-        args.update_period = 1
-        root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
-        learner = HCB(device, args, root)
-    elif args.algo == 'phcb':
-        args.update_period = 1
-        root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
-        learner = pHCB(device, args, root)
+    # elif args.algo == 'hcb':
+    #     args.update_period = 1
+    #     root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
+    #     learner = HCB(device, args, root)
+    # elif args.algo == 'phcb':
+    #     args.update_period = 1
+    #     root = pickle.load(open(os.path.join(args.root_data_dir, args.dataset, 'utils', 'my_tree.pkl'), 'rb'))
+    #     learner = pHCB(device, args, root)
     # ----------------------------- Two stage ----------------------------------#
     elif args.algo == '2_random':
         learner = Two_Random(args, device)
@@ -97,18 +93,12 @@ def main():
     elif args.algo == '2_neuralglmadducb':
         learner = Two_NeuralGLMAddUCB(args, device)
     elif args.algo == '2_neuralglmbilinucb':
+        args.glm_lr = 1e-3
         learner = Two_NeuralGBiLinUCB(args, device)
     else:
         raise NotImplementedError
 
     algos = [learner]
-    # algos = [greedylearner, neural_dropoutucb_learner, 2_ts_neuralucb_learner]
-
-    # construct dataset
-    # contexts = simulator.valid_samples 
-
-    # runner 
-    # h_actions, h_rewards = run_contextual_bandit(args, simulator, algos)
     print(args)
     args_save_path = os.path.join(args.result_path, args.algo_prefix)
     with open(args_save_path, 'wt') as f:

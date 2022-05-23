@@ -75,6 +75,7 @@ class PropensityScore(object):
         print(self.news_embs.shape)
 
         if self.pretrained_mode: # == 'pretrained':
+            self.ips_path = os.path.join(args.root_dir, args.ips_path)
             print('loading a pretrained IPS model from {}'.format(args.ips_path))
             self.model.load_state_dict(torch.load(args.ips_path)) 
 

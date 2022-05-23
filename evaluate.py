@@ -422,10 +422,7 @@ def run_eva(args):
     # plot_metrics(args, eva_path, metrics, algo_names, plot_title='One stage '+trials, save_title = algo_group + '-' + timestr)
 
 if __name__ == '__main__':
-    # from configs.thanh_params import parse_args
-    from configs.mezhang_params import parse_args
-    # from configs.zhenyu_params import parse_args
-
+    from configs.params import parse_args
 
     args = parse_args()
     # cal_base_ctr(args)
