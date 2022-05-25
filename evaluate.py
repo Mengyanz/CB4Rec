@@ -3,6 +3,7 @@
 import math, os, sys
 import numpy as np 
 import matplotlib.pyplot as plt
+from matplotlib import cm, rcParams
 from collections import defaultdict
 import glob 
 from utils.data_util import load_word2vec
@@ -11,6 +12,16 @@ from torch.utils.data import DataLoader
 from algorithms.nrms_sim import NRMS_IPS_Sim 
 from utils.data_util import NewsDataset, TrainDataset, load_word2vec
 from utils.metrics import ILAD, ILMD
+
+SMALL_SIZE = 16
+MEDIUM_SIZE = 18
+BIGGER_SIZE = 20
+
+rcParams['axes.labelsize'] = MEDIUM_SIZE # 15
+rcParams['xtick.labelsize'] = SMALL_SIZE # 13
+rcParams['ytick.labelsize'] = SMALL_SIZE # 13
+rcParams['legend.fontsize'] = SMALL_SIZE # 13
+rcParams['axes.titlesize'] = BIGGER_SIZE  # 15
 
 def get_sim_news_embs(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
@@ -193,31 +204,53 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
 
 def plot_metrics(args, eva_path, metrics, algo_names, plot_title=None, save_title = None):
     # plt_path = os.path.join(args.root_proj_dir, 'plots')
+    yaxis_dict = {'cumu_ctr': 'Cumulative CTR',
+                'ctr': 'CTR',
+                'moving_ctr': 'Moving CTR'
+    }
+    label_dict = {'neural_glmadducb': 'S-N-GALM',
+                'neural_gbilinucb': 'S-N-GBLM',
+                '2_neuralglmadducb': '2-S-N-GALM',
+                '2_neuralglmbilinucb': '2-S-N-GBLM'
+    }
     
-
     for name, value in metrics.items():
         plt.figure()
         mean, std = value
         n_algos, T = mean.shape
         for i in range(n_algos):
+            label_name = algo_names[i].split('_glmlr')[0]
+            if label_name in label_dict:
+                label_name = label_dict[label_name]
             if name == 'raw_reward' or name == 'ave_ctr':
                 # if i == 3:
-                plt.scatter(range(T), mean[i], label = algo_names[i], s = 1, alpha = 0.5)
+                plt.scatter(range(T), mean[i], label = label_name, s = 1, alpha = 0.5)
             elif 'ILAD' in name:
                 x = list(range(T * 100 +100)[::100])[1:]
-                plt.plot(x, mean[i], label = algo_names[i])
+                plt.plot(x, mean[i], label = label_name)
                 plt.fill_between(x, mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
-            else:
-                plt.plot(range(T), mean[i], label = algo_names[i])
+            elif name == 'moving_ctr':
+                plt.plot(range(T)[::10], mean[i][::10], label = label_name)
                 plt.fill_between(range(T), mean[i] + std[i], mean[i] - std[i], alpha = 0.2)
+            else:
+                # plt.plot(range(T)[8000:], mean[i][8000:], label = label_name)
+                # plt.fill_between(range(T)[8000:], (mean[i] + std[i])[8000:], (mean[i] - std[i])[8000:], alpha = 0.2)
+                plt.plot(range(T), mean[i], label = label_name)
+                plt.fill_between(range(T), (mean[i] + std[i]), (mean[i] - std[i]), alpha = 0.2)
         
         if name == 'ctr' or name == 'ave_ctr':
             plt.ylim(0,1)
             plt.plot([0, 1999], [0.075, 0.075], label = 'uniform_random', color = 'grey', linestyle='--')
-        plt.legend(bbox_to_anchor=(1.04,0.5), loc='center left')
-        plt.xlabel('Iteration')
+        # elif name == 'cumu_ctr':
+        #     # plt.ylim(-50,2050)
+        #     plt.ylim(-50,10000)
+        # plt.legend(bbox_to_anchor=(1.04,0.5), loc='center left')
+        plt.legend()
+        plt.xlabel('Iterations')
+        if name in yaxis_dict:
+            name = yaxis_dict[name]
         plt.ylabel(name)
-        plt.title(plot_title.replace('_', ' '))
+        # plt.title(plot_title.replace('_', ' '))
         # plt.savefig(os.path.join(plt_path, save_title + '_' + name + '.pdf'),bbox_inches='tight')
         plt.savefig(os.path.join(eva_path, name + '.png'),bbox_inches='tight')
 
@@ -304,92 +337,6 @@ def run_eva(args):
     # num_selected_users = 10
 
     algo_prefixes = []
-
-    # timestr = '20220501-0546'
-    # algo_group = 'run_onestage_neural'
-    # for num_selected_users in [10, 100, 1000]:
-    #     for glm_lr in [0.0001, 0.01]:
-    #         for algo in ['neural_glmadducb', 'neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
-    #             algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr))
-    
-    # timestr = '20220502-0355'
-    # algo_group = 'test_reload'
-    # algo_prefixes.append('greedy_T400_reloadTrue')
-    # algo_prefixes.append('greedy_T400_reloadFalse')
-    # algo_prefixes.append('greedy_T200_reloadFalse')
-    
-    # timestr = '20220503-1402'
-    # algo_group = 'debug_decrease_after_100'
-    # # 100 is the firs nrms update, try not to update
-    # algo = 'neural_glmadducb'
-    # for update_period in [100, 3000]:
-    #     algo_prefixes.append(algo + '_update' + str(update_period))
-
-    # timestr = '20220505-0108'
-    # algo_group = 'run_onestage_neural'
-    # for num_selected_users in [10]:
-    #     for glm_lr in [1e-5, 1e-3]:
-    #         for algo in ['neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
-    #             algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr))
-
-    # # timestr = '20220503-1154'
-    # # timestr = '20220504-0650'
-    # # timestr = '20220505-0632'
-    # # timestr = '20220505-0910'
-    # timestr = '20220506-0459'
-    # algo_group = 'test_twostage'
-    # n_inference = 1
-    # gamma = 0
-    # # algo = '2_neuralucb' # 
-    # algo = '2_neuralgreedy' 
-    # algo_prefixes.append(algo + '_ninf' + str(n_inference) + '_gamma' + str(gamma)) 
-
-    # timestr = '20220506-0244'
-    # algo_group = 'test_twostage'
-    # algo = '2_random'
-    # algo_prefixes.append(algo)
-
-    # timestr = '20220505-0122'
-    # algo_group = 'tune_glm'
-    # for algo in ['neural_glmucb']:
-    #     for num_selected_users in [100, 1000]:
-    #         for glm_lr in [1e-1,1e-2,1e-3,1e-4]:
-    #             algo_prefixes.append(algo + '_glmlr' + str(glm_lr) + '_nuser' + str(num_selected_users))
-
-    # timestr = '20220506-0451'
-    # algo_group = 'tune_dropout'
-    # algo = 'neural_dropoutucb'
-    # for num_selected_users in [100]: #  100, 1000
-    #     for gamma in [0.05, 0.2]:
-    #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_gamma' + str(gamma))
-    
-    # timestr = '20220506-0108'
-    # algo_group = 'run_onestage_neural'
-    # T = 5000
-    # for num_selected_users in [10]: #  100, 1000
-    #     # for glm_lr in [1e-3,1e-4]: # 0.0001, 0.01
-    #     for algo in ['neural_gbilinucb', 'neural_glmadducb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_glmadducb', 
-    #         if algo == 'neural_gbilinucb':
-    #             glm_lr = 1e-3
-    #         if algo == 'neural_glmadducb':
-    #             glm_lr = 0.01
-    #         algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr) + '_T' + str(T)
-    #         algo_prefixes.append(algo_prefix)
-    
-    # timestr = '20220507-0159'
-    # algo_group = 'test_reset_buffer'
-    # algo = 'greedy'
-    # for reset in [True, False]:
-    #     algo_prefix = algo + '_resetbuffer' + str(reset)
-    #     algo_prefixes.append(algo_prefix)
-
-    # timestr = '20220506-0733'
-    # algo_group = 'test_reload'
-    # algo = 'greedy'
-    # reload_flag = False
-    # for T in [2000]:
-    #     algo_prefix = algo + '_T' + str(T) + '_reload' + str(reload_flag)
-    #     algo_prefixes.append(algo_prefix)
 
     timestr = '20220507-0212'
     algo_group = 'test_twostage'

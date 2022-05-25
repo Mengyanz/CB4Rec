@@ -156,3 +156,91 @@ def main(args):
 # for num_selected_users in [100, 1000]:
 #     for algo in ['uniform_random', 'linucb', 'glmucb']:
 #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users))
+
+# timestr = '20220501-0546'
+    # algo_group = 'run_onestage_neural'
+    # for num_selected_users in [10, 100, 1000]:
+    #     for glm_lr in [0.0001, 0.01]:
+    #         for algo in ['neural_glmadducb', 'neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
+    #             algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr))
+    
+    # timestr = '20220502-0355'
+    # algo_group = 'test_reload'
+    # algo_prefixes.append('greedy_T400_reloadTrue')
+    # algo_prefixes.append('greedy_T400_reloadFalse')
+    # algo_prefixes.append('greedy_T200_reloadFalse')
+    
+    # timestr = '20220503-1402'
+    # algo_group = 'debug_decrease_after_100'
+    # # 100 is the firs nrms update, try not to update
+    # algo = 'neural_glmadducb'
+    # for update_period in [100, 3000]:
+    #     algo_prefixes.append(algo + '_update' + str(update_period))
+
+    # timestr = '20220505-0108'
+    # algo_group = 'run_onestage_neural'
+    # for num_selected_users in [10]:
+    #     for glm_lr in [1e-5, 1e-3]:
+    #         for algo in ['neural_gbilinucb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 
+    #             algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr))
+
+    # # timestr = '20220503-1154'
+    # # timestr = '20220504-0650'
+    # # timestr = '20220505-0632'
+    # # timestr = '20220505-0910'
+    # timestr = '20220506-0459'
+    # algo_group = 'test_twostage'
+    # n_inference = 1
+    # gamma = 0
+    # # algo = '2_neuralucb' # 
+    # algo = '2_neuralgreedy' 
+    # algo_prefixes.append(algo + '_ninf' + str(n_inference) + '_gamma' + str(gamma)) 
+
+    # timestr = '20220506-0244'
+    # algo_group = 'test_twostage'
+    # algo = '2_random'
+    # algo_prefixes.append(algo)
+
+    # timestr = '20220505-0122'
+    # algo_group = 'tune_glm'
+    # for algo in ['neural_glmucb']:
+    #     for num_selected_users in [100, 1000]:
+    #         for glm_lr in [1e-1,1e-2,1e-3,1e-4]:
+    #             algo_prefixes.append(algo + '_glmlr' + str(glm_lr) + '_nuser' + str(num_selected_users))
+
+    # timestr = '20220506-0451'
+    # algo_group = 'tune_dropout'
+    # algo = 'neural_dropoutucb'
+    # for num_selected_users in [100]: #  100, 1000
+    #     for gamma in [0.05, 0.2]:
+    #         algo_prefixes.append(algo + '_nuser' + str(num_selected_users) + '_gamma' + str(gamma))
+    
+    # timestr = '20220506-0108'
+    # algo_group = 'run_onestage_neural'
+    # T = 5000
+    # for num_selected_users in [10]: #  100, 1000
+    #     # for glm_lr in [1e-3,1e-4]: # 0.0001, 0.01
+    #     for algo in ['neural_gbilinucb', 'neural_glmadducb']: # 'greedy', 'neural_dropoutucb', 'neural_linucb', 'neural_glmucb', 'neural_glmadducb', 
+    #         if algo == 'neural_gbilinucb':
+    #             glm_lr = 1e-3
+    #         if algo == 'neural_glmadducb':
+    #             glm_lr = 0.01
+    #         algo_prefix = algo + '_nuser' + str(num_selected_users) + '_glmlr' + str(glm_lr) + '_T' + str(T)
+    #         algo_prefixes.append(algo_prefix)
+    
+    # timestr = '20220507-0159'
+    # algo_group = 'test_reset_buffer'
+    # algo = 'greedy'
+    # for reset in [True, False]:
+    #     algo_prefix = algo + '_resetbuffer' + str(reset)
+    #     algo_prefixes.append(algo_prefix)
+
+    # timestr = '20220506-0733'
+    # algo_group = 'test_reload'
+    # algo = 'greedy'
+    # reload_flag = False
+    # for T in [2000]:
+    #     algo_prefix = algo + '_T' + str(T) + '_reload' + str(reload_flag)
+    #     algo_prefixes.append(algo_prefix)
+
+   

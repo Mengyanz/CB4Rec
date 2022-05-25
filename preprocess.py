@@ -924,14 +924,13 @@ if __name__ == "__main__":
 
     args = parse_args()
     
-    # news_preprocess(args)
-    # read_imprs_for_val_set_for_sim(args, path)
-    # generate_cb_news(args)
-    # split_then_select_behavior_preprocess(args, train_cb = True)
+    news_preprocess(args)
+    generate_cb_news(args)
+    split_then_select_behavior_preprocess(args, train_cb = True)
 
     # Get val set for sim 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
-    run_eva(args)
+    # run_eva(args)
     # preprocesss_for_propensity_score(args)
     # get_nrms_vecs_for_propensity_score(args) 
     # behavior_preprocess(args)

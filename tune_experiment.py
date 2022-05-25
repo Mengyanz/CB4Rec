@@ -144,16 +144,15 @@ if __name__ == '__main__':
     gpus = [1]
     models_per_gpu = 2
     algo_groups = ['test_onestage', 'test_twostage', 'test_dynamic_topic', 'tune_gamma', 'test_largeT']
-    args.root_dir = '/data4/u6015325/'
+    args.root_dir = './'
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
     args.result_path = os.path.join(args.root_dir, args.result_path)
-    # args.n_trials = 1
-    # args.T = 10000   
+    # args.n_trials = 5
+    # args.T = 2000   
     simulate_flag=True
     rec_batch_size=[5] 
     timestr = time.strftime("%Y%m%d-%H%M")
-    # timestr = '20220520-1418'
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     print('Saving to {}'.format(timestr))
