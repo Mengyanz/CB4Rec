@@ -185,7 +185,7 @@ class ContextualBanditLearner(object):
         # TODO: currently reload is only added in neural greedy. 
 
         if reload_flag:
-            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            model_path = os.path.join(self.args.result_path, self.args.dataset, 'model') # store final results
             with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:
                 self.clicked_history = pickle.load(f) 
             self.data_buffer = np.load(os.path.join(model_path, "{}_data_buffer".format(e)))
@@ -205,7 +205,7 @@ class ContextualBanditLearner(object):
                 trial
         """
         try:
-            model_path = os.path.join(self.args.result_path, 'model') # store final results
+            model_path = os.path.join(self.args.result_path, self.args.dataset, 'model') # store final results
             with open(os.path.join(model_path, "{}_clicked_history.pkl".format(e)), "wb") as f:
                 pickle.dump(self.clicked_history, f)
             np.save(os.path.join(model_path, "{}_data_buffer".format(e)), self.data_buffer)
@@ -229,14 +229,14 @@ def run_contextual_bandit(args, simulator, algos):
     """
 
     np.random.seed(2022)
-    clicked_history_fn = os.path.join(args.root_data_dir, 'large/utils/train_clicked_history.pkl')
+    clicked_history_fn = os.path.join(args.root_data_dir, args.dataset, 'utils/train_clicked_history.pkl')
     with open(clicked_history_fn, 'rb') as fo: 
         train_clicked_history = pickle.load(fo)
 
-    with open(os.path.join(args.root_data_dir, 'large/utils/cb_val_users.pkl'), 'rb') as fo: 
+    with open(os.path.join(args.root_data_dir, args.dataset, 'utils/cb_val_users.pkl'), 'rb') as fo: 
         cb_val_users = pickle.load(fo) 
         
-    with open(os.path.join(args.root_data_dir, 'large/utils/subcategory_byorder.json'), 'r') as fo: 
+    with open(os.path.join(args.root_data_dir, args.dataset, 'utils/subcategory_byorder.json'), 'r') as fo: 
         topic_list = json.load(fo)      
 
     h_items_all = [] 
@@ -269,11 +269,11 @@ def run_contextual_bandit(args, simulator, algos):
         print('trial = {}'.format(e))
         # independents runs to show empirical regret means, std
       
-        cb_learner_path = os.path.join(args.root_proj_dir, args.cb_pretrained_models, 'indices_{}.pkl'.format(e))
+        cb_learner_path = os.path.join(args.root_proj_dir, args.cb_pretrained_models, args.dataset, 'indices_{}.pkl'.format(e))
         if args.split_large_topic:
-            cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models_large_topic_splited', 'indices_{}.pkl'.format(e))
+            cb_topic_learner_path = os.path.join(args.root_proj_dir,'cb_topic_pretrained_models_large_topic_splited', args.dataset, 'indices_{}.pkl'.format(e))
         else:
-            cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', 'indices_{}.pkl'.format(e))
+            cb_topic_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', args.dataset, 'indices_{}.pkl'.format(e))
         # print('Load pre-trained CB learner on this trial from ', cb_learner_path)
         [a.load_cb_learner(cb_learner_path) for a in algos]
         [a.load_cb_learner(cb_topic_learner_path, topic=True) for a in algos]
@@ -284,7 +284,7 @@ def run_contextual_bandit(args, simulator, algos):
         #     load_idx = e
 
         # Load the initial history for each user in each CB learner
-        indices_path = os.path.join(args.root_proj_dir, 'meta_data', 'indices_{}.npy'.format(e))
+        indices_path = os.path.join(args.root_proj_dir, 'meta_data', args.dataset, 'indices_{}.npy'.format(e))
         # random_ids = np.load('./meta_data/indices_{}.npy'.format(e))
         random_ids = np.load(indices_path)
         user_set = [cb_val_users[j] for j in random_ids[:args.num_selected_users]]
@@ -302,7 +302,7 @@ def run_contextual_bandit(args, simulator, algos):
 
         np.random.seed(2022) # REVIEW: keep sampled news the same from different trials, you can alternatively set to different seed to make news different for different trials.
         full_news_indexes = list(range(args.num_all_news))
-        score_budget = args.per_rec_score_budget * args.rec_batch_size
+        score_budget = min(args.per_rec_score_budget * args.rec_batch_size, len(full_news_indexes))
         newss = np.zeros((args.T, score_budget))
         for row in range(args.T):
             newss[row,:] = np.random.choice(full_news_indexes, size=score_budget, replace=False) # in each iteration, the candidate news is not repeatable
@@ -321,6 +321,8 @@ def run_contextual_bandit(args, simulator, algos):
             h_items = np.empty((len(algos), args.rec_batch_size,0), float)
             h_rewards = np.empty((len(algos), args.rec_batch_size,0), float) # (n_algos, rec_bs, T)
             reload_t = 0
+
+        rec_time = []
         for t in tqdm(range(reload_t, args.T)):
             # iterate over selected users
             print('==========[trial = {}/{} | t = {}/{}]==============='.format(e, args.n_trials, t, args.T))
@@ -345,11 +347,15 @@ def run_contextual_bandit(args, simulator, algos):
             for a in algos:
                 # specify cb pretrained path for glm model pretrain
                 # a.cb_pretrained_path = os.path.join(args.root_data_dir, args.dataset, 'utils', "cb_train_contexts_nuser={}_splitratio={}_trial={}.pkl".format(args.num_selected_users, args.cb_train_ratio, e))
+                time1 = datetime.datetime.now()
                 if a.name.startswith('2_'): # two stage
                     topics, items = a.sample_actions(u) # recommend for user u using their current history 
                 else:
                     print('For algorithm {}, use sampled candidate set ({}).'.format(a.name, len(cand_news_indexes)))
                     topics, items = a.sample_actions(u, cand_news_indexes) # recommend for user u using their current history 
+                time2 = datetime.datetime.now()
+                print('TIME: algorithm {} recommend topic+item used {}'.format(a.name, time2-time1))
+                rec_time.append((time2-time1).total_seconds())
 
                 topic_batches.append(topics) 
                 if a.name.lower() != 'phcb':
@@ -437,7 +443,8 @@ def run_contextual_bandit(args, simulator, algos):
             #     print('Debug h_rewards shape: ', np.expand_dims(h_rewards, axis = 0).shape)
             #     np.save(temp_item_path, np.expand_dims(h_items, axis=0))
             #     np.save(temp_reward_path, np.expand_dims(h_rewards, axis = 0))
-            
+
+        print('REPORT TIME: for trial {} eva rec time {} std {}'.format(e, np.mean(rec_time), np.std(rec_time)))    
         if (t+1)%100==0 or t == args.T -1:
             cal_metric(np.expand_dims(np.array(h_rewards), axis = 0), algo_names, ['ctr', 'cumu_reward'])
 

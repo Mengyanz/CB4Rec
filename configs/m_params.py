@@ -13,13 +13,14 @@ def parse_args():
     parser = argparse.ArgumentParser() 
 
     # path
-    parser.add_argument("--root_data_dir",type=str,default="/data4/u6015325/data")
-    parser.add_argument("--root_proj_dir",type=str,default="/data4/u6015325/CB4Rec/")
+    parser.add_argument("--root_dir",type=str,default="/data4/u6015325/")
+    parser.add_argument("--root_data_dir",type=str,default="data")
+    parser.add_argument("--root_proj_dir",type=str,default="CB4Rec/")
     # parser.add_argument("--root_proj_dir",type=str,default="./")
-    parser.add_argument("--result_path", type=str, default='/data4/u6015325/CB4Rec/results/', help = 'CB simulation results')
+    parser.add_argument("--result_path", type=str, default='results/', help = 'CB simulation results')
 
     # Preprocessing 
-    parser.add_argument("--dataset",type=str,default='large')
+    parser.add_argument("--dataset",type=str,default='adressa') # 'adressa', 'large'
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
     parser.add_argument("--sim_npratio", type=int, default=4)
     parser.add_argument("--sim_val_batch_size", type=int, default=1024)
@@ -27,6 +28,9 @@ def parse_args():
     parser.add_argument("--pretrain_topic", type=str2bool, default=False)
 
     # Simulator
+    parser.add_argument("--propensity_score_num_pos", type=int, default=2)
+    parser.add_argument("--propensity_score_num_neg", type=int, default=10)
+    parser.add_argument("--pretrained_nrms_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
     parser.add_argument("--sim_path", type=str, default='./pretrained_models/sim_emp_ips_nrms_normalized_r14_ep5', help='nrms: simulator_pretrained_models/sim_nrms_bce_r14_ep6_thres038414; ips: ./pretrained_models/sim_emp_ips_nrms_normalized_r14_ep5') # "/home/v-mezhang/blob/model/large/large.pkl"
     parser.add_argument("--sim_threshold", type=float, default=0.38414)
     parser.add_argument("--ips_path", type=str, default="/home/thanhnt/projects/CB4Rec/runs/prop_pn=2-8_20220222_163423/model_best_4")

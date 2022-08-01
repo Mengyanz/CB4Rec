@@ -31,7 +31,7 @@ class Tree():
         self.is_leaf     = False
 
 def main():
-    from configs.params import parse_args
+    from configs.m_params import parse_args
     args = parse_args()
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)

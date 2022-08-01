@@ -97,7 +97,14 @@ def eva(args, algo_group, timestr, algo_prefixes, rec_batch_sizes = [5]):
 def create_commands(args, algo_group, result_path):
     commands = []
     algo_prefixes = []
-    if algo_group == 'test_onestage':
+    if algo_group == 'no_comp_budget':
+        for algo in ['neural_glmadducb', '2_neuralglmadducb']: # 'neural_gbilinucb', '2_neuralglmbilinucb'
+            for per_rec_score_budget in [int(1e8), 1000]: # no limit
+                algo_prefix = algo + '_budget' + str(per_rec_score_budget) 
+                log_path = os.path.join(result_path, algo_prefix + '.log')
+                commands.append("python run_experiment.py --algo {} --root_dir {} --algo_prefix {} --result_path {} --per_rec_score_budget {} > {}".format(algo, args.root_dir, algo_prefix, result_path, per_rec_score_budget, log_path))
+                algo_prefixes.append(algo_prefix)
+    elif algo_group == 'test_onestage':
         for num_selected_users in [10, 100, 1000]: 
             for algo in ['uniform_random', 'glmucb', 'greedy', 'neural_dropoutucb', 'neural_glmucb', 'neural_glmadducb', 'neural_gbilinucb']: 
                 algo_prefix = algo + '_nuser' + str(num_selected_users) 
@@ -137,22 +144,26 @@ def create_commands(args, algo_group, result_path):
     return commands, algo_prefixes
 
 if __name__ == '__main__':
-    from configs.params import parse_args
+    # from configs.params import parse_args
+    from configs.m_params import parse_args
     args = parse_args()
 
     # settings
-    gpus = [1]
-    models_per_gpu = 2
-    algo_groups = ['test_onestage', 'test_twostage', 'test_dynamic_topic', 'tune_gamma', 'test_largeT']
-    args.root_dir = './'
+    gpus = [1,2]
+    models_per_gpu = 1
+    # algo_groups = ['test_onestage', 'test_twostage', 'test_dynamic_topic', 'tune_gamma', 'test_largeT']
+    algo_groups = ['no_comp_budget']
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
     args.result_path = os.path.join(args.root_dir, args.result_path)
-    # args.n_trials = 5
-    # args.T = 2000   
-    simulate_flag=True
+ 
+    # simulate_flag=True
+    # rec_batch_size=[5] 
+    # timestr = time.strftime("%Y%m%d-%H%M")
+
+    simulate_flag=False
     rec_batch_size=[5] 
-    timestr = time.strftime("%Y%m%d-%H%M")
+    timestr = '20220731-1456'
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     print('Saving to {}'.format(timestr))

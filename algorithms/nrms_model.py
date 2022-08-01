@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score
 import pickle
 from datetime import datetime 
 import math
+import json
 # import uncertainty_toolbox as utc
 
 import torch
@@ -221,7 +222,8 @@ class NRMS_Model(nn.Module):
 class TopicEncoder(torch.nn.Module):
     def __init__(self, split_large_topic, num_categories=285, reduction_dim=64, dropout_rate=0.2):
         super(TopicEncoder, self).__init__()
-        self.num_categories = 312 if split_large_topic else 285
+        # self.num_categories = 312 if split_large_topic else 285
+        self.num_categories = num_categories
         print("self.num_categories:", self.num_categories)
         self.word_embedding = nn.Embedding(self.num_categories,
                                            reduction_dim)
@@ -265,7 +267,7 @@ class NRMS_Topic_Model(torch.nn.Module):
     NRMS network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
-    def __init__(self, embedding_matrix, split_large_topic):
+    def __init__(self, embedding_matrix, split_large_topic, num_categories=285):
         super(NRMS_Topic_Model, self).__init__()
         self.text_encoder = TextEncoder(embedding_matrix)
         self.user_encoder = UserEncoder()
@@ -273,7 +275,7 @@ class NRMS_Topic_Model(torch.nn.Module):
                                             nn.Dropout(),
                                             nn.ReLU(),
                                             nn.Linear(64, 64))
-        self.topic_encoder = TopicEncoder(split_large_topic)
+        self.topic_encoder = TopicEncoder(split_large_topic, num_categories=num_categories)
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = nn.BCELoss()
         self.all_topic_vector = None
@@ -376,6 +378,7 @@ class NRMS_Sim_Model(nn.Module):
         self.m = nn.Sigmoid()
         
         self.criterion = nn.BCELoss() #nn.CrossEntropyLoss()
+        # self.criterion = nn.CrossEntropyLoss()
     
     def forward(self, candidate_news, clicked_news, targets, compute_loss=True):
         """
@@ -404,7 +407,14 @@ class NRMS_Sim_Model(nn.Module):
         # print(batch_size, clicked_news_num, word_num)
         
         if compute_loss:
-            loss = self.criterion(self.m(score), targets)
+            try:
+                loss = self.criterion(self.m(score), targets)
+            except RuntimeError as e:
+                print(e)
+                print('score: shape {}, max {}, min {}'.format(score.shape, torch.max(score), torch.min(score)))
+                print('targets: shape {}, max {}, min {}'.format(targets.shape, torch.max(targets), torch.min(targets)))
+            return loss, score
+            # loss = self.criterion(score, targets)
             return loss, score
         else:
             return score

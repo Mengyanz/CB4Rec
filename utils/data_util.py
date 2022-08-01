@@ -131,24 +131,24 @@ def load_cb_valid_data(args, trial=0):
 def load_cb_topic_news(args, ordered=False):
     if ordered:
         if args.split_large_topic:
-            fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder_large_topic_splited.json") 
+            fname = os.path.join(args.root_data_dir, args.dataset, "utils/subcategory_byorder_large_topic_splited.json") 
         else:
-            fname = os.path.join(args.root_data_dir, "large/utils/subcategory_byorder.json") 
+            fname = os.path.join(args.root_data_dir, args.dataset, "utils/subcategory_byorder.json") 
         with open(fname, 'r') as f: 
             topic_list = json.load(f)
-        fname = os.path.join(args.root_data_dir, "large/utils/nid2topic.pkl")
+        fname = os.path.join(args.root_data_dir, args.dataset, "utils/nid2topic.pkl")
         with open(fname, 'rb') as f: 
             nid2topic = pickle.load(f)
         return topic_list, nid2topic
 
     else:
-        fname = os.path.join(args.root_data_dir, "large/utils/cb_news.pkl") 
+        fname = os.path.join(args.root_data_dir, args.dataset, "utils/cb_news.pkl") 
         with open(fname, 'rb') as f: 
             cb_news = pickle.load(f)
         return cb_news 
 
 def load_cb_nid2topicindex(args):
-    fname = os.path.join(args.root_data_dir, "large/utils/nid2topicindex.pkl") 
+    fname = os.path.join(args.root_data_dir, args.dataset, "utils/nid2topicindex.pkl") 
     with open(fname, 'rb') as f: 
         nid2topicindex = pickle.load(f)
     return nid2topicindex
@@ -299,8 +299,10 @@ class SimTrainDataset(Dataset):
 
         his = self.nindex2vec[ [self.nid2index[n] for n in his] + [0]*(self.max_his_len - len(his)) ]
         label = np.zeros(1 + self.npratio, dtype=float)
+        # label = np.zeros(1 + self.npratio)
         label[0] = 1 
-        return candidate_news, his, torch.Tensor(label)  
+        # label = torch.tensor(label, dtype=torch.long)
+        return candidate_news, his, torch.Tensor(label)
 
 class SimTrainWithIPSDataset(Dataset):
     def __init__(self, args, nid2index, nindex2vec, samples):

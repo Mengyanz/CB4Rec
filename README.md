@@ -38,7 +38,7 @@
 
 ## Usage 
 
-- Step 1: download data [MIND-Large](https://msnews.github.io/) in `./data/large`. Folder structure as:
+- Step 1: download data [MIND-Large](https://msnews.github.io/)/[adressa-one week](https://reclab.idi.ntnu.no/dataset/) and word embeddings ([GloVe](https://nlp.stanford.edu/projects/glove/)/[fastTest-Norwegian](https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.nn.300.vec.gz)) in `./data/large`. Folder structure as:
 ```bash
 data
 ├── train
