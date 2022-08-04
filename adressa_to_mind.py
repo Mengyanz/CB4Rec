@@ -12,7 +12,11 @@ from pathlib import Path
 from collections import defaultdict
 from sklearn.model_selection import train_test_split
 
-def process_news(adressa_path):
+def process_news(adressa_path, all_flag = True):
+    """all_flag: bool
+        True: includes all news with valid id and title
+        False: includes all news with valid id, title and category1
+    """
     news_title = {}
     news_category = {}
     count = 0
@@ -31,26 +35,34 @@ def process_news(adressa_path):
                 #     #     print(event_dict['category1'])
                 # else: 
                 #     break
-                if "id" in event_dict and "title" in event_dict and 'category1' in event_dict:
-                    if event_dict["id"] not in news_title:
-                        news_title[event_dict["id"]] = event_dict["title"]
-                    else:
-                        assert news_title[event_dict["id"]] == event_dict["title"]
-                    news_category[event_dict["id"]] = event_dict['category1'].split('|')[-1]
-                    count+=1
+                if all_flag:
+                    if "id" in event_dict and "title" in event_dict: 
+                        if event_dict["id"] not in news_title:
+                            news_title[event_dict["id"]] = event_dict["title"]
+                        else:
+                            assert news_title[event_dict["id"]] == event_dict["title"]
+                        count+=1
+                else:
+                    if "id" in event_dict and "title" in event_dict and 'category1' in event_dict:
+                        if event_dict["id"] not in news_title:
+                            news_title[event_dict["id"]] = event_dict["title"]
+                        else:
+                            assert news_title[event_dict["id"]] == event_dict["title"]
+                        news_category[event_dict["id"]] = event_dict['category1'].split('|')[-1]
+                        count+=1
 
     print(len(news_title))
-    print(len(news_category))
     print('number of samples with valid cat: ', count)
-
-    unique_cat = list(set(list(news_category.values())))
-    print('unique categories: ', len(unique_cat))
-
-    json_path = os.path.join(args.root_data_dir, args.dataset, 'utils/subcategory_byorder.json')
-    with open(json_path, 'w') as f:
-        json.dump(unique_cat, f)
-
     nid2index = {k: v for k, v in zip(news_title.keys(), range(1, len(news_title) + 1))}
+
+    if not all_flag:
+        print(len(news_category))
+        unique_cat = list(set(list(news_category.values())))
+        print('unique categories: ', len(unique_cat))
+
+        json_path = os.path.join(args.root_data_dir, args.dataset, 'utils/subcategory_byorder.json')
+        with open(json_path, 'w') as f:
+            json.dump(unique_cat, f)
     return news_title, nid2index, news_category
 
 
@@ -60,7 +72,10 @@ def write_news_files(news_title, nid2index, news_category, out_path):
     for nid in tqdm(news_title):
         nindex = nid2index[nid]
         title = news_title[nid]
-        category = news_category[nid]
+        if nid in news_category:
+            category = news_category[nid]
+        else:
+            category = ""
         news_line = "\t".join([str(nindex), "", category, title, "", "", "", ""]) + "\n"
         news_lines.append(news_line)
 
@@ -131,7 +146,7 @@ class UserInfo:
         self.click_news = self.click_news[order]
 
 
-def process_users(adressa_path):
+def process_users(adressa_path, all_flag=True):
     uid2index = {}
     user_info = defaultdict(UserInfo)
 
@@ -139,17 +154,31 @@ def process_users(adressa_path):
         with open(file, "r") as f:
             for l in tqdm(f):
                 event_dict = json.loads(l.strip("\n"))
-                if "id" in event_dict and "title" in event_dict and 'category1' in event_dict:
-                    nindex = nid2index[event_dict["id"]]
-                    uid = event_dict["userId"]
+                if all_flag:
+                    if "id" in event_dict and "title" in event_dict:
+                        nindex = nid2index[event_dict["id"]]
+                        uid = event_dict["userId"]
 
-                    if uid not in uid2index:
-                        uid2index[uid] = len(uid2index)
+                        if uid not in uid2index:
+                            uid2index[uid] = len(uid2index)
 
-                    uindex = uid2index[uid]
-                    click_time = int(event_dict["time"])
-                    day = int(file.name[-1])
-                    user_info[uindex].update(nindex, click_time, day)
+                        uindex = uid2index[uid]
+                        click_time = int(event_dict["time"])
+                        day = int(file.name[-1])
+                        user_info[uindex].update(nindex, click_time, day)
+                else:
+                    if "id" in event_dict and "title" in event_dict and 'category1' in event_dict:
+                        nindex = nid2index[event_dict["id"]]
+                        uid = event_dict["userId"]
+
+                        if uid not in uid2index:
+                            uid2index[uid] = len(uid2index)
+
+                        uindex = uid2index[uid]
+                        click_time = int(event_dict["time"])
+                        day = int(file.name[-1])
+                        user_info[uindex].update(nindex, click_time, day)
+
 
     return uid2index, user_info
 
@@ -194,14 +223,17 @@ if __name__ == "__main__":
     from configs.m_params import parse_args
     args = parse_args()
     neg_num = 20
-    adressa_path = Path(os.path.join(args.root_data_dir, 'adressa/one_week/'))
-    out_path = Path(os.path.join(args.root_data_dir, 'adressa/'))
+    all_flag = False # only use data with valid catogories 
+    adressa_path = Path(os.path.join(args.root_dir, args.root_data_dir, 'adressa/one_week/'))
+    out_path = Path(os.path.join(args.root_dir, args.root_data_dir, 'adressa'))
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
 
-    news_title, nid2index, news_category = process_news(adressa_path)
+    news_title, nid2index, news_category = process_news(adressa_path, all_flag = all_flag)
 
     write_news_files(news_title, nid2index, news_category, out_path)
 
-    uid2index, user_info = process_users(adressa_path)
+    uid2index, user_info = process_users(adressa_path, all_flag=all_flag)
     for uid in tqdm(user_info):
         user_info[uid].sort_click()
 
