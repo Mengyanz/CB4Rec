@@ -327,22 +327,36 @@ class EmpiricalIPSModel(object):
             uindex = self.uid2index[uids[j]]
             sub_scores = []
             nids = [cand_idxs[i][j] for i in range(n)]
+            # filter out <unk> 
+            nids = [i  for i in nids ]
             for i in nids:
                 sub_scores.append(self._compute_ips(uindex,i,train))
+            # DEBUG 
+            # print(sub_scores)
             scores.append(sub_scores)
         return torch.Tensor(np.array(scores))
 
     def _compute_ips(self, uindex, i, train=True):
         if train:
-            assert i in self.train_pair_count[uindex]
+            # DEBUG 
+            # print(i)
+            # assert i in self.train_pair_count[uindex]
             nominator = self.train_pair_count[uindex] 
-            nominator = 0 if i not in nominator else nominator[i]
-            return nominator * 1.0 / self.train_user_count[uindex]
+            # nominator = 0 if i not in nominator else nominator[i]
+            if i in nominator:
+                return nominator[i] * 1.0 / self.train_user_count[uindex]
+            else: 
+                return 1 
         else:
-            assert i in self.val_pair_count[uindex]
+            # assert i in self.val_pair_count[uindex]
             nominator = self.val_pair_count[uindex] 
-            nominator = 0 if i not in nominator else nominator[i]
-            return nominator * 1.0 / self.val_user_count[uindex]
+            # nominator = 0 if i not in nominator else nominator[i]
+            # return nominator * 1.0 / self.val_user_count[uindex]
+
+            if i in nominator:
+                return nominator[i] * 1.0 / self.val_user_count[uindex]
+            else: 
+                return 1 
 
 class NRMS_IPS_Sim(Simulator): 
     def __init__(self, device, args, pretrained_mode=False, name='NRMS_IPS_Sim', train_mode = False): 
@@ -357,17 +371,13 @@ class NRMS_IPS_Sim(Simulator):
         self.device = device 
         self.args = args 
         self.threshold = args.sim_threshold
-        self.ips_path = os.path.join(args.root_dir, args.ips_path)
+        self.ips_path = os.path.join(args.root_dir, args.ips_path) # path to pretrained IPS model 
 
-        # preprocessed data 
-        # self.nid2index, _, self.news_index, embedding_matrix, self.train_samples, self.valid_samples = read_data(args) 
 
         self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
 
         print('word2vec', word2vec.shape)
 
-        # model 
-        # model 
         self.model = NRMS_IPS_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
@@ -396,39 +406,7 @@ class NRMS_IPS_Sim(Simulator):
                 self.ips_model = EmpiricalIPSModel(data_path, uid2index)
             else:
                 self.ips_model = PropensityScore(args, device, pretrained_mode=True)
-       
-
-    # def reward(self, uid, news_indexes): 
-    #     """Returns a simulated reward. 
-
-    #     Args:
-    #         uid: str, user id 
-    #         news_indexes: a list of item index (not nID, but its integer version)
-
-    #     Return: 
-    #         rewards: (n,m) of 0 or 1 
-    #     """
-    #     batch_size = min(self.args.max_batch_size, len(news_indexes))
-
-    #     h = self.clicked_history[uid]
-    #     h = h + [0] * (self.args.max_his_len - len(h))
-    #     h = self.nindex2vec[h]
-
-    #     h = torch.Tensor(h[None,:,:])
-
-    #     sed = SimEvalDataset2(self.args, news_indexes, self.nindex2vec)
-    #     rdl = DataLoader(sed, batch_size=batch_size, shuffle=False, num_workers=self.args.num_workers) 
-
-    #     self.model.eval()
-    #     with torch.no_grad():
-    #         scores = []
-    #         for cn in rdl:
-    #             score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None, compute_loss=False)
-    #             scores.append(torch.sigmoid(score[:,None])) 
-    #         scores = torch.cat(scores, dim=0) 
-    #         print(scores)
-    #         rewards = (scores >= self.threshold).float().detach().cpu().numpy()
-    #     return rewards.ravel()
+    
 
     def reward(self, uid, news_indexes): 
         """Returns a simulated reward. 
@@ -492,8 +470,10 @@ class NRMS_IPS_Sim(Simulator):
         # ref: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html 
         running_loss = 0 
         last_loss = 0
-        for i, batch in enumerate(train_loader): 
+        for i, batch in tqdm(enumerate(train_loader)): 
             cand_news, clicked_news, targets, uids, cand_idxs = batch # @TODO: use all news in the impression list
+            # DEBUG 
+            # print(cand_idxs)
             if not self.args.empirical_ips:
                 cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
             ips_scores = self.ips_model.compute_ips(uids, cand_idxs,train=True)  
@@ -510,8 +490,9 @@ class NRMS_IPS_Sim(Simulator):
 
             # Gather data and report 
             running_loss += loss.item()
-            if i % 1000 == 999: 
-                last_loss = running_loss / 1000 # loss per batch 
+            INTERVAL = 100
+            if i % INTERVAL == INTERVAL - 1: 
+                last_loss = running_loss / INTERVAL # loss per batch 
                 print(' batch {}/{} loss: {}'.format(i+1, len(train_loader), last_loss))
                 tb_x = epoch_index * len(train_loader) + i + 1 
                 writer.add_scalar('Loss/train', last_loss, tb_x) 
@@ -521,12 +502,12 @@ class NRMS_IPS_Sim(Simulator):
 
     def train(self): 
         if self.args.empirical_ips:
-            prefix = 'PROP__empirical_normalize={}'.format(self.args.ips_normalize)
+            prefix = 'empIPS_ipsnormalize={}'.format(self.args.ips_normalize)
         else:
             prefix = self.args.ips_path.split('/')
             prefix = prefix[-2] + prefix[-1] + '_ipsnormalize={}'.format(self.args.ips_normalize) #datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        out_path = 'runs/ipsnrms_{}_R__{}'.format(prefix, self.args.sim_npratio)
+        out_path = os.path.join(self.args.result_path, self.args.dataset, 'runs/ipsnrms_{}_np_{}'.format(prefix, self.args.sim_npratio))
         writer = SummaryWriter(out_path) # https://pytorch.org/docs/stable/tensorboard.html 
 
         data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
@@ -543,11 +524,9 @@ class NRMS_IPS_Sim(Simulator):
 
         epoch_number = 0 
 
-        EPOCHS = 10
-
         best_vauc = 0. 
 
-        for epoch in range(EPOCHS):
+        for epoch in range(self.args.num_epoch):
             print('EPOCH {}:'.format(epoch_number + 1))
 
             self.model.train() # train mode 
@@ -598,14 +577,14 @@ class NRMS_IPS_Sim(Simulator):
 
             # Select threshold 
             precision, recall, thresholds = precision_recall_curve(y_trues, y_scores)
-            fscore = (2 * precision * recall) / (precision + recall)
-            ix = np.argmax(fscore)
+            # fscore = (2 * precision * recall) / (precision + recall)
+            # ix = np.argmax(fscore)
 
             print(' LOSS train {:.3f} valid {:.3f}'.format(avg_loss, avg_vloss))
             print(' PER-IMP METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'\
                 .format(imp_metrics_mean[0],imp_metrics_mean[1], imp_metrics_mean[2], imp_metrics_mean[3], imp_metrics_mean[4]))
             print(' GLOBAL METRICS auc {:.3f} mrr {:.3f} ndcg5 {:.3f} ndcg10 {:.3f} ctr {:.3f}'.format(auc, mrr, ndcg5, ndcg10, ctr))
-            print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], fscore[ix]))
+            # print(' Best Threshold=%f, G-Mean=%.3f' % (thresholds[ix], fscore[ix]))
 
 
             writer.add_scalars('Training vs. Val Loss',
@@ -618,11 +597,11 @@ class NRMS_IPS_Sim(Simulator):
                     epoch_number + 1)
 
             writer.add_scalars('Globle Metrics',
-                    {'auc': auc, 'mrr': mrr, 'ndcg5': ndcg5, 'ndcg10': ndcg10, 'ctr': ctr, 'best-fmscore': fscore[ix]}, 
+                    {'auc': auc, 'mrr': mrr, 'ndcg5': ndcg5, 'ndcg10': ndcg10, 'ctr': ctr}, 
                     epoch_number + 1)
 
-            writer.add_scalars('Threshold',
-                    {'threshold':thresholds[ix]}, epoch_number + 1)
+            # writer.add_scalars('Threshold',
+            #         {'threshold':thresholds[ix]}, epoch_number + 1)
 
             writer.flush()
 

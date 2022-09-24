@@ -4,14 +4,15 @@ import logging
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--root_data_dir",
-        type=str,
-        default=
-        # "/home/v-mezhang/blob/data/",
-        "/home/thanhnt/data/MIND"
-    )
-    parser.add_argument("--root_proj_dir",type=str,default="/home/thanhnt/projects/CB4Rec/")
+    parser.add_argument("--dataset",type=str, default='movielen', help='movielen/MINDlarge')
+    parser.add_argument("--root_dir",type=str,default="/scratch/tnguy258/")
+    parser.add_argument("--root_data_dir",type=str,default="datasets/")
+    parser.add_argument("--root_proj_dir",type=str,default="cb4rec/CB4Rec/")
+    # parser.add_argument("--root_proj_dir",type=str,default="./")
+    parser.add_argument("--result_path", type=str, default='/scratch/tnguy258/cb4rec/results/', help = 'CB simulation results')
+    parser.add_argument("--num_epoch", type=int, default=1000)
+
+
     parser.add_argument("--model_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/")
     # parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
     parser.add_argument("--sim_path", type=str, default="/home/thanhnt/projects/CB4Rec/pretrained_models/sim_nrms_bce_r14_ep6")
@@ -21,7 +22,6 @@ def parse_args():
     # PLM: epoch-2.pt 
     parser.add_argument("--out_path", type=str, default="/home/thanhnt/projects/CB4Rec/model")
 
-    parser.add_argument("--dataset",type=str, default='large')
     parser.add_argument("--mode", type=str, default='train')
     parser.add_argument("--sim_type", type=str, default='ips') # none, nrms, ips
     parser.add_argument("--dropout_flag", type=bool, default=True)

@@ -215,7 +215,3 @@ class PropensityScore(object):
             writer.flush()
             epoch_number += 1 
 
-            # if auc_mean > best_vauc: #TODO: select by per-imp AUC 
-            #     best_vauc = auc_mean 
-            #     model_path = os.path.join(out_path, 'model_best_{}'.format(epoch_number))
-            #     torch.save(self.model.state_dict(), model_path)
