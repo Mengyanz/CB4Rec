@@ -19,9 +19,10 @@ import torch.optim as optim
 from utils.metrics import evaluation_split
 import pretty_errors
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 device = torch.device("cuda:0")
 torch.cuda.set_device(device)
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 news_info = {"<unk>": ""}
 nid2index = {"<unk>": 0}
@@ -43,7 +44,7 @@ def word_tokenize(args, sent):
 
 def load_matrix(glove_path, word_dict):
     # embebbed_dict = {}
-    embedding_matrix = np.zeros((len(word_dict) + 1, 64))
+    embedding_matrix = np.zeros((len(word_dict) + 1, 300))
     exist_word = []
 
     # get embedded_dict
@@ -103,10 +104,10 @@ def news_preprocess(args):
 
     if 'adressa' in args.dataset:
         print('Converting to word embedding using fastTest-Norwegian!') 
-        glove_path = os.path.join(args.root_data_dir, "glove/cc.no.64.vec")
+        glove_path = os.path.join(args.root_data_dir, "glove/cc.no.300.vec")
     else:
         print('Converting to word embedding using glove6B!') 
-        glove_path = os.path.join(args.root_data_dir, "glove/glove.6B.64d.txt")
+        glove_path = os.path.join(args.root_data_dir, "glove/glove.6B.300d.txt")
     embedding_matrix, exist_word = load_matrix(glove_path, vocab_dict)
 
     
@@ -130,6 +131,7 @@ def read_imprs(args, path, mode, save=False):
     """
     index = 0
     samples = []
+    multisamples = []
     user_indices = defaultdict(list)
     user_imprs = defaultdict(list)
     out_path = os.path.join(args.root_data_dir, args.dataset, 'utils')
@@ -155,11 +157,12 @@ def read_imprs(args, path, mode, save=False):
         else:
             samples.append([pos_imp, neg_imp, his, uid, tsp])
 
-    if 'adressa' in args.dataset:
-        # TODO: sort samples as well?
-        sorted_samples = samples
-    else:
+        multisamples.append([pos_imp, neg_imp, his, uid, tsp])
+
+    try:
         sorted_samples = [i for i in sorted(samples, key=lambda date: datetime.strptime(date[-1], date_format_str))]
+    except: 
+        sorted_samples = samples 
 
     if mode == 0:
         name = 'train'
@@ -171,6 +174,8 @@ def read_imprs(args, path, mode, save=False):
     if save: 
         with open(os.path.join(out_path, (name + "_contexts.pkl")), "wb") as f:
             pickle.dump(samples, f)
+        with open(os.path.join(out_path, (name + "_multisample_contexts.pkl")), "wb") as f:
+            pickle.dump(multisamples, f)
         with open(os.path.join(out_path, (name + "_user_indices.pkl")), "wb") as f:
             pickle.dump(user_indices, f)
         with open(os.path.join(out_path, ("sorted_"+ name + "_contexts.pkl")), "wb") as f:
@@ -251,7 +256,7 @@ def behavior_preprocess(args):
 
     print('Number of train users: {} (should be 711,222!)'.format(len(train_user_set)))
 
-    with open(os.path.join(out_path, "train_contexts.pkl"), "wb") as f:
+    with open(os.path.join(out_path, "train_multisample_contexts.pkl"), "wb") as f:
         pickle.dump(samples, f)
 
     # Create a click history for each user in train: 
@@ -515,7 +520,7 @@ def pretrain_cb_learner(args, cb_train_sam, trial):
 
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
-        model = nn.DataParallel(model, device_ids=[0,1,2,3]) 
+        model = nn.DataParallel(model, device_ids=[0,1,2]) 
     else:
         print('single GPU found.')
 
@@ -664,6 +669,9 @@ def generate_cb_news(args):
                 subvert = nid2topic_large_topic_splited[nid]
             if nid not in news_dict:
                 news_dict[nid] = l
+                # REVIEW: only use the first cat for movielens
+                if 'movielens' in args.dataset:
+                    subvert = subvert.split('|')[0]
                 nid2topic[nid] = subvert
                 nid2topicindex[nid] = topic2index[subvert]
                 if vert not in cat_count:
@@ -693,21 +701,33 @@ def generate_cb_news(args):
     with open(save_path, "wb") as f:
         pickle.dump(nid2topicindex, f)
 
-def run_eva(args, trials=['all']):
+def run_eva(args, trials=[0,1,2,3,4,'all']):
     """evaluate cb trained models on valid data.
     """
+    utils = 'utils'
     for e in trials:
-        with open(os.path.join(args.root_data_dir, args.dataset, 'utils', "valid_contexts.pkl"), "rb") as f:
+        with open(os.path.join(args.root_data_dir, args.dataset, utils, "valid_contexts.pkl"), "rb") as f:
             valid_sam = pickle.load(f)
-        with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2index.pkl'), 'rb') as f:
+        with open(os.path.join(args.root_data_dir, args.dataset,  utils, 'nid2index.pkl'), 'rb') as f:
             nid2index = pickle.load(f)
-        nindex2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'news_index.npy'))
-        word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  'utils', 'embedding.npy'))
-        cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models_dim64', args.dataset, 'indices_{}.pkl'.format(e))
-        model = NRMS_Model(word2vec, news_embedding_dim=64).to(device)
+        nindex2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'news_index.npy'))
+        word2vec = np.load(os.path.join(args.root_data_dir, args.dataset,  utils, 'embedding.npy'))
+        if args.pretrain_topic:
+            cb_learner_path = os.path.join(args.root_proj_dir, 'cb_topic_pretrained_models', args.dataset, 'indices_{}.pkl'.format(e))
+            topic_list = json.load(open(os.path.join(args.root_data_dir, args.dataset, "utils/subcategory_byorder.json"), 'r'))
+            num_categories = len(topic_list)
+            model = NRMS_Topic_Model(word2vec, split_large_topic=args.split_large_topic, num_categories=num_categories).to(device)
+            with open(os.path.join(args.root_data_dir, args.dataset,  'utils', 'nid2topicindex.pkl'), 'rb') as f:
+                nid2topicindex = pickle.load(f)
+        else:
+            cb_learner_path = os.path.join(args.root_proj_dir, 'cb_pretrained_models_dim64', args.dataset, 'indices_{}.pkl'.format(e))
+            model = NRMS_Model(word2vec, news_embedding_dim=64).to(device)
         model.eval()
         model.load_state_dict(torch.load(cb_learner_path))
-        val_scores = eva(args, model, valid_sam, nid2index, nindex2vec)
+        if args.pretrain_topic:
+            val_scores = eva(args, model, valid_sam, nid2index,  nindex2vec, nid2topicindex)
+        else:
+            val_scores = eva(args, model, valid_sam, nid2index, nindex2vec)
         val_auc, val_mrr, val_ndcg, val_ndcg10, ctr = [np.mean(i) for i in list(zip(*val_scores))]
         print(f"[{e}] trial auc: {val_auc:.4f}, mrr: {val_mrr:.4f}, ndcg5: {val_ndcg:.4f}, ndcg10: {val_ndcg10:.4f}, ctr: {ctr:.4f}")
 
@@ -780,8 +800,8 @@ def preprocesss_for_propensity_score(args):
     with open(full_clicked_history_fn, 'wb') as fo: 
         pickle.dump(clicked_history, fo) # uid:nindex
 
-    print('open train_contexts.pkl')
-    with open(os.path.join(out_path, "train_contexts.pkl"), "rb") as fo:
+    print('open train_multisample_contexts.pkl')
+    with open(os.path.join(out_path, "train_multisample_contexts.pkl"), "rb") as fo:
         samples = pickle.load(fo)
 
     obs = dict()
@@ -904,8 +924,8 @@ def compute_empirical_ips(args):
     train_pair_count = dict([(key, dict()) for key in range(n_users)])
 
      
-    print('open train_contexts.pkl')
-    with open(os.path.join(data_path, "train_contexts.pkl"), "rb") as fo:
+    print('open train_multisample_contexts.pkl')
+    with open(os.path.join(data_path, "train_multisample_contexts.pkl"), "rb") as fo:
         samples = pickle.load(fo)
 
     for sample in tqdm(samples): 
@@ -961,25 +981,37 @@ def compute_empirical_ips(args):
 if __name__ == "__main__":
     # from parameters import parse_args
     # from configs.params import parse_args
-    from configs.t_params import parse_args
+    from configs.m_params import parse_args
 
     args = parse_args()
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
     args.result_path = os.path.join(args.root_dir, args.result_path)
-    train_cb = False
-    train_all = False
+    args.pretrain_topic = True
+    args.dataset = 'adressa'
+    train_cb = True
+    train_all = True
+
+    if args.dataset == 'large':
+        args.lr = 1e-4
+    elif args.dataset == 'adressa':
+        args.lr =1e-5 # 0.000001   
+    elif args.dataset == 'movielens':
+        if args.pretrain_topic:
+            args.lr = 1e-3
+        else:
+            args.lr = 1e-4
+    args.epochs = 1
     
-    news_preprocess(args)
+    # news_preprocess(args)
     # generate_cb_news(args)
     split_then_select_behavior_preprocess(args, train_cb = train_cb, train_all=train_all)
-    # run_eva(args)
+    run_eva(args)
 
-    # Get val set for sim 
+    # # Get val set for sim 
     # read_imprs_for_val_set_for_sim(args, os.path.join(args.root_data_dir, args.dataset, "valid/behaviors.tsv"))
     # preprocesss_for_propensity_score(args)
     # get_nrms_vecs_for_propensity_score(args) 
-    # behavior_preprocess(args)
     # compute_empirical_ips(args)
 
 

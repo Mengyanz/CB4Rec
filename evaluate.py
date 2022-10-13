@@ -133,6 +133,17 @@ def cal_metric(h_rewards_all, algo_names, metric_names = ['cumu_reward']):
 
             metrics[metric] = [cumu_rewards_mean, cumu_rewards_std]
             
+        if metric == 'cumu_regret':
+            cumu_rewards = np.cumsum(np.mean(h_rewards_all, axis=2), axis = -1) # n_trails, n_algos, T
+            cumu_rewards_mean = np.mean(cumu_rewards, axis = 0) # n_algos, T
+            cumu_rewards_std = np.std(cumu_rewards, axis = 0) # n_algos, T
+            
+            cumu_opt_rewards = np.asarray([[0.9 * i for i in range(1, T+1)] for _ in range(n_algos)])
+            cumu_regret = np.subtract(cumu_opt_rewards, cumu_rewards_mean)
+            
+          
+            metrics[metric] = [cumu_regret, cumu_rewards_std]
+            
         if metric == 'moving_ctr':
             window_size = 100
             moving_averages = np.zeros((n_trials, n_algos, T-window_size+1))
@@ -206,12 +217,17 @@ def plot_metrics(args, eva_path, metrics, algo_names, plot_title=None, save_titl
     # plt_path = os.path.join(args.root_proj_dir, 'plots')
     yaxis_dict = {'cumu_ctr': 'Cumulative CTR',
                 'ctr': 'CTR',
-                'moving_ctr': 'Moving CTR'
+                'moving_ctr': 'Moving CTR',
+                'cumu_regret': 'Cumulative Regret'
     }
     label_dict = {'neural_glmadducb': 'S-N-GALM',
                 'neural_gbilinucb': 'S-N-GBLM',
                 '2_neuralglmadducb': '2-S-N-GALM',
                 '2_neuralglmbilinucb': '2-S-N-GBLM'
+    }
+    title_dict = {
+        'large': 'MIND',
+        'movielens': 'MovieLens-20M'
     }
     
     for name, value in metrics.items():
@@ -219,7 +235,7 @@ def plot_metrics(args, eva_path, metrics, algo_names, plot_title=None, save_titl
         mean, std = value
         n_algos, T = mean.shape
         for i in range(n_algos):
-            label_name = algo_names[i].split('_glmlr')[0]
+            label_name = algo_names[i].split('_recSize')[0]
             if label_name in label_dict:
                 label_name = label_dict[label_name]
             if name == 'raw_reward' or name == 'ave_ctr':
@@ -250,6 +266,7 @@ def plot_metrics(args, eva_path, metrics, algo_names, plot_title=None, save_titl
         if name in yaxis_dict:
             name = yaxis_dict[name]
         plt.ylabel(name)
+        plt.title(title_dict[args.dataset])
         # plt.title(plot_title.replace('_', ' '))
         # plt.savefig(os.path.join(plt_path, save_title + '_' + name + '.pdf'),bbox_inches='tight')
         plt.savefig(os.path.join(eva_path, name + '.png'),bbox_inches='tight')
@@ -277,7 +294,7 @@ def collect_rewards(args, algo_group, timestr, algo_prefixes, algo_names, all_re
         all_items: 
             array (n_trial, n_algos, rec_bs, T)
     """
-    root_path = os.path.join(args.root_proj_dir, 'results', algo_group, timestr, 'trial')
+    root_path = os.path.join(args.root_proj_dir, 'results', args.dataset, algo_group, timestr, 'trial')
     load_item_dict = defaultdict(list)
     for algo_prefix in algo_prefixes:
         for load_item in ['rewards', 'items']:

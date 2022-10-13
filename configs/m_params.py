@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument("--result_path", type=str, default='results/', help = 'CB simulation results')
 
     # Preprocessing 
-    parser.add_argument("--dataset",type=str,default='adressa') # 'adressa', 'large'
+    parser.add_argument("--dataset",type=str,default='movielens') # 'adressa', 'large'
     parser.add_argument("--cb_train_ratio", type=float, default=0.2)
     parser.add_argument("--sim_npratio", type=int, default=4)
     parser.add_argument("--sim_val_batch_size", type=int, default=1024)
@@ -28,6 +28,7 @@ def parse_args():
     parser.add_argument("--pretrain_topic", type=str2bool, default=False)
 
     # Simulator
+    parser.add_argument("--num_epoch", type=int, default=1000)
     parser.add_argument("--propensity_score_num_pos", type=int, default=2)
     parser.add_argument("--propensity_score_num_neg", type=int, default=10)
     parser.add_argument("--pretrained_nrms_path", type=str, default="/home/thanhnt/projects/CB4Rec/model/large/large.pkl")
@@ -40,7 +41,7 @@ def parse_args():
     parser.add_argument("--reward_type", type=str, default='threshold_eps', help='soft/hard/hybrid/threshold/threshold_eps')
 
     # Simulation
-    parser.add_argument("--algo",type=str,default="2_ts_neuralucb")
+    parser.add_argument("--algo",type=str,default="greedy")
     parser.add_argument("--algo_prefix", type=str, default="algo",
         help='the name of save files')
     parser.add_argument("--n_trials", type=int, default=5, help = 'number of experiment runs')

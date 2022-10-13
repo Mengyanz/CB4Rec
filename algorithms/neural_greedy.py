@@ -146,6 +146,7 @@ class NeuralGreedy(ContextualBanditLearner):
         Return: 
             items: a list of `len(uids)`int 
         """
+        # cand_news.remove('<unk>')
         if len(self.news_embs) < 1:
             self._get_news_embs() # init news embeddings
         user_vecs = self._get_user_embs(uid, 0) # (b,d)
@@ -236,7 +237,7 @@ class Two_NeuralGreedy(NeuralGreedy):
         self.index2nid = {v:k for k,v in self.nid2index.items()}
 
         # model 
-        self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=args.split_large_topic).to(self.device)
+        self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=args.split_large_topic, num_categories=self.args.num_topics).to(self.device)
         # print("topic_model text embeddding size: ", self.topic_model.text_encoder.word_embedding.weight.size())
         # print("topic_model topic embedding size: ", self.topic_model.topic_encoder.word_embedding.weight.size())
 
@@ -428,7 +429,7 @@ class Two_NeuralGreedy(NeuralGreedy):
             while len(unfinished_topics) > 0:
                 for i in unfinished_topics:
                     num_news_to_add = self.args.min_item_size - len(cand_news[i])
-                    if num_news_to_add > 0:
+                    if num_news_to_add > 0 and rank < len(self.cb_topics):
                         topic_idx = sorted_topic_indexs[rank]
                         topic = self.cb_topics[topic_idx]
                         news_index_topic = [self.nid2index[n] for n in self.cb_news[topic]]
@@ -490,15 +491,23 @@ class Two_NeuralGreedy(NeuralGreedy):
             rec_items.append(rec_item[0].item()) # Convert numpy int64 to python int
 
             left_budget -= allocate_budget
-            left_to_rec -= 1   
-        rec_topics = [self.nid2topicindex[self.index2nid[n]] for n in rec_items] 
+            left_to_rec -= 1 
+            rec_topics = []
+            for n in rec_items:
+                try:
+                    rec_topics.append(self.nid2topicindex[self.index2nid[n]])
+                except:
+                    print('n: ', n)
+                    print('self.index2nid[n]: ', self.index2nid[n])
+                    print('self.nid2topicindex[self.index2nid[n]]: ', self.nid2topicindex[self.index2nid[n]])
+
         return rec_topics, rec_items
     
     def reset(self, e=None, reload_flag=False, reload_path=None):
         """Save and Reset the CB learner to its initial state (do this for each trial/experiment). """
           
         self.model = NRMS_Model(self.word2vec, news_embedding_dim = self.args.news_dim).to(self.device)
-        self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=self.args.split_large_topic).to(self.device)
+        self.topic_model = NRMS_Topic_Model(self.word2vec, split_large_topic=self.args.split_large_topic, num_categories=self.args.num_topics).to(self.device)
         if reload_flag: # and reload_path is not None:
             print('Info: reload cb model from {}'.format(reload_path))
             with open(os.path.join(reload_path, "{}_clicked_history.pkl".format(e)), 'rb') as f:

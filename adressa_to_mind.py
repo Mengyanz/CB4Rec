@@ -10,6 +10,7 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 
 def process_news(adressa_path, all_flag = True):
@@ -20,6 +21,7 @@ def process_news(adressa_path, all_flag = True):
     news_title = {}
     news_category = {}
     count = 0
+    cat_count = {}
 
     for file in adressa_path.iterdir():
         with open(file, "r") as f:
@@ -44,25 +46,36 @@ def process_news(adressa_path, all_flag = True):
                         count+=1
                 else:
                     if "id" in event_dict and "title" in event_dict and 'category1' in event_dict:
+                        cat = event_dict['category1'].split('|')[-1]
                         if event_dict["id"] not in news_title:
                             news_title[event_dict["id"]] = event_dict["title"]
+                            if cat in cat_count:
+                                cat_count[cat] += 1
+                            else:
+                                cat_count[cat] = 1
                         else:
                             assert news_title[event_dict["id"]] == event_dict["title"]
-                        news_category[event_dict["id"]] = event_dict['category1'].split('|')[-1]
+                        
+                        news_category[event_dict["id"]] = cat
+                        
                         count+=1
-
+    
+    cat_count = {k: v for k, v in sorted(cat_count.items(), key=lambda item: item[1])}
+    print(cat_count)
+    plt.hist(list(cat_count.values()))
+    plt.savefig('adressa_cat_count.png')
     print(len(news_title))
     print('number of samples with valid cat: ', count)
     nid2index = {k: v for k, v in zip(news_title.keys(), range(1, len(news_title) + 1))}
 
-    if not all_flag:
-        print(len(news_category))
-        unique_cat = list(set(list(news_category.values())))
-        print('unique categories: ', len(unique_cat))
+    # if not all_flag:
+    #     print(len(news_category))
+    #     unique_cat = list(set(list(news_category.values())))
+    #     print('unique categories: ', len(unique_cat))
 
-        json_path = os.path.join(args.root_data_dir, args.dataset, 'utils/subcategory_byorder.json')
-        with open(json_path, 'w') as f:
-            json.dump(unique_cat, f)
+    #     json_path = os.path.join(args.root_data_dir, args.dataset, 'utils/subcategory_byorder.json')
+    #     with open(json_path, 'w') as f:
+    #         json.dump(unique_cat, f)
     return news_title, nid2index, news_category
 
 
@@ -231,29 +244,29 @@ if __name__ == "__main__":
 
     news_title, nid2index, news_category = process_news(adressa_path, all_flag = all_flag)
 
-    write_news_files(news_title, nid2index, news_category, out_path)
+    # write_news_files(news_title, nid2index, news_category, out_path)
 
-    uid2index, user_info = process_users(adressa_path, all_flag=all_flag)
-    for uid in tqdm(user_info):
-        user_info[uid].sort_click()
+    # uid2index, user_info = process_users(adressa_path, all_flag=all_flag)
+    # for uid in tqdm(user_info):
+    #     user_info[uid].sort_click()
 
-    train_lines = []
-    test_lines = []
-    for uindex in tqdm(user_info):
-        uinfo = user_info[uindex]
-        click_news = uinfo.click_news
-        train_news = uinfo.train_news
-        test_news = uinfo.test_news
-        construct_behaviors(uindex, click_news, train_news, test_news, neg_num)
+    # train_lines = []
+    # test_lines = []
+    # for uindex in tqdm(user_info):
+    #     uinfo = user_info[uindex]
+    #     click_news = uinfo.click_news
+    #     train_news = uinfo.train_news
+    #     test_news = uinfo.test_news
+    #     construct_behaviors(uindex, click_news, train_news, test_news, neg_num)
 
-    test_split_lines, valid_split_lines = train_test_split(
-        test_lines, test_size=0.2, random_state=2021
-    )
-    with open(out_path / "train" / "behaviors.tsv", "w", encoding="utf-8") as f:
-        f.writelines(train_lines)
+    # test_split_lines, valid_split_lines = train_test_split(
+    #     test_lines, test_size=0.2, random_state=2021
+    # )
+    # with open(out_path / "train" / "behaviors.tsv", "w", encoding="utf-8") as f:
+    #     f.writelines(train_lines)
 
-    with open(out_path / "valid" / "behaviors.tsv", "w", encoding="utf-8") as f:
-        f.writelines(valid_split_lines)
+    # with open(out_path / "valid" / "behaviors.tsv", "w", encoding="utf-8") as f:
+    #     f.writelines(valid_split_lines)
 
-    with open(out_path / "test" / "behaviors.tsv", "w", encoding="utf-8") as f:
-        f.writelines(test_split_lines)
+    # with open(out_path / "test" / "behaviors.tsv", "w", encoding="utf-8") as f:
+    #     f.writelines(test_split_lines)

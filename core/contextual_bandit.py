@@ -36,6 +36,8 @@ class ContextualBanditLearner(object):
         print('Debug self.device: ', self.device)
 
         self.nid2index, self.word2vec, self.nindex2vec = load_word2vec(args, 'utils')
+        self.args.num_all_news = len(self.nid2index)
+        print('num_all_news: ', self.args.num_all_news)
         
         topic_news = load_cb_topic_news(args) # dict, key: subvert; value: list nIDs 
         cb_news = defaultdict(list)
@@ -47,6 +49,12 @@ class ContextualBanditLearner(object):
                 news_topics[self.nid2index[nid]]=k
         self.cb_news = cb_news 
         self.cb_topics = list(self.cb_news.keys())
+        self.args.num_topics = len(self.cb_topics)
+        print('num_topics: ', self.args.num_topics)
+        
+        if args.per_rec_score_budget >= int(1e8): # no comp budget
+            self.min_item_size = int(self.args.num_all_news / self.args.num_topics)
+            print('Set min_item_size to ', self.min_item_size)
         self.news_topics = news_topics
         self.topic_budget = 0 # the score budget for topic exploration
         # self.topic_budget = len(self.cb_topics) # for two stage

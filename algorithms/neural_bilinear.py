@@ -28,6 +28,19 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
         self.Ainv = np.linalg.inv(self.A)
         self.lr_model = LogisticRegressionBilinear(self.dim, self.dim, 1)
 
+        self.A = torch.Tensor(self.A).to(self.device)
+        self.Ainv = torch.Tensor(self.Ainv).to(self.device)
+
+    def getInv(self, old_Minv, nfv):
+        # https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula
+        # new_M=old_M+nfv*nfv'
+        # try to get the inverse of new_M
+        tmp_a=torch.outer((old_Minv @ nfv).ravel(),nfv) @ old_Minv
+        # tmp_a = old_Minv.dot(nfv).dot(nfv.T).dot(old_Minv)
+        tmp_b=1+ nfv.T @ old_Minv @ nfv
+        new_Minv=old_Minv-tmp_a/tmp_b
+        return new_Minv
+
     def update(self, topics, items, rewards, mode = 'item', uid = None):
         """Updates the posterior using linear bayesian regression formula.
         
@@ -46,13 +59,13 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
 
         if mode == 'item-linear':
             print('Update linucb parameters for user {}!'.format(uid))
-            X = self.news_embs[0][items] # n1, n_hist
-            z = self._get_user_embs(uid, 0)[0] # 1,d2
+            X = torch.Tensor(self.news_embs[0][items]).to(self.device) # n1, n_hist
+            z = torch.Tensor(self._get_user_embs(uid, 0)[0]).to(self.device) # 1,d2
             for x in X:
-                vec = np.outer(x.T,z).reshape(-1,) # d1d2,
+                vec =  torch.outer(x.T,z.ravel()).ravel() # d1d2,
 
                 # Update parameters
-                self.A+=np.outer(vec, vec.T) # d1d2, d1d2                
+                self.A+=torch.outer(vec, vec) # d1d2, d1d2                
                 self.Ainv=self.getInv(self.Ainv,vec) # n_dim, n_dim
             self.train_lr(uid)
 
@@ -93,7 +106,7 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
         # CI = np.array(CI)
 
         CI = []
-        Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
+        Ainv = torch.unsqueeze(self.Ainv,dim=0) # 1,4096,4096
         cands = torch.unsqueeze(torch.Tensor(np.array(cands)).to(self.device),dim=1) # 5000,1,4096
         CI = torch.bmm(torch.bmm(cands, Ainv.expand(cands.shape[0],-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
 
@@ -112,6 +125,8 @@ class NeuralGBiLinUCB(NeuralGLMAddUCB):
         
         self.A =  np.identity(n=self.dim**2)
         self.Ainv = np.linalg.inv(self.A)
+        self.A = torch.Tensor(self.A).to(self.device)
+        self.Ainv = torch.Tensor(self.Ainv).to(self.device)
 
         self.lr_model = LogisticRegressionBilinear(self.dim, self.dim, 1)
         self.data_buffer_lr = [] # for logistic regression

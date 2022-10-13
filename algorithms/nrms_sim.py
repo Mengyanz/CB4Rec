@@ -18,6 +18,7 @@ from algorithms.propensity_score import PropensityScore
 from utils.data_util import read_data, NewsDataset, UserDataset, load_word2vec, SimEvalDataset, SimEvalDataset2, \
     SimTrainDataset, SimValDataset, SimValWithIPSDataset, SimTrainWithIPSDataset
 from utils.metrics import compute_amn
+import matplotlib.pyplot as plt
 
 def compute_cdf(x, dist_obj):
     dist = dist_obj[0] 
@@ -56,16 +57,19 @@ class NRMS_Sim(Simulator):
         self.model = NRMS_Sim_Model(word2vec).to(self.device)
         if self.pretrained_mode: # == 'pretrained':
             print('loading a pretrained model from {}'.format(args.sim_path))
-            self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model'))) 
-            p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
-            with open(p_dists_fname, 'rb') as fo: 
-                self.p_dists = pickle.load(fo)[0]
+            try:
+                self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model'))) 
+            except:
+                self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model_fix'))) 
+            # p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
+            # with open(p_dists_fname, 'rb') as fo: 
+            #     self.p_dists = pickle.load(fo)[0]
 
-            n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
-            with open(n_dists_fname, 'rb') as fo: 
-                self.n_dists = pickle.load(fo)[0]
+            # n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
+            # with open(n_dists_fname, 'rb') as fo: 
+            #     self.n_dists = pickle.load(fo)[0]
 
-            self.sim_margin = args.sim_margin 
+            # self.sim_margin = args.sim_margin 
 
         self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
 
@@ -95,20 +99,33 @@ class NRMS_Sim(Simulator):
                 score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, compute_loss=False)
                 scores.append(torch.sigmoid(score[:,None])) 
             scores = torch.cat(scores, dim=0).float().detach().cpu().numpy()
-            p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
-            n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
+            # p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
+            # n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
             
-            hard_rewards = (p_probs > n_probs).astype('float') 
-            rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
-            if self.args.reward_type == 'hard':
-                rewards = hard_rewards 
-            elif self.args.reward_type == 'soft': 
-                rewards = rand_rewards 
-            else: 
-                rewards = rand_rewards * hard_rewards 
-        for s,p,n in zip(scores, p_probs, n_probs):
-            print(s,p,n)
-        return rewards.ravel()
+            # hard_rewards = (p_probs > n_probs).astype('float') 
+            # rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
+            # if self.args.reward_type == 'hard':
+            #     rewards = hard_rewards 
+            # elif self.args.reward_type == 'soft': 
+            #     rewards = rand_rewards 
+            # elif self.args.reward_type == 'hybrid':
+            #     rewards = rand_rewards * hard_rewards 
+            # elif self.args.reward_type == 'bern':
+            #     rewards = np.random.binomial(n=1, p=scores)
+            if self.args.reward_type == 'threshold_eps':
+                rewards = (scores > self.args.sim_threshold).astype('float').ravel()
+                EPS = 0.1
+                mask = np.random.binomial(n=1, p = np.array([EPS] * rewards.shape[0]))
+                print(mask.shape, rewards.shape)
+                assert mask.shape == rewards.shape
+                rewards = rewards * (1 - mask) + (1 - rewards) * mask
+            elif self.args.reward_type == 'threshold':
+                rewards = (scores > self.args.sim_threshold).astype('float').ravel()
+            else:
+                raise NotImplementedError
+        # for s,p,n in zip(scores, p_probs, n_probs):
+        #     print(s,p,n)
+        return rewards
 
     def _train_one_epoch(self, epoch_index, train_loader, writer):
         # ref: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html 
@@ -149,7 +166,7 @@ class NRMS_Sim(Simulator):
         y_scores = [] 
         y_trues = []
         imp_metrics = []
-        imp_metrics_prev = []
+        # imp_metrics_prev = []
         with torch.no_grad():
             pbar = tqdm(enumerate(val_loader))
             for i, vdata in pbar: 
@@ -163,12 +180,12 @@ class NRMS_Sim(Simulator):
                 y_score = vscore.cpu().detach().numpy().ravel() 
 
 
-                auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
-                imp_metrics_prev.append([auc, mrr, ndcg5, ndcg10, ctr])
+                # auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
+                # imp_metrics_prev.append([auc, mrr, ndcg5, ndcg10, ctr])
+                # p_probs = compute_local_pdf(y_score, self.p_dists, self.sim_margin) 
+                # n_probs = compute_local_pdf(y_score, self.n_dists, self.sim_margin) 
+                # y_score = p_probs / (p_probs + n_probs)
 
-                p_probs = compute_local_pdf(y_score, self.p_dists, self.sim_margin) 
-                n_probs = compute_local_pdf(y_score, self.n_dists, self.sim_margin) 
-                y_score = p_probs / (p_probs + n_probs)
                 auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
                 imp_metrics.append([auc, mrr, ndcg5, ndcg10, ctr])
 
@@ -177,14 +194,26 @@ class NRMS_Sim(Simulator):
 
 
         imp_metrics = np.array(imp_metrics) 
-        imp_metrics_prev = np.array(imp_metrics_prev) 
+        # imp_metrics_prev = np.array(imp_metrics_prev) 
+        y_scores = np.hstack(y_scores) 
+        y_trues = np.hstack(y_trues) 
+
+        # Select threshold 
+        precision, recall, thresholds = precision_recall_curve(y_trues, y_scores)
+        fscore = (2 * precision * recall) / (precision + recall)
+        ix = np.argmax(fscore)
+        print(' Best Threshold=%f, fscore=%.3f' % (thresholds[ix], fscore[ix]))
 
         np.save(os.path.join(self.args.sim_path, 'perimp_metrics'), imp_metrics)
         np.save(os.path.join(self.args.sim_path, 'preds'), y_scores, allow_pickle=True)
         np.save(os.path.join(self.args.sim_path, 'trues'), y_trues, allow_pickle=True)
 
-        print('AUC: transformed {} original {}'.format(np.mean(imp_metrics, axis=0)[0],np.mean(imp_metrics_prev, axis=0)[0]))
+        print('AUC: {}'.format(np.mean(imp_metrics, axis=0)[0]))
 
+        plt.hist(y_scores[y_trues == 1], alpha = 0.5, color = 'r', density = True, label = '1')
+        plt.hist(y_scores[y_trues == 0], alpha = 0.5, color = 'b', density = True, label = '0')
+        plt.legend()
+        plt.savefig(os.path.join(self.args.sim_path, 'threshold.png'))
 
     def train(self): 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -205,7 +234,7 @@ class NRMS_Sim(Simulator):
 
         epoch_number = 0 
 
-        EPOCHS = 10
+        EPOCHS = self.args.num_epoch
 
         best_vauc = 0. 
 
@@ -251,9 +280,6 @@ class NRMS_Sim(Simulator):
             y_scores = np.hstack(y_scores) 
             y_trues = np.hstack(y_trues) 
 
-            fname = os.path.join(out_path, 'scores_labels')
-            np.savez(fname, y_scores, y_trues)
-
             imp_metrics_mean = np.mean(imp_metrics, axis=0)
 
             auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_trues.ravel(), y_scores.ravel())
@@ -292,6 +318,9 @@ class NRMS_Sim(Simulator):
                 best_vauc = imp_metrics_mean[0] 
                 model_path = os.path.join(out_path, 'model_{}'.format(epoch_number))
                 torch.save(self.model.state_dict(), model_path)
+
+                fname = os.path.join(out_path, 'scores_labels_{}'.format(epoch_number))
+                np.savez(fname, y_scores, y_trues)
             
             epoch_number += 1 
 
@@ -371,7 +400,7 @@ class NRMS_IPS_Sim(Simulator):
         self.device = device 
         self.args = args 
         self.threshold = args.sim_threshold
-        self.ips_path = os.path.join(args.root_dir, args.ips_path) # path to pretrained IPS model 
+        # self.ips_path = os.path.join(args.root_dir, args.ips_path) # path to pretrained IPS model 
 
 
         self.nid2index, word2vec, self.nindex2vec = load_word2vec(args)
@@ -385,15 +414,15 @@ class NRMS_IPS_Sim(Simulator):
                 self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model'))) 
             except:
                 self.model.load_state_dict(torch.load(os.path.join(args.sim_path, 'model_fix'))) 
-            p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
-            with open(p_dists_fname, 'rb') as fo: 
-                self.p_dists = pickle.load(fo)[0]
+            # p_dists_fname = os.path.join(args.sim_path, 'p_dists.pkl')
+            # with open(p_dists_fname, 'rb') as fo: 
+            #     self.p_dists = pickle.load(fo)[0]
 
-            n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
-            with open(n_dists_fname, 'rb') as fo: 
-                self.n_dists = pickle.load(fo)[0]
+            # n_dists_fname = os.path.join(args.sim_path, 'n_dists.pkl')
+            # with open(n_dists_fname, 'rb') as fo: 
+            #     self.n_dists = pickle.load(fo)[0]
 
-            self.sim_margin = args.sim_margin 
+            # self.sim_margin = args.sim_margin 
 
         if train_mode:
             self.optimizer = optim.Adam(self.model.parameters(), lr = self.args.lr) 
@@ -436,21 +465,21 @@ class NRMS_IPS_Sim(Simulator):
                 score = self.model(cn[:,None,:].to(self.device), h.repeat(cn.shape[0],1,1).to(self.device), None, None,compute_loss=False)
                 scores.append(torch.sigmoid(score[:,None])) 
             scores = torch.cat(scores, dim=0).float().detach().cpu().numpy().ravel()
-            p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
-            n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
+            # p_probs = compute_local_pdf(scores, self.p_dists, self.sim_margin) 
+            # n_probs = compute_local_pdf(scores, self.n_dists, self.sim_margin) 
             
-            hard_rewards = (p_probs > n_probs).astype('float') 
-            rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
-            threshold_rewards = (scores > self.args.sim_threshold).astype('float') 
-            if self.args.reward_type == 'hard':
-                rewards = hard_rewards 
-            elif self.args.reward_type == 'soft': 
-                rewards = rand_rewards 
-            elif self.args.reward_type == 'hybrid':
-                rewards = rand_rewards * hard_rewards 
-            elif self.args.reward_type == 'bern':
-                rewards = np.random.binomial(n=1, p=scores)
-            elif self.args.reward_type == 'threshold_eps':
+            # hard_rewards = (p_probs > n_probs).astype('float') 
+            # rand_rewards = np.random.binomial(n=1, p = p_probs / (p_probs + n_probs) )
+            # threshold_rewards = (scores > self.args.sim_threshold).astype('float') 
+            # if self.args.reward_type == 'hard':
+            #     rewards = hard_rewards 
+            # elif self.args.reward_type == 'soft': 
+            #     rewards = rand_rewards 
+            # elif self.args.reward_type == 'hybrid':
+            #     rewards = rand_rewards * hard_rewards 
+            # elif self.args.reward_type == 'bern':
+            #     rewards = np.random.binomial(n=1, p=scores)
+            if self.args.reward_type == 'threshold_eps':
                 rewards = (scores > self.args.sim_threshold).astype('float') 
                 EPS = 0.1
                 mask = np.random.binomial(n=1, p = np.array([EPS] * rewards.shape[0]))
@@ -611,4 +640,57 @@ class NRMS_IPS_Sim(Simulator):
                 torch.save(self.model.state_dict(), model_path)
             
             epoch_number += 1 
+
+    def evaluate(self):
+        data_path = os.path.join(self.args.root_data_dir, self.args.dataset, 'utils')
+        with open(os.path.join(data_path, "val_contexts.pkl"), "rb") as fo:
+            val_samples = pickle.load(fo)
+        val_dataset = SimValWithIPSDataset(self.args, self.nid2index, self.nindex2vec, val_samples)  
+        val_loader = DataLoader(val_dataset, shuffle=False) #, batch_size=self.args.sim_val_batch_size, shuffle=False, num_workers=self.args.num_workers)
+
+        self.model.eval() 
+        y_scores = [] 
+        y_trues = []
+        imp_metrics = []
+        with torch.no_grad():
+            pbar = tqdm(enumerate(val_loader))
+            for i, vdata in pbar: 
+                pbar.set_description(' Processing {}/{}'.format(i+1,len(val_loader)))
+                cand_news, clicked_news, targets, uids, cand_idxs = vdata
+                if not self.args.empirical_ips:
+                    cand_idxs = [[self.nid2index[n] for n in ns] for ns in cand_idxs]
+                vscore = self.model(cand_news.to(self.device), clicked_news.to(self.device), targets.to(self.device), None,compute_loss=False)
+                
+                vscore = torch.sigmoid(vscore)
+
+                y_true = targets.cpu().detach().numpy().ravel() 
+                y_score = vscore.cpu().detach().numpy().ravel() 
+                auc, mrr, ndcg5, ndcg10, ctr = compute_amn(y_true, y_score)
+                imp_metrics.append([auc, mrr, ndcg5, ndcg10, ctr])
+
+
+                y_scores.append(y_score) 
+                y_trues.append(y_true)
+
+        imp_metrics = np.array(imp_metrics) 
+        y_scores = np.hstack(y_scores) 
+        y_trues = np.hstack(y_trues) 
+
+
+        # Select threshold 
+        precision, recall, thresholds = precision_recall_curve(y_trues, y_scores)
+        fscore = (2 * precision * recall) / (precision + recall)
+        ix = np.argmax(fscore)
+        print(' Best Threshold=%f, fscore=%.3f' % (thresholds[ix], fscore[ix]))
+
+        np.save(os.path.join(self.args.sim_path, 'perimp_metrics'), imp_metrics)
+        np.save(os.path.join(self.args.sim_path, 'preds'), y_scores, allow_pickle=True)
+        np.save(os.path.join(self.args.sim_path, 'trues'), y_trues, allow_pickle=True)
+
+        print('AUC: {}'.format(np.mean(imp_metrics, axis=0)[0]))
+
+        plt.hist(y_scores[y_trues == 1], alpha = 0.5, color = 'r', density = True, bins=20, label = '1')
+        plt.hist(y_scores[y_trues == 0], alpha = 0.5, color = 'b', density = True, bins=20, label = '0')
+        plt.legend()
+        plt.savefig(os.path.join(self.args.sim_path, 'threshold.png'))
 
