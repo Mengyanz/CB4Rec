@@ -28,4 +28,5 @@ __pycache__
 !unit_test.py 
 !run_experiment.py 
 !NRMS-adressa.ipynb
+!pretrained_models/sim_emp_ips_nrms_normalized_mv_r14_ep86
 

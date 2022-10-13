@@ -31,7 +31,7 @@ class Tree():
         self.is_leaf     = False
 
 def main():
-    from configs.m_params import parse_args
+    from configs.params import parse_args
     args = parse_args()
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
@@ -44,15 +44,15 @@ def main():
         args.sim_threshold = 0.38141
         simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True)
         args.lr = 1e-4
-    elif args.dataset == 'adressa':
-        # args.sim_path = './pretrained_models/sim_nrms_adressa_r14_ep5'
-        args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_adressa_r14_ep6'
-        args.sim_threshold = 0.138679 #0.138679
-        args.lr =1e-5 # 0.000001
-        # simulator = NRMS_Sim(device, args, pretrained_mode=True)
-        simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True, train_mode=False)
-        args.per_rec_score_budget = 200
-        args.min_item_size = 200
+    # elif args.dataset == 'adressa':
+    #     # args.sim_path = './pretrained_models/sim_nrms_adressa_r14_ep5'
+    #     args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_adressa_r14_ep6'
+    #     args.sim_threshold = 0.138679 #0.138679
+    #     args.lr =1e-5 # 0.000001
+    #     # simulator = NRMS_Sim(device, args, pretrained_mode=True)
+    #     simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True, train_mode=False)
+    #     args.per_rec_score_budget = 200
+    #     args.min_item_size = 200
     elif args.dataset == 'movielens':
         args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_mv_r14_ep86'
         simulator = NRMS_IPS_Sim(device, args, pretrained_mode=True, train_mode=False)

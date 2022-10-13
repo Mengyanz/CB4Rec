@@ -979,32 +979,28 @@ def compute_empirical_ips(args):
 
 
 if __name__ == "__main__":
-    # from parameters import parse_args
-    # from configs.params import parse_args
-    from configs.m_params import parse_args
+    from configs.params import parse_args
 
     args = parse_args()
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
     args.result_path = os.path.join(args.root_dir, args.result_path)
     args.pretrain_topic = True
-    args.dataset = 'adressa'
     train_cb = True
     train_all = True
 
     if args.dataset == 'large':
         args.lr = 1e-4
-    elif args.dataset == 'adressa':
-        args.lr =1e-5 # 0.000001   
+    # elif args.dataset == 'adressa':
+    #     args.lr =1e-5 # 0.000001   
     elif args.dataset == 'movielens':
         if args.pretrain_topic:
             args.lr = 1e-3
         else:
             args.lr = 1e-4
-    args.epochs = 1
     
-    # news_preprocess(args)
-    # generate_cb_news(args)
+    news_preprocess(args)
+    generate_cb_news(args)
     split_then_select_behavior_preprocess(args, train_cb = train_cb, train_all=train_all)
     run_eva(args)
 

@@ -136,39 +136,23 @@ def create_commands(args, algo_group, result_path):
                 log_path = os.path.join(result_path, algo_prefix + '.log')
                 commands.append("python run_experiment.py --dataset {}  --algo {} --root_dir {}  --algo_prefix {} --result_path {} --dynamic_aggregate_topic {} > {}".format(args.dataset, algo, args.root_dir, algo_prefix, result_path, dynamic_aggregate_topic, log_path))
                 algo_prefixes.append(algo_prefix)
-    elif algo_group == 'tune_gamma':
-        for gamma in [0.01, 0.05, 0.1, 0.5, 1, 2]:
-            for algo in ['neural_gbilinucb', '2_neuralglmbilinucb']:# ['neural_glmadducb', '2_neuralglmadducb']: # 
-                algo_prefix = algo + '_gamma' + str(gamma)
-                log_path = os.path.join(result_path, algo_prefix + '.log')
-                commands.append("python run_experiment.py --dataset {}  --algo {} --root_dir {}  --algo_prefix {} --result_path {}  --gamma {} > {}".format(args.dataset, algo, args.root_dir, algo_prefix, result_path, gamma, log_path))
-                algo_prefixes.append(algo_prefix)
-    elif algo_group == 'test_largeT':
-        T = 10000
-        for algo in ['neural_glmadducb', 'neural_gbilinucb', '2_neuralglmadducb', '2_neuralglmbilinucb']:
-            algo_prefix = algo + '_T' + str(T)
-            log_path = os.path.join(result_path, algo_prefix + '.log')
-            commands.append("python run_experiment.py --dataset {}  --algo {} --root_dir {}  --algo_prefix {} --result_path {}  --T {} > {}".format(args.dataset, algo, args.root_dir, algo_prefix, result_path, T, log_path))
-            algo_prefixes.append(algo_prefix)
     else:
         raise NotImplementedError("No algo_group specified.")
     return commands, algo_prefixes
 
 if __name__ == '__main__':
-    # from configs.params import parse_args
-    from configs.m_params import parse_args
+    from configs.params import parse_args
     args = parse_args()
 
     # settings
     gpus = [0,1,2]
     models_per_gpu = 1
-    # algo_groups = ['test_onestage', 'test_twostage', 'test_dynamic_topic', 'tune_gamma', 'test_largeT'，'no_comp_budget']
-    algo_groups = ['test_twostage']
+    algo_groups = ['test_onestage', 'test_twostage', 'test_dynamic_topic', 'no_comp_budget']
+    # algo_groups = ['test_twostage']
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
     args.result_path = os.path.join(args.root_dir, args.result_path)
     # args.dataset =  'movielens' # 
-    # args.dataset = 'adressa' # 
     args.dataset = 'large'
  
     simulate_flag=True
@@ -177,7 +161,7 @@ if __name__ == '__main__':
 
     # simulate_flag=False
     # rec_batch_size=[5] 
-    # timestr = '20221002-1433' # '20220930-0717' 
+    # timestr = '20221002-1433' 
     
     print("============================algo groups: {} ==============================".format(algo_groups))
     print('Saving to {}'.format(timestr))

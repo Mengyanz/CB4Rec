@@ -550,7 +550,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         X = self.news_embs[0][cand_news] # (n,d)
         cands = np.array([np.outer(x,z) for x in X]).reshape(len(cand_news),-1)
         t2 = datetime.datetime.now()
-        print('Debug news,user inference and get cands:, ', t2-t1)
+        # print('Debug news,user inference and get cands:, ', t2-t1)
         # x_mean = X.dot(self.theta_x) + z.dot(self.theta_z)# n_cand, 
         self.lr_model.eval()
         mean = self.lr_model.forward(
@@ -558,7 +558,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
             torch.Tensor(np.repeat(z, len(cands), axis = 0)).to(self.device)
             ).detach().cpu().numpy().reshape(len(cands),)
         t3 = datetime.datetime.now()
-        print('Debug get ucb mean:, ', t3-t2)
+        # print('Debug get ucb mean:, ', t3-t2)
 
         CI = []
         # Ainv = torch.unsqueeze(torch.Tensor(self.Ainv).to(self.device),dim=0) # 1,4096,4096
@@ -567,7 +567,7 @@ class Two_NeuralGBiLinUCB(Two_NeuralGLMAddUCB):
         CI = torch.bmm(torch.bmm(cands, Ainv.expand(cands.shape[0],-1,-1)),torch.transpose(cands, 1,2)).ravel().cpu().numpy()
 
         t4 = datetime.datetime.now()
-        print('Debug get ucb CI (on GPU):, ', t4-t3)
+        # print('Debug get ucb CI (on GPU):, ', t4-t3)
         ucb = mean + self.gamma * np.sqrt(CI) # n_cand, 
 
         nid_argmax = np.argsort(ucb)[::-1][:m].tolist() # (len(uids),)

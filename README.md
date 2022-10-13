@@ -1,4 +1,4 @@
-# Supplementary Code for Two-Stage Neural Contextual Bandits for Personalised News Recommendation.
+# Supplementary Code for Two-Stage Neural Contextual Bandits for Adaptive Personalised Recommendation.
 
 ## API 
 
@@ -22,25 +22,18 @@
 * `configs`: Contains experiment hyperparameter configurations. 
 * `run_experiment`: Run single experiment
 * `tune_experiment`: Run group of experiments in parallell on gpus
-* `preprocess.py`: word2vec using glove6B and split data for training simulators and CB learners. Simulators are trained on the MIND train data and are selected on the MIND valid data. For CB simulation, we do as follows: 
-    * In each trial out of `args.n_trials` (i.e. the number of experiments), we randomly select `args.num_selected_users` from the MIND train set. The first portion of the MIND train set with all the behaviour data of those `args.num_selected_users` removed is used to pre-train the internal model of a CB learner. The first portion of the MIND train set is controlled by `args.cb_train_ratio`
-    * Then, at each iteration, we randomly sample a user from the set of `args.num_selected_users` users and obtain the user's context from the other portion of the MIND train set at the iteration. A CB learner observes the user's context and produces recommendations. 
+* `preprocess.py`: word2vec using glove6B and split data for training simulators and CB learners. Simulators are trained on the train data and are selected on the valid data. For CB simulation, we do as follows: 
+    * In each trial out of `args.n_trials` (i.e. the number of experiments), we randomly select `args.num_selected_users` from the train set. The first portion of the train set with all the behaviour data of those `args.num_selected_users` removed is used to pre-train the internal model of a CB learner. The first portion of the train set is controlled by `args.cb_train_ratio`
+    * Then, at each iteration, we randomly sample a user from the set of `args.num_selected_users` users and obtain the user's context from the other portion of the train set at the iteration. A CB learner observes the user's context and produces recommendations. 
     * Note that in each trial, we randomly generate a different set of `args.num_selected_users` users. Thus, we need to retrain the internal model of the CB learner in each trial. 
-
-    * With the MIND data statistics as below (see detailed description [here](https://docs.microsoft.com/en-us/azure/open-datasets/dataset-microsoft-news?tabs=azureml-opendatasets)): 
-
-|             | Train       | Valid   | Intersection | 
-| ----------- | ----------- |---------|--------------|
-| # of users  | 711,222     |  255,990|216,778       |
-| # of samples| 2,232,748   |  376,471|N/A           |
 
 
 
 ## Usage 
 
-- Step 1: download data [MIND-Large](https://msnews.github.io/)/[adressa-one week](https://reclab.idi.ntnu.no/dataset/)/[movielen-20M](https://www.kaggle.com/datasets/grouplens/movielens-20m-dataset) and word embeddings ([GloVe](https://nlp.stanford.edu/projects/glove/)/[fastTest-Norwegian](https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.nn.300.vec.gz)) in `./data/large`. Folder structure as:
+- Step 1: download data [MIND-Large](https://msnews.github.io/)/[movielen-20M](https://www.kaggle.com/datasets/grouplens/movielens-20m-dataset) and word embeddings ([GloVe](https://nlp.stanford.edu/projects/glove/) in `./data/`. Convert MovieLens-20M using `movielens2mind.ipynb`. Data folder structure as:
 ```bash
-data
+data/dataset_name
 ├── train
 │   ├── news.csv             
 │   ├── behaviors.csv

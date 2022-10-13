@@ -28,7 +28,7 @@ def plot_threshold(args):
 
 
 def main():
-    from configs.m_params import parse_args
+    from configs.params import parse_args
     args = parse_args()
     args.root_data_dir = os.path.join(args.root_dir, args.root_data_dir)
     args.root_proj_dir = os.path.join(args.root_dir, args.root_proj_dir)
@@ -41,8 +41,8 @@ def main():
 
     if args.dataset == 'large':
         args.lr = 1e-4
-    elif args.dataset == 'adressa':
-        args.lr =1e-5 # 0.000001   
+    # elif args.dataset == 'adressa':
+    #     args.lr =1e-5 # 0.000001   
     elif args.dataset == 'movielens':
         args.lr = 1e-4
 
@@ -51,7 +51,7 @@ def main():
     # args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_adressa_r14_ep6'
     # nrms = NRMS_IPS_Sim(device, args, pretrained_mode=True, train_mode=False)
 
-    args.sim_path = './pretrained_models/sim_nrms_mv_r14_ep74'
+    # args.sim_path = './pretrained_models/sim_nrms_mv_r14_ep74'
     # nrms = NRMS_Sim(device, args, pretrained_mode=True)
     # args.sim_path = './pretrained_models/sim_emp_ips_nrms_normalized_mv_r14_ep86'
     # nrms = NRMS_IPS_Sim(device, args, pretrained_mode=True, train_mode=False)
@@ -59,11 +59,11 @@ def main():
     if not args.empirical_ips: # train a propensity model first if it is not available
         PropensityScore(args, device)
 
-    # nrms = NRMS_IPS_Sim(device, args, pretrained_mode=False, train_mode=True)
+    nrms = NRMS_IPS_Sim(device, args, pretrained_mode=False, train_mode=True)
     # nrms = NRMS_Sim(device, args, pretrained_mode=False)
-    # nrms.train()
-    # nrms.evaluate()
-    plot_threshold(args)
+    nrms.train()
+    nrms.evaluate()
+    # plot_threshold(args)
 
 
 if __name__ == '__main__':
